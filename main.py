@@ -27,7 +27,7 @@ from google import genai
 from pydantic import BaseModel, Field
 
 # FastAPI imports
-from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException
+from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -2782,9 +2782,9 @@ def check_overall_order_status(order_id: str):
         supabase.table('orders').update({'overall_order_status': 'printing'}).eq('id', order_id).execute()
 
 
-def run_foreman_dispatch() -> dict:
+def run_foreman_dispatch(sp_key: Optional[str] = None) -> dict:
     """Fetches pending order items and dispatches their print files to the SimplyPrint queue."""
-    api_key = os.getenv("SIMPLYPRINT_API_KEY")
+    api_key = sp_key or os.getenv("SIMPLYPRINT_API_KEY")
     if not api_key:
         raise ValueError("SIMPLYPRINT_API_KEY is not set.")
 
@@ -2930,9 +2930,9 @@ def run_foreman_dispatch() -> dict:
     }
 
 
-def _do_cancel_order(order_id: str, platform_order_id: Optional[str] = None):
+def _do_cancel_order(order_id: str, platform_order_id: Optional[str] = None, sp_key: Optional[str] = None):
     """Shared logic: cancel SimplyPrint jobs and mark an order cancelled in the database."""
-    api_key = os.getenv("SIMPLYPRINT_API_KEY")
+    api_key = sp_key or os.getenv("SIMPLYPRINT_API_KEY")
     sp_headers = {"X-API-KEY": api_key, "Accept": "application/json"} if api_key else {}
     company_id = SIMPLYPRINT_COMPANY_ID
 
@@ -3106,19 +3106,21 @@ def scout_ingest_email(req: IngestEmailRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/foreman/dispatch")
-def foreman_dispatch():
+def foreman_dispatch(request: Request):
     """Fetches all pending order items and dispatches their print files to the SimplyPrint queue."""
     try:
-        result = run_foreman_dispatch()
+        sp_key = request.headers.get("X-SimplyPrint-Key") or None
+        result = run_foreman_dispatch(sp_key=sp_key)
         return result
     except Exception as e:
         logger.error(f"foreman/dispatch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/cancel")
-def cancel_order(req: CancelRequest):
+def cancel_order(req: CancelRequest, request: Request):
     """Cancels an order: aborts SimplyPrint jobs and marks the order cancelled in the database."""
     try:
+        sp_key = request.headers.get("X-SimplyPrint-Key") or None
         order_id = req.order_id
         platform_order_id = req.platform_order_id
 
@@ -3147,7 +3149,7 @@ def cancel_order(req: CancelRequest):
         if not order_id:
             raise HTTPException(status_code=400, detail="Provide order_id, platform_order_id, or email_body.")
 
-        _do_cancel_order(order_id, platform_order_id)
+        _do_cancel_order(order_id, platform_order_id, sp_key=sp_key)
         return {"status": "success", "platform_order_id": platform_order_id or order_id}
 
     except HTTPException:

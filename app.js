@@ -120,6 +120,8 @@ function initSupabase() {
   document.getElementById("setting-supabase-key").value = supabaseKey;
   const backendUrl = localStorage.getItem("orbot_backend_url") || "";
   document.getElementById("setting-backend-url").value = backendUrl;
+  const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
+  document.getElementById("setting-simplyprint-key").value = spKey;
 
   const statusDot = document.getElementById("db-status-dot");
   const statusText = document.getElementById("db-status-text");
@@ -774,9 +776,10 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         const backendUrl = (localStorage.getItem("orbot_backend_url") || "").replace(/\/$/, "");
         if (!backendUrl) throw new Error("Backend URL not set. Add your Railway URL in Settings.");
 
+        const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
         const response = await fetch(`${backendUrl}/cancel`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
           body: JSON.stringify({ order_id: orderId })
         });
         
@@ -1529,10 +1532,12 @@ function setupSettings() {
     const url = document.getElementById("setting-supabase-url").value.trim();
     const key = document.getElementById("setting-supabase-key").value.trim();
     const backendUrl = document.getElementById("setting-backend-url").value.trim();
+    const spKey = document.getElementById("setting-simplyprint-key").value.trim();
 
     localStorage.setItem("orbot_supabase_url", url);
     localStorage.setItem("orbot_supabase_key", key);
     localStorage.setItem("orbot_backend_url", backendUrl);
+    localStorage.setItem("orbot_simplyprint_key", spKey);
 
     closeModal();
     
@@ -2147,9 +2152,10 @@ function setupWaybillProcessing() {
 
     try {
       if (!backendUrl) throw new Error("Backend URL not set. Add your Railway URL in Settings.");
+      const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
       const response = await fetch(`${backendUrl}/foreman/dispatch`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
         body: JSON.stringify({})
       });
       const resData = await response.json();
