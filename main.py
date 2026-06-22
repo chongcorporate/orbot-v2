@@ -35,7 +35,7 @@ import uvicorn
 from PyPDF2 import PdfReader, PdfWriter
 
 # Google APIs / Gmail OAuth imports
-from google.auth.transport.requests import Request
+from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
@@ -929,7 +929,7 @@ class ScoutAgent:
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 try:
-                    creds.refresh(Request())
+                    creds.refresh(GoogleAuthRequest())
                 except Exception as e:
                     logger.warning(f"Failed to refresh Gmail token: {e}. Re-authenticating...")
                     creds = None
@@ -1694,7 +1694,7 @@ def get_drive_service():
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
-                creds.refresh(Request())
+                creds.refresh(GoogleAuthRequest())
             except Exception as e:
                 print(f"[*] Token refresh failed: {e}. Re-authenticating...")
                 creds = None
