@@ -3209,12 +3209,14 @@ def main():
     if not args.command:
         print("[*] No command specified. Starting unified web server + background daemons...")
         os.environ["START_DAEMON_THREADS"] = "true"
-        uvicorn.run("main:app", host="0.0.0.0", port=8080)
+        port = int(os.environ.get("PORT", 8080))
+        uvicorn.run("main:app", host="0.0.0.0", port=port)
         return
 
     if args.command == "server":
         os.environ["START_DAEMON_THREADS"] = "false" if args.no_daemon else "true"
-        uvicorn.run("main:app", host=args.host, port=args.port)
+        port = args.port or int(os.environ.get("PORT", 8080))
+        uvicorn.run("main:app", host=args.host, port=port)
 
     elif args.command == "daemon":
         print("[*] Starting background workers daemon mode...")
