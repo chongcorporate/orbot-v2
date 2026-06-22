@@ -1,6 +1,9 @@
 {
   "version": 2,
   "cleanUrls": true,
+  "builds": [
+    { "src": "index.html", "use": "@vercel/static" }
+  ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]

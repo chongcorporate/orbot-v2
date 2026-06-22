@@ -33,3 +33,7 @@ node_modules/
 # ── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+.vercel
+
+# Vercel project link (machine-specific)
+.vercel/

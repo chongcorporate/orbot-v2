@@ -1,0 +1,45 @@
+# Only the frontend static files are needed for Vercel deployment.
+# Everything else is backend / local-only.
+
+# Large local directories
+Blocked Off Print Files/
+Uploads/
+scratch/
+
+# Backend Python files
+main.py
+cloud_function/
+requirements.txt
+runtime.txt
+Procfile
+query.py
+generate_google_refresh_token.py
+
+# Database / schema scripts
+*.sql
+
+# Supabase local config (not needed at runtime)
+supabase/.temp/
+
+# Generated cache / debug files
+sp_files.json
+sp_folders_cache.json
+db_files.json
+match_preview.json
+scout.lock
+
+# Prompt files (backend use only)
+prompt_*.md
+
+# GAS scripts (Google Apps Script, not used on Vercel)
+*_gas_script.js
+
+# Node artifacts
+node_modules/
+
+# Python artifacts
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
