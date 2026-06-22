@@ -1,0 +1,1643 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Command Deck - Orbot V2.0</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+  <!-- Load Supabase library -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Load local config fallback -->
+  <script src="config.js"></script>
+  
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "surface-container": "#0f172a",
+            "surface-container-lowest": "#02040a",
+            "on-primary-fixed": "#002022",
+            "background": "#030712",
+            "secondary-fixed": "#f8d8ff",
+            "primary": "#a4e844",
+            "on-secondary": "#520072",
+            "on-surface-variant": "#cbd5e1",
+            "outline-variant": "#334155",
+            "on-tertiary-container": "#924e00",
+            "secondary-container": "#b600f8",
+            "on-tertiary-fixed-variant": "#6e3900",
+            "primary-fixed": "#a4e844",
+            "surface-container-high": "#1e293b",
+            "on-background": "#f8fafc",
+            "error-container": "#93000a",
+            "on-surface": "#f8fafc",
+            "secondary-fixed-dim": "#ebb2ff",
+            "surface-bright": "#334155",
+            "on-secondary-fixed-variant": "#74009f",
+            "surface": "#090d16",
+            "tertiary-container": "#ffd2b1",
+            "on-primary-container": "#006a71",
+            "tertiary-fixed-dim": "#ffb77d",
+            "surface-tint": "#a4e844",
+            "surface-container-low": "#0b0f19",
+            "on-secondary-container": "#fff6fc",
+            "outline": "#64748b",
+            "primary-fixed-dim": "#a4e844",
+            "tertiary-fixed": "#ffdcc3",
+            "surface-dim": "#090d16",
+            "on-secondary-fixed": "#320047",
+            "secondary": "#ebb2ff",
+            "surface-container-highest": "#334155",
+            "inverse-on-surface": "#313030",
+            "on-error": "#690005",
+            "on-primary": "#00363a",
+            "tertiary": "#fff5f0",
+            "on-tertiary-fixed": "#2f1500",
+            "primary-container": "#a4e844",
+            "on-primary-fixed-variant": "#004f54",
+            "surface-variant": "#334155",
+            "inverse-surface": "#f8fafc",
+            "error": "#ef4444",
+            "on-error-container": "#ffdad6",
+            "inverse-primary": "#00696f",
+            "on-tertiary": "#4d2600"
+          },
+          borderRadius: {
+            "DEFAULT": "0.375rem",
+            "sm": "0.25rem",
+            "md": "0.5rem",
+            "lg": "0.75rem",
+            "xl": "1.25rem",
+            "2xl": "1.75rem",
+            "3xl": "2.25rem",
+            "full": "9999px"
+          },
+          spacing: {
+            "margin-desktop": "48px",
+            "gutter": "32px",
+            "panel-padding": "24px",
+            "unit": "4px",
+            "margin-mobile": "16px"
+          },
+          fontFamily: {
+            "data-mono": ["JetBrains Mono"],
+            "body-lg": ["Inter"],
+            "label-caps": ["Inter"],
+            "display-lg": ["Outfit"],
+            "body-md": ["Inter"],
+            "headline-sm": ["Outfit"],
+            "headline-md": ["Outfit"]
+          },
+          fontSize: {
+            "data-mono": ["13px", { "lineHeight": "1.4", "letterSpacing": "0.01em", "fontWeight": "500" }],
+            "body-lg": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+            "label-caps": ["11px", { "lineHeight": "1.1", "letterSpacing": "0.08em", "fontWeight": "700" }],
+            "display-lg": ["52px", { "lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800" }],
+            "body-md": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+            "headline-sm": ["19px", { "lineHeight": "1.35", "fontWeight": "600" }],
+            "headline-md": ["26px", { "lineHeight": "1.25", "fontWeight": "700" }]
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(164, 232, 68, 0.5); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(164, 232, 68, 0.8); }
+
+    /* Neon Pulse Animations */
+    @keyframes pulse-neon {
+      0% { box-shadow: 0 0 0 0 rgba(164, 232, 68, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(164, 232, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(164, 232, 68, 0); }
+    }
+    .pulse-live { animation: pulse-neon 2s infinite; }
+
+    @keyframes pulse-neon-purple {
+      0% { box-shadow: 0 0 0 0 rgba(182, 0, 248, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(182, 0, 248, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(182, 0, 248, 0); }
+    }
+    .pulse-calibrating { animation: pulse-neon-purple 2s infinite; }
+
+    @keyframes pulse-neon-orange {
+      0% { box-shadow: 0 0 0 0 rgba(146, 78, 0, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(146, 78, 0, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(146, 78, 0, 0); }
+    }
+    .pulse-stalled { animation: pulse-neon-orange 2s infinite; }
+
+    @keyframes pulse-neon-red {
+      0% { box-shadow: 0 0 0 0 rgba(147, 0, 10, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(147, 0, 10, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(147, 0, 10, 0); }
+    }
+    .pulse-error { animation: pulse-neon-red 2s infinite; }
+
+    /* Glassmorphic Panel Design Utilities */
+    .glass-panel {
+      background: rgba(32, 31, 31, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 0.5px solid rgba(255, 255, 255, 0.08);
+    }
+    
+    .glass-panel-gradient {
+      background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 100%), rgba(32, 31, 31, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 0.5px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .neon-focus:focus-within {
+      border-color: rgba(164, 232, 68, 0.5);
+      box-shadow: 0 0 15px rgba(164, 232, 68, 0.2);
+    }
+
+    /* Tab View Panes Toggle Logic mapping (from app.js class toggles) */
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block !important;
+    }
+
+    /* Sidebar Navigation active styling map */
+    .tab-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      border-radius: 9999px; /* unified pill shapes */
+      text-align: left;
+      transition: all 0.20s ease;
+      border-left-width: 2px;
+      border-color: transparent;
+      color: #b9cacb;
+      opacity: 0.75;
+    }
+
+    .tab-btn:hover {
+      background-color: #2a2a2a;
+      opacity: 1;
+    }
+
+    .tab-btn.active {
+      background-color: #a4e844 !important;
+      color: #000000 !important;
+      box-shadow: 0 4px 15px rgba(164, 232, 68, 0.4) !important;
+      border-color: #a4e844 !important;
+      border-radius: 9999px !important;
+      opacity: 1;
+    }
+
+    .tab-btn .material-symbols-outlined {
+      font-variation-settings: "FILL" 0;
+    }
+
+    .tab-btn.active .material-symbols-outlined {
+      font-variation-settings: "FILL" 1;
+    }
+
+    /* Override input borders & focus states dynamically */
+    input[type="text"], input[type="password"], textarea, select {
+      background-color: #1c1b1b !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      border-radius: 0.5rem !important;
+      color: #e5e2e1 !important;
+      font-family: 'Inter', sans-serif !important;
+      outline: none !important;
+      transition: all 0.2s ease !important;
+    }
+    input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
+      border-color: #a4e844 !important;
+      box-shadow: 0 0 8px rgba(164, 232, 68, 0.35) !important;
+    }
+    select option {
+      background-color: #1c1b1b !important;
+      color: #e5e2e1 !important;
+    }
+
+    /* Modal Overlay Styles mapping */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background-color: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-overlay.active {
+      display: flex !important;
+    }
+
+    /* Monospace mappings */
+    .font-data-mono, code, pre, .mono, td.mono, th.mono, .order-item-inline, .overview-alert-time, .console, .terminal {
+      font-family: 'JetBrains Mono', monospace !important;
+    }
+
+    /* Badge Custom Select Styling */
+    select.badge {
+      display: inline-block;
+      width: auto !important;
+      padding: 0.25rem 1.75rem 0.25rem 0.75rem !important;
+      border-radius: 99px !important;
+      font-size: 0.8rem !important;
+      font-weight: 600 !important;
+      text-transform: capitalize !important;
+      cursor: pointer !important;
+      background-position: right 0.5rem center !important;
+      background-size: 0.75em !important;
+    }
+    .badge.pending {
+      background-color: rgba(255, 140, 0, 0.12) !important;
+      color: #ff8c00 !important;
+      border: 1px solid rgba(255, 140, 0, 0.2) !important;
+    }
+    .badge.printing {
+      background-color: rgba(164, 232, 68, 0.12) !important;
+      color: #a4e844 !important;
+      border: 1px solid rgba(164, 232, 68, 0.2) !important;
+    }
+    .badge.completed {
+      background-color: rgba(16, 185, 129, 0.12) !important;
+      color: #10b981 !important;
+      border: 1px solid rgba(16, 185, 129, 0.2) !important;
+    }
+    .badge.hold, .badge.failed {
+      background-color: rgba(255, 82, 82, 0.12) !important;
+      color: #ff5252 !important;
+      border: 1px solid rgba(255, 82, 82, 0.2) !important;
+    }
+
+    /* Gantt Chart Styles */
+    .gantt-zoom-btn {
+      background: rgba(32, 31, 31, 0.65) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      color: #b9cacb !important;
+      cursor: pointer !important;
+    }
+    .gantt-zoom-btn:hover {
+      background: rgba(255, 255, 255, 0.05) !important;
+      color: #e5e2e1 !important;
+    }
+    .gantt-zoom-btn.active {
+      background: rgba(164, 232, 68, 0.15) !important;
+      border-color: #a4e844 !important;
+      color: #a4e844 !important;
+    }
+
+    .gantt-row {
+      display: flex;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 10px 0;
+    }
+    .gantt-row:last-child {
+      border-bottom: none;
+    }
+    .gantt-printer-col {
+      width: 140px;
+      flex-shrink: 0;
+      font-weight: 600;
+      font-size: 11px;
+      color: #e5e2e1;
+      padding-right: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .gantt-timeline-col {
+      flex-grow: 1;
+      position: relative;
+      height: 32px;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      overflow: visible; /* To allow tooltips to show */
+    }
+    .gantt-block {
+      position: absolute;
+      height: calc(100% - 4px);
+      top: 2px;
+      border-radius: 4px;
+      font-size: 9px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      cursor: help;
+      transition: transform 0.2s, filter 0.2s;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+    .gantt-block:hover {
+      transform: scaleY(1.08);
+      filter: brightness(1.15);
+      z-index: 10;
+    }
+    .gantt-block-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      pointer-events: none;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .gantt-block-active {
+      background: rgba(164, 232, 68, 0.15);
+      border: 1px solid #a4e844;
+      color: #a4e844;
+      box-shadow: 0 0 8px rgba(164, 232, 68, 0.1);
+      animation: gantt-active-pulse 2.5s infinite ease-in-out;
+    }
+    .gantt-block-queued-ds {
+      background: rgba(164, 180, 232, 0.15);
+      border: 1px solid #7ea6e8;
+      color: #7ea6e8;
+    }
+    .gantt-block-queued-wm {
+      background: rgba(235, 178, 255, 0.15);
+      border: 1px solid #ebb2ff;
+      color: #ebb2ff;
+    }
+    .gantt-block-queued-fwm {
+      background: rgba(255, 183, 125, 0.15);
+      border: 1px solid #ffb77d;
+      color: #ffb77d;
+    }
+    .gantt-block-queued-other {
+      background: rgba(144, 144, 144, 0.15);
+      border: 1px solid #909090;
+      color: #909090;
+    }
+
+    @keyframes gantt-active-pulse {
+      0%, 100% { border-color: #a4e844; box-shadow: 0 0 8px rgba(164, 232, 68, 0.1); }
+      50% { border-color: rgba(164, 232, 68, 0.5); box-shadow: 0 0 12px rgba(164, 232, 68, 0.25); }
+    }
+
+    .gantt-grid-lines {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      display: flex;
+      justify-content: space-between;
+    }
+    .gantt-grid-line {
+      border-left: 1px dashed rgba(255, 255, 255, 0.04);
+      height: 100%;
+    }
+    .gantt-time-labels {
+      display: flex;
+      margin-left: 140px; /* Aligns with printer col width */
+      margin-bottom: 8px;
+      justify-content: space-between;
+      font-size: 9px;
+      font-weight: 600;
+      color: #b9cacb;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Custom Tooltip on Hover */
+    .gantt-tooltip {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: 250px;
+      padding: 10px;
+      background-color: #1e1e21;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease-in-out, transform 0.15s ease-in-out;
+      z-index: 100;
+      color: #e5e2e1;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      line-height: 1.4;
+      white-space: normal;
+      text-align: left;
+    }
+    .gantt-block:hover .gantt-tooltip {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface font-body-md antialiased overflow-hidden w-full h-screen flex flex-col selection:bg-primary-container/30 selection:text-primary">
+
+  <!-- TopAppBar -->
+  <header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-desktop h-16 bg-surface-container/80 backdrop-blur-md shadow-[0_0_15px_rgba(164,232,68,0.1)] border-b border-outline-variant/20">
+    <div class="flex items-center gap-4">
+      <span class="material-symbols-outlined text-surface-tint text-[28px]" style="font-variation-settings: 'FILL' 1;">sync</span>
+      <h1 class="font-headline-md text-headline-md font-bold text-surface-tint tracking-tight">Orbot V2.0</h1>
+      <!-- Global Status Indicator -->
+      <div class="ml-6 flex items-center gap-2 px-3 py-1.5 rounded-full glass-panel">
+        <div class="w-2.5 h-2.5 rounded-full bg-surface-tint pulse-live" id="db-status-dot"></div>
+        <span class="font-data-mono text-data-mono text-primary-fixed" id="db-status-text">TELEMETRY LIVE</span>
+      </div>
+    </div>
+    <div class="flex-1 max-w-xl mx-8 hidden md:block">
+      <div class="relative w-full neon-focus rounded-full transition-all duration-300">
+        <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+        <!-- Target search overrides inline styles using !important from css override rules -->
+        <input id="global-search-input" class="w-full bg-surface-container-highest/50 border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/50 rounded-full pl-11 pr-4 py-2 focus:ring-0 focus:border-transparent transition-all font-body-md" placeholder="Search catalog, jobs, agents..." type="text">
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <div class="hidden lg:flex items-center gap-3.5 bg-black/25 px-4 py-1.5 rounded-full border border-outline-variant/10">
+        <div class="flex items-center gap-1.5 font-medium select-none" title="Orbot Unified Service Status">
+          <div class="w-2.5 h-2.5 rounded-full bg-error" id="header-hb-orbot_service-dot"></div>
+          <span class="text-[9px] font-bold font-data-mono text-outline uppercase tracking-wider">Orbot Service: <span id="header-hb-orbot_service-text" class="text-[#ff5252]">Offline</span></span>
+        </div>
+      </div>
+
+      <!-- System Clock & Date -->
+      <div class="flex flex-col justify-center select-none font-data-mono text-outline leading-none text-right">
+        <span class="text-xs font-bold text-on-surface" id="system-clock">--:--:-- --</span>
+        <span class="text-[9px] uppercase tracking-wider mt-1" id="system-date">Loading...</span>
+      </div>
+
+      <button class="p-2 rounded-full hover:bg-primary/10 hover:text-primary text-on-surface-variant transition-all duration-300 active:scale-95 flex items-center justify-center" id="settings-open-btn">
+        <span class="material-symbols-outlined">settings</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Layout Container -->
+  <div class="flex pt-16 h-screen w-full">
+    <!-- SideNavBar -->
+    <nav class="fixed left-0 top-16 h-[calc(100vh-64px)] z-40 flex flex-col py-panel-padding bg-surface-container-low/90 backdrop-blur-xl border-r border-outline-variant/10 shadow-2xl w-64 flex-shrink-0">
+      <div class="px-6 mb-8">
+        <h2 class="font-label-caps text-label-caps text-on-surface-variant tracking-widest uppercase mb-1">Command Deck</h2>
+        <p class="font-data-mono text-data-mono text-outline">V2.0 Live Telemetry</p>
+      </div>
+      
+      <!-- Nav Button List -->
+      <div class="flex-1 overflow-y-auto px-4 space-y-1" id="nav-tabs">
+        <button class="tab-btn active" data-tab="overview">
+          <span class="material-symbols-outlined">dashboard</span>
+          <span class="font-headline-sm text-headline-sm">Overview</span>
+        </button>
+        <button class="tab-btn" data-tab="printers">
+          <span class="material-symbols-outlined">print</span>
+          <span class="font-headline-sm text-headline-sm">Printers</span>
+        </button>
+        <button class="tab-btn" data-tab="orders">
+          <span class="material-symbols-outlined">receipt_long</span>
+          <span class="font-headline-sm text-headline-sm">Orders</span>
+        </button>
+        <button class="tab-btn" data-tab="waybills">
+          <span class="material-symbols-outlined">local_shipping</span>
+          <span class="font-headline-sm text-headline-sm">Waybills</span>
+        </button>
+        <button class="tab-btn" data-tab="agents">
+          <span class="material-symbols-outlined">robot_2</span>
+          <span class="font-headline-sm text-headline-sm">Agents</span>
+        </button>
+        <button class="tab-btn" data-tab="catalog">
+          <span class="material-symbols-outlined">inventory_2</span>
+          <span class="font-headline-sm text-headline-sm">Catalog</span>
+        </button>
+        <button class="tab-btn" data-tab="logs">
+          <span class="material-symbols-outlined">description</span>
+          <span class="font-headline-sm text-headline-sm">Logs</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main Content Canvas -->
+    <main class="flex-1 ml-64 p-gutter overflow-y-auto relative bg-background h-[calc(100vh-64px)]">
+      
+      <!-- 0. Overview Home Pane -->
+      <section class="tab-content active w-full max-w-[1440px] mx-auto space-y-5" id="pane-overview">
+        <!-- Top Row: Stats Summary Cards & Print Queue Depth -->
+        <div class="grid grid-cols-12 gap-5">
+          <div class="col-span-12 lg:col-span-10 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-orange">
+              <div class="absolute inset-0 bg-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Orders Today</span>
+              <div class="flex items-end justify-between mt-auto pt-2">
+                <span class="font-headline-md text-display-lg text-[#ff8c00] drop-shadow-[0_0_12px_rgba(255,140,0,0.2)]" id="stats-orders">-</span>
+                <span class="font-data-mono text-[10px] text-outline self-end pb-1" id="stats-orders-trend"></span>
+              </div>
+            </div>
+            <div class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-purple">
+              <div class="absolute inset-0 bg-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Pending Orders</span>
+              <div class="flex items-end justify-between mt-auto pt-2">
+                <span class="font-headline-md text-display-lg text-[#bc13fe] drop-shadow-[0_0_12px_rgba(188,19,254,0.2)]" id="stats-items">-</span>
+              </div>
+            </div>
+            <div class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-yellow">
+              <div class="absolute inset-0 bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Orders On Hold</span>
+              <div class="flex items-end justify-between mt-auto pt-2">
+                <span class="font-headline-md text-display-lg text-[#eab308] drop-shadow-[0_0_12px_rgba(234,179,8,0.2)]" id="stats-hold">-</span>
+              </div>
+            </div>
+            <div class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-cyan">
+              <div class="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Queue Depth</span>
+              <div class="flex items-baseline justify-between mt-auto pt-2">
+                <span class="font-headline-md text-display-lg text-primary drop-shadow-[0_0_12px_rgba(164,232,68,0.2)]" id="stats-queue-depth">-</span>
+                <span class="font-data-mono text-[11px] text-outline" id="stats-queue-time">0m</span>
+              </div>
+            </div>
+          </div>
+          <!-- System Errors Card -->
+          <div class="col-span-12 lg:col-span-2">
+            <div class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden border-error/30 shadow-[0_0_15px_rgba(147,0,10,0.1)] group h-full glow-hover-red">
+              <div class="absolute inset-0 bg-error/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div class="flex justify-between items-center w-full z-10">
+                <span class="font-label-caps text-label-caps text-error uppercase">System Errors</span>
+                <button id="reset-errors-btn" class="p-1 rounded bg-error/10 hover:bg-error/20 border border-error/30 text-error hover:scale-105 transition-transform flex items-center justify-center cursor-pointer select-none" title="Reset Errors">
+                  <span class="material-symbols-outlined text-[14px]">restart_alt</span>
+                </button>
+              </div>
+              <div class="flex items-end justify-between mt-auto pt-2">
+                <span class="font-headline-md text-display-lg text-error drop-shadow-[0_0_12px_rgba(255,82,82,0.2)]" id="stats-errors">-</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Printers, Queue & Operations Row -->
+        <div class="grid grid-cols-12 gap-5 border-b border-outline-variant/10 pb-5 items-start">
+          <!-- Printers Grid (Left Column - col-span-5) -->
+          <div class="col-span-12 lg:col-span-5 flex flex-col gap-3">
+            <div class="flex justify-between items-center flex-wrap gap-3">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
+                <span class="material-symbols-outlined text-primary">robot</span>
+                <span>Active 3D Printers</span>
+              </h3>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <a href="https://simplyprint.io/panel/printers" target="_blank" class="px-2 py-1 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-[10px] font-semibold inline-flex items-center gap-1 no-underline" title="SimplyPrint Portal">
+                  <span class="material-symbols-outlined text-xs">open_in_new</span>
+                </a>
+                <button class="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-[10px] font-semibold flex items-center gap-1" id="overview-printers-btn-sync" title="Sync API">
+                  <span class="material-symbols-outlined text-xs">sync</span> Sync
+                </button>
+                <button class="px-2 py-1 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-[10px] font-semibold flex items-center gap-1" id="overview-printers-btn-ready-all" title="Ready All">
+                  <span class="material-symbols-outlined text-xs">done_all</span> Ready
+                </button>
+                <button class="px-2 py-1 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-[10px] font-semibold flex items-center gap-1" id="overview-printers-btn-clear-cycles" title="Clear Cycles">
+                  <span class="material-symbols-outlined text-xs">restart_alt</span> Clear
+                </button>
+                <button class="px-2 py-1 bg-error/15 hover:bg-error/25 text-error border border-error/40 rounded-lg text-[10px] font-bold flex items-center gap-1" id="overview-printers-btn-estop-all" title="E-STOP ALL">
+                  <span class="material-symbols-outlined text-xs font-bold text-error">emergency_home</span> E-Stop
+                </button>
+              </div>
+            </div>
+
+            <!-- Error Notification Box in Overview -->
+            <div class="glass-panel border-l-4 border-error bg-error/5 p-3 rounded-r-xl hidden" id="overview-printers-error-box">
+              <div class="flex items-start gap-2.5">
+                <span class="material-symbols-outlined text-error text-base shrink-0">error_outline</span>
+                <div class="flex-grow">
+                  <h4 class="font-bold text-xs text-on-surface">Printer Connection Alerts</h4>
+                  <ul class="list-disc pl-4 mt-1 text-[11px] text-on-surface-variant space-y-0.5" id="overview-printers-error-list">
+                    <!-- Dynamically populated -->
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="overview-printers-grid">
+              <!-- Dynamically populated printer cards (2 columns, 2 rows) -->
+              <div class="col-span-2 text-center text-outline py-8 font-data-mono">
+                <span class="material-symbols-outlined animate-spin text-xl mb-1 block">autorenew</span>
+                Loading printer telemetry...
+              </div>
+            </div>
+          </div>
+
+          <!-- Print Queue Sidebar (Middle Column - col-span-3) -->
+          <div class="col-span-12 lg:col-span-3 glass-panel rounded-xl p-4 flex flex-col gap-3 self-stretch">
+            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center justify-between w-full select-none">
+              <div class="flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary">list_alt</span>
+                <span>Print Queue</span>
+              </div>
+
+              <span class="text-xs font-data-mono text-outline" id="overview-queue-header-stats">0 (0m)</span>
+            </h3>
+
+            <div class="flex flex-col gap-2 h-[440px] overflow-y-auto pr-1" id="overview-printers-queue-list">
+              <!-- Dynamically populated queue items -->
+              <div class="text-center text-outline py-8 font-data-mono">
+                <span class="material-symbols-outlined animate-spin text-base mb-1 block">autorenew</span>
+                Loading queue...
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Operations Panel (Right Column - col-span-4) -->
+          <div class="col-span-12 lg:col-span-4 glass-panel rounded-xl p-4 flex flex-col gap-3 self-stretch">
+            <h3 class="font-headline-sm text-headline-sm text-on-surface mb-1 flex items-center gap-2 select-none">
+              <span class="material-symbols-outlined text-surface-tint">settings_applications</span>
+              <span>Quick Operations</span>
+            </h3>
+            <div class="flex flex-col gap-2 flex-grow justify-start">
+              <div class="grid grid-cols-2 gap-2 mb-1 w-full">
+                <!-- Scan Gmail Button -->
+                <button class="bg-secondary/5 hover:bg-secondary/15 border border-secondary/30 hover:border-secondary/50 rounded-xl flex flex-col items-center justify-center p-3 text-center transition-all duration-300 shadow-[0_0_12px_rgba(235,178,255,0.02)] hover:shadow-[0_0_20px_rgba(235,178,255,0.12)] group relative overflow-hidden h-[85px] cursor-pointer" id="overview-ctrl-trigger-scout">
+                  <div class="absolute inset-0 bg-gradient-to-r from-secondary/0 via-secondary/5 to-secondary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-out"></div>
+                  <div class="flex flex-col items-center gap-1.5 relative z-10">
+                    <div class="w-7 h-7 rounded-lg bg-secondary/10 border border-secondary/20 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+                      <span class="material-symbols-outlined text-secondary text-base select-none">mail</span>
+                    </div>
+                    <span class="text-[11px] font-bold tracking-wide text-on-surface">Scan Gmail</span>
+                  </div>
+                </button>
+
+                <!-- Compile Batch Button -->
+                <button class="bg-primary/5 hover:bg-primary/15 border border-primary/30 hover:border-primary/50 rounded-xl flex flex-col items-center justify-center p-3 text-center transition-all duration-300 shadow-[0_0_12px_rgba(164,232,68,0.02)] hover:shadow-[0_0_20px_rgba(164,232,68,0.12)] group relative overflow-hidden h-[85px] cursor-pointer" id="overview-ctrl-trigger-compile">
+                  <div class="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/5 to-primary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-out"></div>
+                  <div class="flex flex-col items-center gap-1.5 relative z-10">
+                    <div class="w-7 h-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+                      <span class="material-symbols-outlined text-surface-tint text-base select-none">picture_as_pdf</span>
+                    </div>
+                    <span class="text-[11px] font-bold tracking-wide text-on-surface">Compile Batch</span>
+                  </div>
+                </button>
+
+                <!-- Go to SimplyPrint Button -->
+                <a href="https://simplyprint.io/panel" target="_blank" class="bg-cyan-500/5 hover:bg-cyan-500/15 border border-cyan-500/30 hover:border-cyan-500/50 rounded-xl flex flex-col items-center justify-center p-3 text-center transition-all duration-300 shadow-[0_0_12px_rgba(6,182,212,0.02)] hover:shadow-[0_0_20px_rgba(6,182,212,0.12)] group relative overflow-hidden h-[85px] cursor-pointer no-underline">
+                  <div class="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/5 to-cyan-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-out"></div>
+                  <div class="flex flex-col items-center gap-1.5 relative z-10">
+                    <div class="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+                      <span class="material-symbols-outlined text-cyan-400 text-base select-none">print</span>
+                    </div>
+                    <span class="text-[11px] font-bold tracking-wide text-on-surface">SimplyPrint</span>
+                  </div>
+                </a>
+
+                <!-- Go to Supabase Button -->
+                <a href="https://supabase.com/dashboard/project/velgortxgdouxbkonirr" target="_blank" class="bg-emerald-500/5 hover:bg-emerald-500/15 border border-emerald-500/30 hover:border-emerald-500/50 rounded-xl flex flex-col items-center justify-center p-3 text-center transition-all duration-300 shadow-[0_0_12px_rgba(16,185,129,0.02)] hover:shadow-[0_0_20px_rgba(16,185,129,0.12)] group relative overflow-hidden h-[85px] cursor-pointer no-underline">
+                  <div class="absolute inset-0 bg-gradient-to-r from-emerald-500/0 via-emerald-500/5 to-emerald-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-out"></div>
+                  <div class="flex flex-col items-center gap-1.5 relative z-10">
+                    <div class="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+                      <span class="material-symbols-outlined text-emerald-400 text-base select-none">database</span>
+                    </div>
+                    <span class="text-[11px] font-bold tracking-wide text-on-surface">Supabase</span>
+                  </div>
+                </a>
+              </div>
+              <!-- Upload drag-drop area in Overview Page -->
+              <div class="glass-panel border-dashed border-2 border-outline-variant/40 hover:border-surface-tint/50 rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-surface-container-high/40 transition-all duration-300 group relative glow-hover-cyan mt-1 h-[145px]" id="overview-waybill-upload-zone">
+                <div class="absolute inset-0 bg-gradient-to-b from-surface-tint/0 to-surface-tint/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                <div class="relative z-10 flex flex-col items-center justify-center">
+                  <div class="w-10 h-10 rounded-full bg-surface-container-highest border border-outline-variant/30 flex items-center justify-center mb-2 group-hover:scale-110 group-hover:border-surface-tint/40 shadow-[0_0_10px_rgba(0,0,0,0.2)] transition-all duration-300">
+                    <span class="material-symbols-outlined text-xl text-surface-tint group-hover:animate-bounce select-none">cloud_upload</span>
+                  </div>
+                  <h4 class="text-xs font-bold text-on-surface group-hover:text-surface-tint transition-colors duration-300">Upload Waybills</h4>
+                  <p class="text-[9px] text-on-surface-variant mt-1 leading-normal max-w-[200px]">Drag files or click to browse</p>
+                  <input type="file" id="overview-waybill-file-input" accept="application/pdf" style="display: none;" multiple>
+                  <button class="mt-2 px-3 py-1 btn-primary rounded-lg text-[10px] font-label-caps tracking-wider transition-all duration-300 shadow-md" id="overview-waybill-browse-btn">Browse Files</button>
+                </div>
+              </div>
+              
+              <!-- Upload Status Progress in Overview Page -->
+              <div id="overview-upload-status" class="hidden p-2 rounded-xl bg-surface-container-low/60 backdrop-blur-md border border-outline-variant/20 flex flex-col gap-1 transition-all duration-300 shadow-lg mt-1">
+                <div class="flex justify-between items-center w-full">
+                  <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined animate-spin text-surface-tint text-[10px]" id="overview-upload-status-icon">autorenew</span>
+                    <span id="overview-upload-status-text" class="text-[9px] font-medium text-on-surface">Uploading PDF...</span>
+                  </div>
+                  <span id="overview-upload-progress-percent" class="text-[9px] font-semibold text-surface-tint font-data-mono">0%</span>
+                </div>
+                <div class="w-full h-1 bg-black/40 rounded-full overflow-hidden border border-outline-variant/10">
+                  <div id="overview-upload-progress-bar" class="h-full bg-gradient-to-r from-primary/80 to-surface-tint rounded-full transition-all duration-300 w-0"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Overview Ingested Orders List Table (Full Width) -->
+        <div class="glass-panel rounded-xl p-5 flex flex-col">
+          <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 mb-4">
+            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
+              <span class="material-symbols-outlined text-primary">shopping_cart</span>
+              <span>Pending Orders</span>
+            </h3>
+            <button class="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="overview-orders-btn-refresh">
+              <span class="material-symbols-outlined text-sm">refresh</span> Refresh Orders
+            </button>
+          </div>
+          <!-- Orders Table Container -->
+          <div class="h-[400px] overflow-y-auto pr-1 bg-black/10 rounded-lg border border-outline-variant/10" id="overview-orders-list">
+            <!-- Loaded dynamically with same spreadsheet-style table -->
+          </div>
+        </div>
+        
+        <!-- Main Row: Content & Controls -->
+        <div class="grid grid-cols-12 gap-5">
+          <!-- Activity Panel (Combined Recent Jobs & Alerts) - Full Width -->
+          <div class="col-span-12 flex flex-col gap-5">
+            <div class="glass-panel rounded-xl p-5 flex flex-col h-[512px]">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface mb-3 flex items-center gap-2 select-none">
+                <span class="material-symbols-outlined text-surface-tint">update</span> Activity
+              </h3>
+              <div class="overflow-y-auto flex-grow pr-1">
+                <table class="min-w-full text-left border-separate border-spacing-y-1.5">
+                  <thead>
+                    <tr class="sticky top-0 bg-surface-container-low z-10">
+                      <th class="py-2 px-4 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Date &amp; Time</th>
+                      <th class="py-2 px-4 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Source / Type</th>
+                      <th class="py-2 px-4 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Event / Level</th>
+                      <th class="py-2 px-4 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody id="overview-jobs-tbody" class="text-xs">
+                    <tr>
+                      <td colspan="4" class="py-4 text-center text-outline">Loading activity...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 1. Orders & Print Jobs Pane -->
+      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-orders">
+        <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
+          <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4">
+            <h2 class="font-headline-md text-headline-md text-on-surface">Ingested Orders List</h2>
+            <div class="flex items-center gap-2">
+              <button class="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/25 border border-emerald-500/30 hover:border-emerald-500/50 rounded flex items-center gap-2 font-label-caps transition-all text-xs font-bold text-emerald-400" id="orders-btn-complete-all">
+                <span class="material-symbols-outlined text-sm">done_all</span> Complete All
+              </button>
+              <button class="px-4 py-2 bg-surface-container-highest border border-outline-variant/50 hover:bg-surface-container-highest/80 rounded flex items-center gap-2 font-label-caps transition-all text-xs" id="refresh-orders-btn">
+                <span class="material-symbols-outlined text-sm">refresh</span> Refresh
+              </button>
+            </div>
+          </div>
+
+          <!-- Search & Filter Controls -->
+          <div class="flex flex-col md:flex-row justify-between items-center gap-4 bg-surface-container-low/20 p-3 rounded-lg border border-outline-variant/10">
+            <!-- Search bar -->
+            <div class="relative w-full md:max-w-xs flex items-center">
+              <span class="material-symbols-outlined absolute left-3 text-on-surface-variant/50 text-sm select-none">search</span>
+              <input type="text" id="orders-search-input" placeholder="Search Order ID, Customer, SKU..." class="w-full pl-9 pr-4 py-1.5 bg-surface-container-lowest border border-outline-variant/30 rounded-lg text-xs text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-primary/50 transition-all font-data-mono">
+            </div>
+
+            <!-- Date range filters -->
+            <div class="flex items-center gap-2 bg-surface-container-low p-1.5 rounded-lg border border-outline-variant/20 self-stretch md:self-auto">
+              <span class="material-symbols-outlined text-on-surface-variant/50 text-sm pl-1 select-none">calendar_month</span>
+              <input type="date" id="orders-date-start" class="bg-surface-container-lowest text-on-surface text-xs rounded border border-outline-variant/30 px-2 py-1 outline-none focus:border-primary/50 transition-all font-data-mono">
+              <span class="text-on-surface-variant/50 text-[10px] uppercase font-bold tracking-wider">to</span>
+              <input type="date" id="orders-date-end" class="bg-surface-container-lowest text-on-surface text-xs rounded border border-outline-variant/30 px-2 py-1 outline-none focus:border-primary/50 transition-all font-data-mono">
+              <button id="orders-clear-date-btn" class="text-on-surface-variant hover:text-error text-xs p-0.5 transition-all rounded hover:bg-surface-container-high hidden flex items-center justify-center">
+                <span class="material-symbols-outlined text-sm">close</span>
+              </button>
+              <button id="orders-sort-date-btn" class="text-on-surface-variant hover:text-primary text-xs p-0.5 transition-all rounded hover:bg-surface-container-high flex items-center justify-center" title="Sort Date (Newest First)">
+                <span class="material-symbols-outlined text-sm" id="orders-sort-date-icon">arrow_downward</span>
+              </button>
+            </div>
+            
+            <!-- Filters -->
+            <div class="flex gap-1.5 p-1 bg-surface-container-low rounded-lg border border-outline-variant/20 self-stretch md:self-auto overflow-x-auto" id="orders-status-filters">
+              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all bg-primary/10 text-primary active" data-status="all">All</button>
+              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="pending">Pending</button>
+              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="printing">Printing</button>
+              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="printed">Printed</button>
+              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="completed">Completed</button>
+              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="hold">Hold</button>
+            </div>
+          </div>
+          
+          <!-- On-Hold Orders Warning Alert Panel -->
+          <div id="on-hold-panel" class="hidden glass-panel border-l-4 border-error p-4 rounded-r-lg flex flex-col gap-3 flex-shrink-0">
+            <div class="flex items-center gap-3 text-error font-bold font-headline-sm">
+              <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">warning</span>
+              <span>Action Required: <span id="on-hold-count">0</span> Orders on Hold Due to Discrepancies</span>
+            </div>
+            <div id="on-hold-list" class="flex flex-col gap-2 max-h-48 overflow-y-auto pr-2">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+          
+          <!-- Orders List Scroll Container -->
+          <div class="rounded-lg border border-outline-variant/10 bg-black/10 h-[550px] overflow-y-auto relative" id="orders-list">
+            <div class="font-data-mono text-xs text-outline text-center py-12">
+              <span class="material-symbols-outlined animate-spin text-2xl mb-2 block">autorenew</span>
+              Fetching orders from database...
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Waybill Ingestion Pane -->
+      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-waybills">
+        <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
+          <h2 class="font-headline-md text-headline-md text-on-surface">Waybill Ingestion &amp; Manifest Processing</h2>
+          
+          <!-- Actions, Uploader & Console Row -->
+          <div class="grid grid-cols-12 gap-gutter items-stretch">
+            <!-- Controls Box (Gmail, Dispatch, Compile) -->
+            <div class="col-span-12 lg:col-span-5 glass-panel rounded-xl p-5 flex flex-col gap-4">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-surface-tint">settings_applications</span>
+                  <span>Agent Action Controls</span>
+                </div>
+                <!-- Daemon status light integrated into header -->
+                <div class="flex items-center gap-1.5 bg-black/20 px-2 py-0.5 rounded border border-outline-variant/10">
+                  <div class="w-1.5 h-1.5 rounded-full bg-error" id="waybill-hb-orbot_service-dot"></div>
+                  <span class="text-[9px] font-data-mono text-outline uppercase tracking-wider" id="waybill-hb-orbot_service-text">Offline</span>
+                </div>
+              </h3>
+              <div class="flex flex-col gap-3.5 flex-grow justify-start">
+                <!-- Compile PDF Button Redesign -->
+                <button class="w-full bg-primary/5 hover:bg-primary/15 border border-primary/30 hover:border-primary/50 rounded-xl flex items-center justify-between p-4 transition-all duration-300 shadow-[0_0_12px_rgba(164,232,68,0.02)] hover:shadow-[0_0_20px_rgba(164,232,68,0.12)] group text-left relative overflow-hidden" id="waybill-ctrl-trigger-compile">
+                  <div class="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/5 to-primary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-out"></div>
+                  <div class="flex items-center gap-4 relative z-10">
+                    <div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+                      <span class="material-symbols-outlined text-surface-tint text-2xl select-none">picture_as_pdf</span>
+                    </div>
+                    <div class="flex flex-col">
+                      <span class="text-sm font-semibold tracking-wide text-on-surface">Compile Master PDF</span>
+                      <span class="text-[10px] font-medium text-on-surface-variant/60 uppercase tracking-wider mt-0.5">Stitch ready waybills &amp; stickers</span>
+                    </div>
+                  </div>
+                  <span class="material-symbols-outlined text-sm text-surface-tint/60 group-hover:translate-x-1 transition-transform relative z-10 select-none">arrow_forward</span>
+                </button>
+
+                <!-- Upload drag-drop area -->
+                <div class="glass-panel border-dashed border-2 border-outline-variant/40 hover:border-surface-tint/50 rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-surface-container-high/40 transition-all duration-300 group relative glow-hover-cyan mt-1" id="waybill-upload-zone">
+                  <!-- Hover glowing background -->
+                  <div class="absolute inset-0 bg-gradient-to-b from-surface-tint/0 to-surface-tint/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                  
+                  <div class="relative z-10 flex flex-col items-center justify-center">
+                    <div class="w-12 h-12 rounded-full bg-surface-container-highest border border-outline-variant/30 flex items-center justify-center mb-2 group-hover:scale-110 group-hover:border-surface-tint/40 shadow-[0_0_15px_rgba(0,0,0,0.2)] transition-all duration-300">
+                      <span class="material-symbols-outlined text-2xl text-surface-tint group-hover:animate-bounce select-none">cloud_upload</span>
+                    </div>
+                    
+                    <h3 class="text-sm font-bold text-on-surface group-hover:text-surface-tint transition-colors duration-300">Upload Waybill Manifests</h3>
+                    <p class="text-[10px] text-on-surface-variant mt-1 max-w-[220px] leading-relaxed">Drag and drop raw PDF manifests here, or click browse</p>
+                    
+                    <input type="file" id="waybill-file-input" accept="application/pdf" style="display: none;" multiple>
+                    <button class="mt-3 px-4 py-1.5 btn-primary rounded-lg text-xs font-label-caps tracking-wider transition-all duration-300 shadow-md" id="waybill-browse-btn">Browse Files</button>
+                  </div>
+                </div>
+                
+                <!-- Upload Status Progress Redesign -->
+                <div id="upload-status" class="hidden p-3 rounded-xl bg-surface-container-low/60 backdrop-blur-md border border-outline-variant/20 flex flex-col gap-2 transition-all duration-300 shadow-lg">
+                  <div class="flex justify-between items-center font-body-md w-full">
+                    <div class="flex items-center gap-2">
+                      <span class="material-symbols-outlined animate-spin text-surface-tint text-sm" id="upload-status-icon">autorenew</span>
+                      <span id="upload-status-text" class="text-xs font-medium text-on-surface">Uploading PDF...</span>
+                    </div>
+                    <span id="upload-progress-percent" class="text-xs font-semibold text-surface-tint font-data-mono">0%</span>
+                  </div>
+                  <!-- Sleek Progress Bar -->
+                  <div class="w-full h-1 bg-black/40 rounded-full overflow-hidden border border-outline-variant/10">
+                    <div id="upload-progress-bar" class="h-full bg-gradient-to-r from-primary/80 to-surface-tint rounded-full transition-all duration-300 w-0"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Terminal console output -->
+            <div class="col-span-12 lg:col-span-7 glass-panel rounded-xl p-5 flex flex-col gap-4">
+              <div class="flex justify-between items-center">
+                <span class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2"><span class="material-symbols-outlined text-surface-tint">terminal</span> Waybill Ingestion Console</span>
+                <button class="px-3 py-1 bg-surface-container-highest hover:bg-error/20 hover:text-error hover:border-error/30 rounded border border-outline-variant/50 text-[10px] font-label-caps tracking-wider transition-all duration-200" id="console-clear-btn">Clear</button>
+              </div>
+              <div class="flex flex-col rounded-lg border border-outline-variant/15 terminal-container overflow-hidden flex-grow">
+                <!-- Terminal Header Bar -->
+                <div class="bg-[#1c1b1b]/80 border-b border-outline-variant/10 px-4 py-2 flex items-center justify-between">
+                  <div class="flex items-center gap-1.5 select-none">
+                    <div class="w-2.5 h-2.5 rounded-full bg-[#ff5f56] shadow-[0_0_6px_rgba(255,95,86,0.3)]"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-[#ffbd2e] shadow-[0_0_6px_rgba(255,189,46,0.3)]"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-[#27c93f] shadow-[0_0_6px_rgba(39,201,63,0.3)]"></div>
+                  </div>
+                  <span class="font-data-mono text-[10px] text-on-surface-variant/40 tracking-wider">sh - "orbot-daemon" - 80x24</span>
+                  <div class="w-12"></div> <!-- Spacer to center -->
+                </div>
+                <!-- Console body stretches to fill column height -->
+                <div class="console h-[300px] lg:h-full lg:min-h-[280px] p-4 overflow-y-auto font-data-mono text-xs text-on-surface-variant/90 space-y-1.5" id="waybill-console">
+                  <div class="text-outline">> Console ready. Drag a PDF or trigger scans to start.<span class="terminal-cursor"></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Compiled batch download row -->
+          <div class="grid grid-cols-12 gap-gutter mt-4" id="batch-output-container">
+            <!-- Compiled batch download block -->
+            <div class="col-span-12 glass-panel border border-secondary-container/30 bg-secondary-container/10 p-4 rounded-xl hidden items-center justify-between gap-4" id="batch-output-box">
+              <div class="flex items-center gap-4">
+                <span class="material-symbols-outlined text-secondary text-display-lg">picture_as_pdf</span>
+                <div>
+                  <h4 class="font-headline-sm text-headline-sm text-on-surface">Master Print Batch PDF Created!</h4>
+                  <p class="font-body-md text-on-surface-variant mt-0.5">Your stitched waybill and sticker batch is ready for thermal printing.</p>
+                </div>
+              </div>
+              <a href="#" target="_blank" class="px-5 py-2.5 bg-secondary-container hover:bg-secondary-container/80 text-on-secondary-container border border-outline-variant/20 rounded-lg font-label-caps flex items-center gap-2" id="batch-download-link">
+                <span class="material-symbols-outlined text-sm">download</span> Download Batch
+              </a>
+            </div>
+          </div>
+
+          <!-- Waybill Archive Database List -->
+          <div class="border-t border-outline-variant/10 pt-6 space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4 bg-surface-container-low/20 p-3 rounded-lg border border-outline-variant/10">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 mr-auto"><span class="material-symbols-outlined text-surface-tint">inventory</span> Waybill Archive</h3>
+              
+              <!-- Search bar -->
+              <div class="relative w-full md:max-w-xs flex items-center">
+                <span class="material-symbols-outlined absolute left-3 text-on-surface-variant/50 text-sm select-none">search</span>
+                <input type="text" id="waybill-search-input" placeholder="Search Order ID, Customer..." class="w-full pl-9 pr-4 py-1.5 bg-surface-container-lowest border border-outline-variant/30 rounded-lg text-xs text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-primary/50 transition-all font-data-mono">
+              </div>
+
+              <!-- Date range filters -->
+              <div class="flex items-center gap-2 bg-surface-container-low p-1.5 rounded-lg border border-outline-variant/20 self-stretch md:self-auto">
+                <span class="material-symbols-outlined text-on-surface-variant/50 text-sm pl-1 select-none">calendar_month</span>
+                <input type="date" id="waybills-date-start" class="bg-surface-container-lowest text-on-surface text-xs rounded border border-outline-variant/30 px-2 py-1 outline-none focus:border-primary/50 transition-all font-data-mono">
+                <span class="text-on-surface-variant/50 text-[10px] uppercase font-bold tracking-wider">to</span>
+                <input type="date" id="waybills-date-end" class="bg-surface-container-lowest text-on-surface text-xs rounded border border-outline-variant/30 px-2 py-1 outline-none focus:border-primary/50 transition-all font-data-mono">
+                <button id="waybills-clear-date-btn" class="text-on-surface-variant hover:text-error text-xs p-0.5 transition-all rounded hover:bg-surface-container-high hidden flex items-center justify-center">
+                  <span class="material-symbols-outlined text-sm">close</span>
+                </button>
+                <button id="waybills-sort-date-btn" class="text-on-surface-variant hover:text-primary text-xs p-0.5 transition-all rounded hover:bg-surface-container-high flex items-center justify-center" title="Sort Date (Newest First)">
+                  <span class="material-symbols-outlined text-sm" id="waybills-sort-date-icon">arrow_downward</span>
+                </button>
+              </div>
+              
+              <!-- Mass Edit Dropdown -->
+              <div class="flex items-center gap-2 bg-surface-container-low p-1.5 rounded-lg border border-outline-variant/20 self-stretch md:self-auto">
+                <span class="text-on-surface-variant/50 text-[10px] uppercase font-bold tracking-wider pl-1">Mass Edit:</span>
+                <select id="waybills-mass-edit-select" class="bg-surface-container-lowest text-on-surface text-xs rounded border border-outline-variant/30 px-2 py-1 outline-none focus:border-primary/50 transition-all font-semibold cursor-pointer">
+                  <option value="" disabled selected>Select state...</option>
+                  <option value="pending">Pending</option>
+                  <option value="ready">Ready</option>
+                  <option value="on hold">On Hold</option>
+                  <option value="failed">Failed</option>
+                  <option value="printed">Printed</option>
+                </select>
+              </div>
+
+              <!-- Tab status filter chips -->
+              <div class="flex gap-1.5 p-1 bg-surface-container-low rounded-lg border border-outline-variant/20 self-stretch md:self-auto overflow-x-auto" id="waybill-filters">
+                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all bg-primary/10 text-primary active" data-status="all">All</button>
+                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="pending">Pending</button>
+                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="ready">Ready</button>
+                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="on hold">On Hold</button>
+                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="failed">Failed</button>
+              </div>
+            </div>
+
+            <!-- Waybills Table Container -->
+            <div class="overflow-y-auto rounded-lg border border-outline-variant/20 bg-surface-container-low/50 h-[500px] pr-1">
+              <table class="min-w-full text-left border-separate border-spacing-y-2">
+                <thead class="sticky top-0 bg-surface-container-low z-10">
+                  <tr>
+                    <th class="px-4 py-3 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Order ID</th>
+                    <th class="px-4 py-3 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Customer</th>
+                    <th class="px-4 py-3 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Processing State</th>
+                    <th class="px-4 py-3 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Raw Waybill</th>
+                    <th class="px-4 py-3 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Processed Waybill</th>
+                    <th class="px-4 py-3 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low cursor-pointer select-none hover:bg-surface-container-high transition-colors" id="waybill-sort-date-col">
+                      <span class="flex items-center gap-1">
+                        Order Date
+                        <span id="waybill-sort-icon" class="material-symbols-outlined text-sm transform transition-transform select-none">arrow_drop_down</span>
+                      </span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody id="waybills-tbody" class="text-sm">
+                  <tr>
+                    <td colspan="6" class="px-6 py-8 text-center text-outline">Loading waybills archive...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Compiled Master PDFs Section -->
+          <div class="border-t border-outline-variant/10 pt-6 space-y-4">
+            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
+              <span class="material-symbols-outlined text-primary">picture_as_pdf</span>
+              <span>Compiled Master PDFs</span>
+            </h3>
+            
+            <div class="overflow-y-auto rounded-lg border border-outline-variant/20 bg-surface-container-low/50 h-[250px] pr-1" id="master-pdfs-container">
+              <div class="text-center text-outline py-12 font-data-mono text-xs">
+                Loading compiled master PDFs...
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Agent Controls Pane -->
+      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-agents">
+        <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
+          <h2 class="font-headline-md text-headline-md text-on-surface">Agent Controls &amp; Status Center</h2>
+          
+          <!-- Heartbeats status lights grid -->
+          <div class="grid grid-cols-1 gap-4">
+            <div class="glass-panel rounded-xl p-5 flex justify-between items-center max-w-xl mx-auto w-full">
+              <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                  <span class="material-symbols-outlined text-primary text-2xl select-none">settings_applications</span>
+                </div>
+                <div>
+                  <h4 class="font-headline-sm text-headline-sm text-on-surface">Orbot Service</h4>
+                  <p class="text-xs text-outline font-data-mono">Unified Background Daemon</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 bg-black/20 px-4 py-2 rounded-xl border border-outline-variant/10">
+                <div class="status-light-offline" id="hb-orbot_service-dot"></div>
+                <span class="font-data-mono text-outline font-bold text-base" id="hb-orbot_service-text">Offline</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Gemini API Live Quota Monitor -->
+          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 glow-hover-primary">
+            <div class="flex justify-between items-center">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary">analytics</span> Gemini API Live Quota Monitor
+              </h3>
+              <div class="text-[10px] font-data-mono text-outline uppercase bg-primary/10 px-2 py-0.5 rounded text-primary">Free Tier Tier 1</div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-2">
+              <!-- Column 1: Daily Requests -->
+              <div class="flex flex-col gap-2 bg-surface-container-low/30 p-4 rounded-lg border border-outline-variant/10">
+                <div class="flex justify-between text-xs">
+                  <span class="text-outline">Daily Requests</span>
+                  <span class="font-data-mono font-bold text-on-surface" id="gemini-requests-count">0 / 1,500</span>
+                </div>
+                <div class="w-full h-2 bg-black/40 rounded-full overflow-hidden border border-outline-variant/5">
+                  <div id="gemini-requests-bar" class="h-full bg-primary rounded-full transition-all duration-500 w-0"></div>
+                </div>
+                <div class="text-[10px] text-outline mt-1">Rate limit: 15 RPM / 1,500 RPD</div>
+              </div>
+              
+              <!-- Column 2: Daily Token Consumption -->
+              <div class="flex flex-col gap-2 bg-surface-container-low/30 p-4 rounded-lg border border-outline-variant/10">
+                <div class="flex justify-between text-xs">
+                  <span class="text-outline">Daily Tokens</span>
+                  <span class="font-data-mono font-bold text-on-surface" id="gemini-tokens-count">0 / 1,000,000</span>
+                </div>
+                <div class="w-full h-2 bg-black/40 rounded-full overflow-hidden border border-outline-variant/5">
+                  <div id="gemini-tokens-bar" class="h-full bg-secondary rounded-full transition-all duration-500 w-0"></div>
+                </div>
+                <div class="text-[10px] text-outline mt-1">Safety cap: 1M tokens/day</div>
+              </div>
+              
+              <!-- Column 3: Estimated Cost & Model Splits -->
+              <div class="flex flex-col justify-between bg-surface-container-low/30 p-4 rounded-lg border border-outline-variant/10">
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-outline">Est. Cost (USD)</span>
+                  <span class="font-data-mono font-bold text-primary text-sm shadow-sm" id="gemini-cost-est">$0.00</span>
+                </div>
+                <div class="flex justify-between items-center text-[10px] text-outline mt-2 pt-2 border-t border-outline-variant/10">
+                  <span>Input: <span class="font-data-mono text-on-surface" id="gemini-input-tokens">0</span></span>
+                  <span>Output: <span class="font-data-mono text-on-surface" id="gemini-output-tokens">0</span></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Model Splits / Mini Breakdown -->
+            <div class="flex flex-wrap gap-4 text-[10px] text-outline mt-1 border-t border-outline-variant/5 pt-3" id="gemini-breakdown-list">
+              <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-primary"></span> gemini-2.5-flash-lite: <span class="font-data-mono text-on-surface" id="count-2.5-flash-lite">0 requests</span></span>
+              <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> gemini-3.1-flash-lite: <span class="font-data-mono text-on-surface" id="count-3.1-flash-lite">0 requests</span></span>
+            </div>
+          </div>
+
+          <!-- Operation trigger cards grid -->
+          <div class="space-y-4">
+            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2"><span class="material-symbols-outlined">play_circle</span> Trigger Agent Operations</h3>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div class="glass-panel rounded-xl p-4 flex flex-col justify-between hover:bg-surface-container-highest/10 transition-colors glow-hover-purple">
+                <div>
+                  <h4 class="font-bold text-on-surface flex items-center gap-2"><span class="material-symbols-outlined text-secondary">mail</span> Gmail Scan</h4>
+                  <p class="text-xs text-outline mt-2 leading-relaxed">Polls the configured Gmail inbox for unread order confirmations and parses them.</p>
+                </div>
+                <button class="mt-4 w-full py-2.5 bg-secondary/5 hover:bg-secondary/15 border border-secondary text-secondary rounded-lg font-bold tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 text-xs font-label-caps" id="ctrl-trigger-scout">Trigger Scan</button>
+              </div>
+
+              <div class="glass-panel rounded-xl p-4 flex flex-col justify-between hover:bg-surface-container-highest/10 transition-colors glow-hover-cyan">
+                <div>
+                  <h4 class="font-bold text-on-surface flex items-center gap-2"><span class="material-symbols-outlined text-primary">print</span> Print Dispatch</h4>
+                  <p class="text-xs text-outline mt-2 leading-relaxed">Fetches ordered items and dispatches their corresponding print slices to SimplyPrint.</p>
+                </div>
+                <button class="mt-4 w-full py-2.5 bg-primary/5 hover:bg-primary/15 border border-primary text-primary rounded-lg font-bold tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 text-xs font-label-caps" id="ctrl-trigger-foreman">Trigger Dispatch</button>
+              </div>
+
+              <div class="glass-panel rounded-xl p-4 flex flex-col justify-between hover:bg-surface-container-highest/10 transition-colors glow-hover-purple">
+                <div>
+                  <h4 class="font-bold text-on-surface flex items-center gap-2"><span class="material-symbols-outlined text-secondary">picture_as_pdf</span> Compile Batch</h4>
+                  <p class="text-xs text-outline mt-2 leading-relaxed">Stitches all ready-to-print waybills and variants' stickers into a combined master PDF.</p>
+                </div>
+                <button class="mt-4 w-full py-2.5 bg-secondary/5 hover:bg-secondary/15 border border-secondary text-secondary rounded-lg font-bold tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 text-xs font-label-caps" id="ctrl-trigger-compile">Compile Batch</button>
+              </div>
+
+              <div class="glass-panel rounded-xl p-4 flex flex-col justify-between hover:bg-surface-container-highest/10 transition-colors glow-hover-cyan">
+                <div>
+                  <h4 class="font-bold text-on-surface flex items-center gap-2"><span class="material-symbols-outlined text-primary">sync</span> SimplyPrint Sync</h4>
+                  <p class="text-xs text-outline mt-2 leading-relaxed">Fetches all print files from SimplyPrint API and updates their remote IDs in the catalog.</p>
+                </div>
+                <button class="mt-4 w-full py-2.5 bg-primary/5 hover:bg-primary/15 border border-primary text-primary rounded-lg font-bold tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 text-xs font-label-caps" id="ctrl-trigger-sync-simplyprint">Sync SimplyPrint</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Jobs Queue Database Table monitor -->
+          <div class="space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4 bg-surface-container-low/20 p-3 rounded-lg border border-outline-variant/10">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 mr-auto"><span class="material-symbols-outlined text-surface-tint">history</span> Agent Activity &amp; Job Queue</h3>
+              
+              <!-- Search and Filter Bar -->
+              <div class="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+                <!-- Search bar -->
+                <div class="relative w-full md:w-56 flex items-center">
+                  <span class="material-symbols-outlined absolute left-3 text-on-surface-variant/50 text-sm select-none">search</span>
+                  <input type="text" id="jobs-search-input" placeholder="Search Payload, Result..." class="w-full pl-9 pr-4 py-1.5 bg-surface-container-lowest border border-outline-variant/30 rounded-lg text-xs text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-primary/50 transition-all font-data-mono">
+                </div>
+                
+                <!-- Status select -->
+                <select id="jobs-filter-status" class="bg-surface-container-lowest border border-outline-variant/30 text-on-surface rounded-lg px-3 py-1.5 text-xs focus:border-primary/50 outline-none transition-all font-body-md">
+                  <option value="all">All Statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="processing">Processing</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                </select>
+
+                <!-- Job Type select -->
+                <select id="jobs-filter-type" class="bg-surface-container-lowest border border-outline-variant/30 text-on-surface rounded-lg px-3 py-1.5 text-xs focus:border-primary/50 outline-none transition-all font-body-md">
+                  <option value="all">All Job Types</option>
+                  <option value="waybill_ingest">Ingestion</option>
+                  <option value="waybill_batch_print">Batch Print</option>
+                  <option value="scout_gmail_scan">Gmail Scan</option>
+                  <option value="sync_simplyprint_ids">SimplyPrint Sync</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Fixed size scrollable table container -->
+            <div class="overflow-y-auto rounded-lg border border-outline-variant/20 bg-surface-container-low/50 h-[400px] pr-1">
+              <table class="min-w-full text-left border-separate border-spacing-y-2">
+                <thead class="sticky top-0 bg-surface-container-low z-10">
+                  <tr>
+                    <th class="px-4 py-3 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Job ID</th>
+                    <th class="px-4 py-3 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Job Type</th>
+                    <th class="px-4 py-3 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Status</th>
+                    <th class="px-4 py-3 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Payload</th>
+                    <th class="px-4 py-3 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Result Summary</th>
+                    <th class="px-4 py-3 text-xs font-bold tracking-widest text-on-surface-variant uppercase bg-surface-container-low">Created At</th>
+                  </tr>
+                </thead>
+                <tbody id="jobs-tbody" class="text-sm">
+                  <tr>
+                    <td colspan="6" class="px-6 py-8 text-center text-outline">No jobs monitored yet.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Manual Email Ingestion Panel -->
+          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 glow-hover-purple">
+            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+              <span class="material-symbols-outlined text-secondary">input</span> Manual Order Ingestion
+            </h3>
+            <p class="text-xs text-outline leading-relaxed">
+              Paste the raw text content of a Shopee/Lazada order email confirmation below to manually ingest the order and trigger print dispatch.
+            </p>
+            <textarea id="email-body-input" rows="6" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-data-mono text-xs focus:outline-none focus:border-secondary/50 transition-all placeholder:text-on-surface-variant/40" placeholder="Paste Shopee/Lazada order email body here..."></textarea>
+            
+            <div class="flex flex-col md:flex-row gap-4 justify-between items-stretch">
+              <div class="flex items-start">
+                <button class="px-5 py-2.5 bg-secondary hover:bg-secondary/90 text-on-secondary rounded-lg font-bold tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 text-xs font-label-caps whitespace-nowrap" id="ingest-submit-btn">
+                  Ingest Email Body
+                </button>
+              </div>
+              
+              <!-- Console Output -->
+              <div class="flex-grow w-full md:w-auto bg-black/40 border border-outline-variant/20 rounded-lg p-3 font-data-mono text-xs text-on-surface-variant min-h-[100px] max-h-[150px] overflow-y-auto space-y-1" id="ingest-console">
+                <div class="terminal-line text-outline">> System ready for manual ingestion.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- System Danger Housekeeping Zone -->
+          <div class="glass-panel border-l-4 border-error bg-error-container/5 rounded-r-lg p-5 flex flex-wrap justify-between items-center gap-4 glow-hover-red">
+            <div>
+              <h4 class="font-bold text-error font-headline-sm flex items-center gap-2"><span class="material-symbols-outlined">warning</span> System Danger Zone</h4>
+              <p class="text-sm text-outline mt-1 max-w-md">Purge active/failed jobs from queue, or completely reset all database tables in Supabase.</p>
+            </div>
+            <div class="flex gap-3">
+              <button class="px-4 py-2.5 btn-outlined-red rounded font-label-caps transition-all flex items-center gap-1.5" id="ctrl-purge-jobs">
+                <span class="material-symbols-outlined text-sm">clear_all</span> Purge Queue
+              </button>
+              <button class="px-4 py-2.5 btn-red rounded font-label-caps transition-all flex items-center gap-1.5" id="clear-db-btn">
+                <span class="material-symbols-outlined text-sm">delete</span> Clear Database
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. Product Catalog Pane -->
+      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-catalog">
+        <div class="glass-panel rounded-xl p-5 flex flex-col gap-5">
+          <div class="flex justify-between items-center flex-wrap gap-4 border-b border-outline-variant/10 pb-4">
+            <h2 class="font-headline-md text-headline-md text-on-surface">Product Catalog &amp; Print Slices</h2>
+            
+            <div class="flex items-center gap-3 w-full md:w-auto justify-end">
+              <!-- Styled search input matching details -->
+              <div class="relative w-full md:w-64">
+                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm select-none">search</span>
+                <input class="w-full bg-surface-container/30 border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/40 rounded-lg pl-9 pr-4 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all font-body-md text-sm" placeholder="Search by SKU or Name..." id="catalog-search" type="text">
+              </div>
+              <!-- Premium Add Variant Action -->
+              <button class="px-5 py-2.5 btn-primary rounded-lg flex items-center gap-1.5 font-label-caps tracking-wider transition-all duration-200 active:scale-95 shadow-[0_0_12px_rgba(164,232,68,0.25)]" id="add-catalog-item-btn">
+                <span class="material-symbols-outlined text-sm">add</span> Add Variant
+              </button>
+            </div>
+          </div>
+
+          <!-- Dynamic Brand & Category filter bar -->
+          <div class="flex flex-col sm:flex-row gap-3 bg-surface-container-low/20 p-3.5 rounded-xl border border-outline-variant/10 items-center justify-between">
+            <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center w-full sm:w-auto">
+              <div class="flex items-center gap-2 text-xs font-label-caps text-on-surface-variant/60 uppercase tracking-wider select-none">
+                <span class="material-symbols-outlined text-sm">filter_alt</span>
+                <span>Filters:</span>
+              </div>
+              <div class="grid grid-cols-2 sm:flex gap-3 w-full sm:w-auto">
+                <!-- Brand selector -->
+                <select id="catalog-filter-brand" class="bg-surface-container-lowest border border-outline-variant/30 text-on-surface rounded-lg px-3 py-1.5 text-xs focus:border-primary/50 outline-none transition-all font-body-md">
+                  <option value="all">All Brands</option>
+                </select>
+                
+                <!-- Category selector -->
+                <select id="catalog-filter-category" class="bg-surface-container-lowest border border-outline-variant/30 text-on-surface rounded-lg px-3 py-1.5 text-xs focus:border-primary/50 outline-none transition-all font-body-md">
+                  <option value="all">All Categories</option>
+                </select>
+              </div>
+            </div>
+            
+            <!-- Clear filters button -->
+            <button id="catalog-clear-filters-btn" class="hidden text-xs text-primary/70 hover:text-primary transition-colors font-label-caps uppercase tracking-wider">Clear Filters</button>
+          </div>
+          
+          <!-- Catalog scrollable list container -->
+          <div class="h-[600px] overflow-y-auto pr-1 bg-black/10 rounded-xl border border-outline-variant/10 p-4" id="catalog-container">
+            <div class="flex flex-col gap-3.5" id="catalog-tbody">
+              <!-- Dynamically populated variant cards -->
+              <div class="col-span-full text-center text-outline py-12">Loading catalog items...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 8. Logs Pane -->
+      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-logs">
+        <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
+          <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 flex-wrap gap-4">
+            <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">
+              <span class="material-symbols-outlined text-primary">description</span>
+              <span>System Logs & Telemetry</span>
+            </h2>
+            <div class="flex items-center gap-2">
+              <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-logs-btn">
+                <span class="material-symbols-outlined text-sm">sync</span> Refresh Logs
+              </button>
+            </div>
+          </div>
+
+          <!-- Filters Row -->
+          <div class="flex justify-between items-center flex-wrap gap-3">
+            <div id="logs-filters" class="flex items-center gap-1.5 bg-surface-container-low p-1 rounded-lg border border-outline-variant/15">
+              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all bg-primary/10 text-primary active" data-level="all">All Logs</button>
+              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-level="info">Info</button>
+              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-level="warning">Warning</button>
+              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-level="error">Error</button>
+            </div>
+            <div class="text-[11px] font-data-mono text-outline">
+              Showing last 60 system entries
+            </div>
+          </div>
+
+          <!-- Logs Container -->
+          <div class="glass-panel rounded-xl overflow-hidden border border-outline-variant/15 bg-black/10">
+            <div id="logs-list" class="flex flex-col gap-3.5 max-h-[720px] overflow-y-auto p-4 bg-slate-950/20">
+              <div class="text-center text-outline py-12">Loading system logs...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. Printers Pane -->
+      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-printers">
+        <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
+          <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 flex-wrap gap-4">
+            <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">
+              <span class="material-symbols-outlined text-primary">print</span>
+              <span>3D Printers Telemetry</span>
+            </h2>
+            <div class="flex items-center gap-2 flex-wrap">
+              <a href="https://simplyprint.io/panel/printers" target="_blank" class="px-3 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 no-underline">
+                <span class="material-symbols-outlined text-sm">open_in_new</span> SimplyPrint Portal
+              </a>
+              <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="printers-btn-sync">
+                <span class="material-symbols-outlined text-sm">sync</span> Sync API
+              </button>
+              <button class="px-3 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="printers-btn-ready-all">
+                <span class="material-symbols-outlined text-sm">done_all</span> Ready All
+              </button>
+              <button class="px-3 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="printers-btn-clear-cycles">
+                <span class="material-symbols-outlined text-sm">restart_alt</span> Clear Cycles
+              </button>
+              <button class="px-3 py-2 bg-error/15 hover:bg-error/25 text-error border border-error/40 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-[0_0_12px_rgba(255,82,82,0.15)] animate-pulse" id="printers-btn-estop-all">
+                <span class="material-symbols-outlined text-sm font-bold">emergency_home</span> E-STOP ALL
+              </button>
+            </div>
+          </div>
+
+          <!-- Error Notification Box -->
+          <div class="glass-panel border-l-4 border-error bg-error/5 p-4 rounded-r-xl hidden" id="printers-error-box">
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-error text-xl shrink-0">error_outline</span>
+              <div class="flex-grow">
+                <h4 class="font-bold text-sm text-on-surface">Printer Connection Alerts</h4>
+                <ul class="list-disc pl-5 mt-1.5 text-xs text-on-surface-variant space-y-1" id="printers-error-list">
+                  <!-- Dynamically populated if any printers are offline -->
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-12 gap-gutter items-start">
+            <!-- Printers Grid (Left Column) -->
+            <div class="col-span-12 lg:col-span-8 flex flex-col gap-4">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
+                <span class="material-symbols-outlined text-primary">robot</span>
+                <span>Active 3D Printers</span>
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="printers-grid">
+                <!-- Dynamically populated printer cards -->
+                <div class="col-span-2 text-center text-outline py-12 font-data-mono">
+                  <span class="material-symbols-outlined animate-spin text-2xl mb-2 block">autorenew</span>
+                  Loading printer telemetry...
+                </div>
+              </div>
+            </div>
+
+            <!-- Print Queue Sidebar (Right Column) -->
+            <div class="col-span-12 lg:col-span-4 glass-panel rounded-xl p-5 flex flex-col gap-4">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center justify-between w-full select-none">
+                <div class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-primary">list_alt</span>
+                  <span>Print Queue</span>
+                </div>
+                <span class="text-xs font-data-mono text-outline" id="printers-queue-header-stats">0 (0m)</span>
+              </h3>
+              <div class="flex flex-col gap-2.5 h-[500px] overflow-y-auto pr-1" id="printers-queue-list">
+                <!-- Dynamically populated queue items -->
+                <div class="text-center text-outline py-12 font-data-mono">
+                  <span class="material-symbols-outlined animate-spin text-xl mb-1.5 block">autorenew</span>
+                  Loading queue...
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Gantt Chart Panel (Full Width) -->
+          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 mt-6" id="printers-gantt-panel">
+            <div class="flex justify-between items-center select-none">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary">view_timeline</span>
+                <span>Printer Dispatch Timeline</span>
+              </h3>
+              <div class="flex gap-1.5 p-1 bg-surface-container-low rounded-lg border border-outline-variant/20">
+                <button class="gantt-zoom-btn px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all duration-200" data-hours="12" id="gantt-zoom-12">12h</button>
+                <button class="gantt-zoom-btn px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all duration-200 active" data-hours="24" id="gantt-zoom-24">24h</button>
+                <button class="gantt-zoom-btn px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all duration-200" data-hours="48" id="gantt-zoom-48">48h</button>
+              </div>
+            </div>
+            
+            <div class="overflow-x-auto w-full border border-outline-variant/10 rounded-lg bg-black/10 p-4 min-w-[800px]" id="gantt-chart-container">
+              <!-- Dynamically populated gantt chart -->
+              <div class="text-center text-outline py-12 font-data-mono">
+                <span class="material-symbols-outlined animate-spin text-xl mb-1 block">autorenew</span>
+                Loading timeline...
+              </div>
+            </div>
+          </div>
+
+          <!-- Print Jobs Table (Full Width) -->
+          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 mt-6">
+            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
+              <span class="material-symbols-outlined text-primary">dynamic_feed</span>
+              <span>Dispatched Print Jobs</span>
+            </h3>
+            <div class="h-[400px] overflow-y-auto pr-1 bg-black/10 rounded-lg border border-outline-variant/10" id="printers-jobs-list">
+              <!-- Dynamically populated print jobs table -->
+              <div class="text-center text-outline py-12 font-data-mono">
+                <span class="material-symbols-outlined animate-spin text-xl mb-1 block">autorenew</span>
+                Loading print jobs...
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Add Product/Variant Modal -->
+  <div class="modal-overlay" id="add-catalog-modal">
+    <!-- Target dialog element styled cleanly -->
+    <div class="modal glass-panel w-full max-w-lg rounded-2xl p-6 flex flex-col gap-4 relative">
+      <div class="flex justify-between items-center border-b border-outline-variant/10 pb-3">
+        <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+          <span class="material-symbols-outlined text-surface-tint">add_box</span> Add Product &amp; Variant
+        </h3>
+        <button class="text-2xl text-on-surface-variant hover:text-on-surface line-none active:scale-90" id="add-catalog-close-btn">&times;</button>
+      </div>
+      
+      <!-- Selection of Existing vs New Base -->
+      <div class="flex gap-2 border-b border-outline-variant/10 pb-3">
+        <!-- Target tab option chips -->
+        <button class="flex-1 py-1.5 rounded-md text-xs font-label-caps transition-all bg-primary/10 text-primary border border-primary/20" id="modal-tab-existing-product">Under Existing Product</button>
+        <button class="flex-1 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" id="modal-tab-new-product">With New Product</button>
+      </div>
+
+      <!-- 1. Existing Base selector -->
+      <div class="flex flex-col gap-1.5" id="group-select-product">
+        <label for="catalog-select-product" class="text-xs font-label-caps text-on-surface-variant uppercase">Select Base Product</label>
+        <select id="catalog-select-product" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md"></select>
+      </div>
+
+      <!-- 2. New Base input fields (Hidden by default) -->
+      <div id="group-new-product-fields" class="hidden flex-col gap-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1.5">
+            <label for="catalog-brand-name" class="text-xs font-label-caps text-on-surface-variant uppercase">Brand Name</label>
+            <input type="text" id="catalog-brand-name" placeholder="Lego" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label for="catalog-product-category" class="text-xs font-label-caps text-on-surface-variant uppercase">Category</label>
+            <input type="text" id="catalog-product-category" placeholder="Speed Champions" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1.5">
+            <label for="catalog-master-sku" class="text-xs font-label-caps text-on-surface-variant uppercase">Master SKU</label>
+            <input type="text" id="catalog-master-sku" placeholder="76919" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label for="catalog-product-base-name" class="text-xs font-label-caps text-on-surface-variant uppercase">Product Base Name</label>
+            <input type="text" id="catalog-product-base-name" placeholder="McLaren Formula 1 Car" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Variant properties input fields -->
+      <div class="border-t border-outline-variant/10 pt-3 flex flex-col gap-3">
+        <h4 class="text-xs font-label-caps text-on-surface-variant uppercase">Variant Properties</h4>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1.5">
+            <label for="catalog-variant-sku" class="text-xs font-label-caps text-on-surface-variant uppercase">Variant SKU</label>
+            <input type="text" id="catalog-variant-sku" placeholder="BO-SC-VDS-F1-MCLAREN" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label for="catalog-variant-name" class="text-xs font-label-caps text-on-surface-variant uppercase">Variant Name</label>
+            <input type="text" id="catalog-variant-name" placeholder="Vertical Stand - McLaren" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1.5">
+            <label for="catalog-variant-type" class="text-xs font-label-caps text-on-surface-variant uppercase">Variant Type</label>
+            <select id="catalog-variant-type" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+              <option value="DS">DS (Display Stand)</option>
+              <option value="BASE">BASE (Base Plate)</option>
+              <option value="WM">WM (Wall Mount)</option>
+              <option value="DS-NP">DS-NP (No Plate Stand)</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label for="catalog-sticker-url" class="text-xs font-label-caps text-on-surface-variant uppercase">Sticker GDrive URL</label>
+            <input type="text" id="catalog-sticker-url" placeholder="https://drive.google.com/file/d/..." class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1.5">
+            <label for="catalog-stock-quantity" class="text-xs font-label-caps text-on-surface-variant uppercase">Initial Stock Quantity</label>
+            <input type="number" id="catalog-stock-quantity" placeholder="0" min="0" value="0" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-3 border-t border-outline-variant/10 pt-4">
+        <button class="px-4 py-2 bg-surface-container-highest border border-outline-variant/50 rounded-lg font-label-caps" id="add-catalog-cancel-btn">Cancel</button>
+        <button class="px-5 py-2 bg-primary text-on-primary hover:bg-primary/95 rounded-lg font-label-caps shadow-[0_0_10px_rgba(164,232,68,0.25)]" id="add-catalog-save-btn">Add Variant</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Config Modal -->
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal glass-panel w-full max-w-lg rounded-2xl p-6 flex flex-col gap-4 relative">
+      <div class="flex justify-between items-center border-b border-outline-variant/10 pb-3">
+        <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+          <span class="material-symbols-outlined text-surface-tint">settings</span> System API Settings
+        </h3>
+        <button class="text-2xl text-on-surface-variant hover:text-on-surface line-none active:scale-90" id="settings-close-btn">&times;</button>
+      </div>
+      <div class="flex flex-col gap-4">
+        <div class="flex flex-col gap-1.5">
+          <label for="setting-supabase-url" class="text-xs font-label-caps text-on-surface-variant uppercase">Supabase Project URL</label>
+          <input type="text" id="setting-supabase-url" placeholder="https://your-project.supabase.co" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label for="setting-supabase-key" class="text-xs font-label-caps text-on-surface-variant uppercase">Supabase Service Role Key</label>
+          <input type="password" id="setting-supabase-key" placeholder="eyJhbGciOi..." class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label for="setting-backend-url" class="text-xs font-label-caps text-on-surface-variant uppercase">Backend URL (Railway)</label>
+          <input type="text" id="setting-backend-url" placeholder="https://your-app.railway.app" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 border-t border-outline-variant/10 pt-4">
+        <button class="px-4 py-2 bg-surface-container-highest border border-outline-variant/50 rounded-lg font-label-caps" id="settings-cancel-btn">Cancel</button>
+        <button class="px-5 py-2 bg-primary text-on-primary hover:bg-primary/95 rounded-lg font-label-caps shadow-[0_0_10px_rgba(164,232,68,0.25)]" id="settings-save-btn">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Action Modal -->
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal glass-panel w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4 relative">
+      <div class="flex items-center gap-3 text-error">
+        <span class="material-symbols-outlined text-2xl select-none">warning</span>
+        <h3 class="font-headline-sm text-headline-sm text-on-surface" id="confirm-title">Confirm Action</h3>
+      </div>
+      <p class="text-xs text-on-surface-variant/80 leading-relaxed" id="confirm-message">Are you sure you want to proceed?</p>
+      <div class="flex gap-2 justify-end mt-2">
+        <button class="px-3 py-1.5 bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface text-xs font-semibold rounded-lg transition-all cursor-pointer" id="confirm-cancel-btn">Cancel</button>
+        <button class="px-3 py-1.5 bg-error/15 hover:bg-error/25 border border-error/30 text-error text-xs font-semibold rounded-lg transition-all cursor-pointer" id="confirm-ok-btn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Catalog Detail Modal -->
+  <div class="modal-overlay" id="catalog-detail-modal">
+    <div class="modal glass-panel w-full max-w-2xl rounded-2xl p-6 flex flex-col gap-4 relative max-h-[85vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b border-outline-variant/10 pb-3">
+        <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+          <span class="material-symbols-outlined text-[#ebb2ff]">inventory_2</span>
+          <span id="catalog-detail-title">Product Details</span>
+        </h3>
+        <button class="text-2xl text-on-surface-variant hover:text-on-surface line-none active:scale-90 cursor-pointer" id="catalog-detail-close-btn">&times;</button>
+      </div>
+      <div id="catalog-detail-content" class="flex flex-col gap-4">
+        <!-- Dynamically populated database fields -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Interest invokers and popover hint polyfills -->
+  <script type="module">
+    if(!HTMLButtonElement.prototype.hasOwnProperty("interestForElement")){
+      await import("https://unpkg.com/interestfor@latest");
+    }
+    if(!HTMLElement.prototype.hasOwnProperty("popover")){
+      await import("https://unpkg.com/@oddbird/popover-polyfill@latest");
+    }
+    if (!("anchorName" in document.documentElement.style)) {
+      await import("https://unpkg.com/@oddbird/css-anchor-positioning");
+    }
+  </script>
+  <script src="app.js?v=1.4.0"></script>
+</body>
+</html>

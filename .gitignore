@@ -1,0 +1,35 @@
+# ── Secrets (NEVER commit these) ─────────────────────────────────────────────
+.env
+token.json
+credentials.json
+
+# ── Runtime / generated cache files ──────────────────────────────────────────
+scout.lock
+sp_files.json
+sp_folders_cache.json
+db_files.json
+match_preview.json
+
+# ── Local print files & uploads (too large, machine-specific) ────────────────
+Blocked Off Print Files/
+Uploads/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# ── Node ─────────────────────────────────────────────────────────────────────
+node_modules/
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
