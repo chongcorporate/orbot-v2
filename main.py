@@ -2794,7 +2794,7 @@ def run_foreman_dispatch(sp_key: Optional[str] = None) -> dict:
     res = supabase.table('order_items') \
         .select('*, orders!inner(platform_order_id, order_timestamp, created_at, overall_order_status)') \
         .eq('item_print_status', 'pending') \
-        .not_('variant_id', 'is', 'null') \
+        .filter('variant_id', 'not.is', 'null') \
         .execute()
     pending_items = [
         item for item in (res.data or [])
