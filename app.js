@@ -796,9 +796,11 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
           headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
           body: JSON.stringify({ order_id: orderId })
         });
-        
-        const resData = await response.json();
-        if (!response.ok) throw new Error(resData.error || `HTTP ${response.status}`);
+
+        const rawText = await response.text();
+        let resData;
+        try { resData = JSON.parse(rawText); } catch { throw new Error(`Backend error (HTTP ${response.status}): ${rawText.substring(0, 120)}`); }
+        if (!response.ok) throw new Error(resData.detail || resData.error || `HTTP ${response.status}`);
 
         logAction(`Order deleted: ${platformOrderId}`, "warning", { order_id: orderId, platform_order_id: platformOrderId });
         fetchSummaryStats();
@@ -2197,8 +2199,10 @@ function setupWaybillProcessing() {
         headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
         body: JSON.stringify({})
       });
-      const resData = await response.json();
-      if (!response.ok) throw new Error(resData.error || `HTTP ${response.status}`);
+      const rawText2 = await response.text();
+      let resData;
+      try { resData = JSON.parse(rawText2); } catch { throw new Error(`Backend error (HTTP ${response.status}): ${rawText2.substring(0, 120)}`); }
+      if (!response.ok) throw new Error(resData.detail || resData.error || `HTTP ${response.status}`);
 
       writeWaybillConsole(`[SUCCESS] Foreman response: ${JSON.stringify(resData.status || resData)}`, "info");
       logAction(`Foreman dispatch triggered manually`, "info", { dispatched: resData.files_dispatched, processed: resData.processed_items_count });
