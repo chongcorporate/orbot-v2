@@ -1438,6 +1438,11 @@ async function fetchAndRenderCatalog() {
           <div class="variations-container hidden mt-2 border-t border-outline-variant/10 pt-3 flex flex-col gap-2 relative z-10">
             <!-- Variation rows -->
             ${variationsHtml}
+            <div class="flex justify-end pt-2 mt-1 border-t border-outline-variant/10">
+              <button class="btn-catalog-edit px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer" data-product-id="${p.id}" type="button">
+                <span class="material-symbols-outlined text-sm pointer-events-none">edit</span> Edit Product
+              </button>
+            </div>
           </div>
         </div>
       `;
@@ -3584,6 +3589,7 @@ function setupPrinterControls() {
   setupPrinterControls();
   setupGlobalSearch();
   setupCatalogDetailModal();
+  setupCatalogEditModal();
   setupSystemErrorReset();
 
   // Action Buttons Events
@@ -3750,6 +3756,14 @@ function setupCatalogStockListeners() {
       e.stopPropagation();
       const productId = detailsBtn.getAttribute("data-product-id");
       openCatalogDetailModal(productId);
+      return;
+    }
+
+    const editBtn = e.target.closest(".btn-catalog-edit");
+    if (editBtn) {
+      e.stopPropagation();
+      const productId = editBtn.getAttribute("data-product-id");
+      openCatalogEditModal(productId);
       return;
     }
 
@@ -4165,6 +4179,144 @@ function openCatalogDetailModal(productId) {
 
   contentEl.innerHTML = html;
   modal.classList.add("active");
+}
+
+// Catalog Edit Modal
+function openCatalogEditModal(productId) {
+  const productVariants = cachedVariants.filter(v => v.products && v.products.id === productId);
+  if (productVariants.length === 0) return;
+
+  const product = productVariants[0].products;
+  const modal = document.getElementById("catalog-edit-modal");
+  const titleEl = document.getElementById("catalog-edit-title");
+  const contentEl = document.getElementById("catalog-edit-content");
+  if (!modal || !contentEl) return;
+
+  titleEl.textContent = product.product_base_name || "Edit Product";
+
+  const field = (label, table, id, fieldName, value, type = "text") => `
+    <div>
+      <label class="font-label-caps text-[10px] text-outline uppercase tracking-wider block mb-1">${label}</label>
+      <input type="${type === "number" ? "number" : "text"}" step="${type === "number" ? "any" : undefined}"
+        value="${String(value ?? "").replace(/"/g, "&quot;")}"
+        class="edit-field w-full bg-black/30 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-xs font-data-mono text-on-surface focus:border-primary/50 focus:outline-none transition-colors"
+        data-table="${table}" data-id="${id}" data-field="${fieldName}" data-type="${type}">
+    </div>
+  `;
+
+  let html = `
+    <!-- Product fields -->
+    <div class="flex flex-col gap-3">
+      <h4 class="font-label-caps text-[11px] text-primary uppercase tracking-widest flex items-center gap-2">
+        <span class="material-symbols-outlined text-sm">inventory_2</span> Product
+      </h4>
+      <div class="grid grid-cols-2 gap-3 bg-black/20 border border-outline-variant/10 rounded-xl p-4">
+        ${field("Product Base Name", "products", product.id, "product_base_name", product.product_base_name)}
+        ${field("Master SKU", "products", product.id, "master_sku", product.master_sku)}
+        ${field("Brand Name", "products", product.id, "brand_name", product.brand_name)}
+        ${field("Category", "products", product.id, "product_category", product.product_category)}
+      </div>
+    </div>
+  `;
+
+  productVariants.forEach((v, vi) => {
+    const filesHtml = (v.print_files || []).map(f => `
+      <div class="flex flex-col gap-2 bg-black/20 border border-outline-variant/10 rounded-lg p-3">
+        <div class="font-label-caps text-[9px] text-surface-tint uppercase tracking-widest flex items-center gap-1.5 mb-1">
+          <span class="material-symbols-outlined text-[11px]">description</span> Print File
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          ${field("File Name", "print_files", f.id, "print_file_name", f.print_file_name)}
+          ${field("SimplyPrint File ID", "print_files", f.id, "simplyprint_file_id", f.simplyprint_file_id)}
+          ${field("Weight (g)", "print_files", f.id, "weight_g", f.weight_g, "number")}
+          ${field("Print Time (min)", "print_files", f.id, "print_time_m", f.print_time_m, "number")}
+          ${field("Reference Name", "print_files", f.id, "reference_name", f.reference_name)}
+          ${field("Variant SKU (denorm)", "print_files", f.id, "variant_sku", f.variant_sku)}
+        </div>
+      </div>
+    `).join("");
+
+    html += `
+      <div class="flex flex-col gap-3">
+        <h4 class="font-label-caps text-[11px] text-[#ebb2ff] uppercase tracking-widest flex items-center gap-2">
+          <span class="material-symbols-outlined text-sm">layers</span> Variant ${vi + 1} of ${productVariants.length}
+        </h4>
+        <div class="flex flex-col gap-3 bg-black/20 border border-outline-variant/10 rounded-xl p-4">
+          <div class="grid grid-cols-2 gap-3">
+            ${field("Variant SKU", "variants", v.id, "variant_sku", v.variant_sku)}
+            ${field("Variant Name", "variants", v.id, "variant_name", v.variant_name)}
+            <div>
+              <label class="font-label-caps text-[10px] text-outline uppercase tracking-wider block mb-1">Variant Type</label>
+              <select class="edit-field w-full bg-black/30 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-xs font-data-mono text-on-surface focus:border-primary/50 focus:outline-none transition-colors"
+                data-table="variants" data-id="${v.id}" data-field="variant_type" data-type="text">
+                ${["DS-1","DS-2","DS-3","DS-4","DS-NP","WM","FWM","BASE"].map(t =>
+                  `<option value="${t}" ${v.variant_type === t ? "selected" : ""}>${t}</option>`
+                ).join("")}
+              </select>
+            </div>
+            ${field("Stock Quantity", "variants", v.id, "stock_quantity", v.stock_quantity, "number")}
+            <div class="col-span-2">${field("Seal Sticker Drive URL", "variants", v.id, "seal_sticker_gdrive_url", v.seal_sticker_gdrive_url)}</div>
+          </div>
+          ${filesHtml.length ? `
+            <div class="flex flex-col gap-2">
+              <div class="font-label-caps text-[10px] text-outline uppercase tracking-wider mt-1">Print Files (${(v.print_files || []).length})</div>
+              ${filesHtml}
+            </div>
+          ` : `<div class="text-[10px] font-data-mono text-on-surface-variant/30 italic">No print files mapped.</div>`}
+        </div>
+      </div>
+    `;
+  });
+
+  contentEl.innerHTML = html;
+  modal.classList.add("active");
+}
+
+function setupCatalogEditModal() {
+  const modal = document.getElementById("catalog-edit-modal");
+  if (!modal) return;
+
+  const closeModal = () => modal.classList.remove("active");
+
+  document.getElementById("catalog-edit-close-btn").addEventListener("click", closeModal);
+  document.getElementById("catalog-edit-cancel-btn").addEventListener("click", closeModal);
+  modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+
+  document.getElementById("catalog-edit-save-btn").addEventListener("click", async () => {
+    const contentEl = document.getElementById("catalog-edit-content");
+    const saveBtn = document.getElementById("catalog-edit-save-btn");
+    const fields = contentEl.querySelectorAll(".edit-field");
+
+    // Group updates by table + id
+    const updates = {};
+    fields.forEach(el => {
+      const { table, id, field, type } = el.dataset;
+      const key = `${table}::${id}`;
+      if (!updates[key]) updates[key] = { table, id, data: {} };
+      let val = el.value.trim();
+      if (type === "number") val = val === "" ? null : parseFloat(val);
+      else val = val === "" ? null : val;
+      updates[key].data[field] = val;
+    });
+
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = `<span class="material-symbols-outlined text-sm animate-spin">sync</span> Saving...`;
+
+    try {
+      await Promise.all(Object.values(updates).map(({ table, id, data }) =>
+        supabaseClient.from(table).update(data).eq("id", id).throwOnError()
+      ));
+      cachedVariants = [];
+      showToast("Product saved successfully.", "success");
+      closeModal();
+      fetchAndRenderCatalog();
+    } catch (err) {
+      showToast("Save failed: " + err.message, "error");
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = `<span class="material-symbols-outlined text-sm">save</span> Save Changes`;
+    }
+  });
 }
 
 // Fetch and Render Compiled Master PDFs list
