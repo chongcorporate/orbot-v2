@@ -1127,6 +1127,96 @@ async function fetchAndRenderLogs() {
   }
 }
 
+async function fetchAndRenderLogsPagePrintJobs() {
+  if (!supabaseClient) return;
+  const container = document.getElementById("logs-print-jobs-list");
+  if (!container) return;
+
+  container.innerHTML = `<div class="text-center text-outline py-12 font-data-mono text-xs"><span class="material-symbols-outlined animate-spin text-xl mb-1 block">autorenew</span>Loading print jobs...</div>`;
+
+  try {
+    const { data: jobs, error } = await supabaseClient
+      .from("print_jobs")
+      .select("*, order_items(variant_sku, variant_name, orders(platform_order_id, customer_name))")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+
+    if (!jobs || jobs.length === 0) {
+      container.innerHTML = `<div class="font-data-mono text-xs text-outline text-center py-12">No print jobs found.</div>`;
+      return;
+    }
+
+    let html = `
+      <table class="w-full text-left border-collapse text-xs">
+        <thead>
+          <tr class="bg-surface-container-low border-b border-outline-variant/20 sticky top-0 z-10">
+            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10">SP Job ID</th>
+            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10">SKU</th>
+            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10">Print File</th>
+            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10">Customer</th>
+            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10">Printer</th>
+            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10 w-36">Progress</th>
+            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10">Created</th>
+            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    jobs.forEach(job => {
+      const statusLower = (job.job_execution_status || "").toLowerCase();
+      let statusColor = "text-outline border-outline/30 bg-outline/10";
+      if (statusLower === "printing" || statusLower === "executing") {
+        statusColor = "text-primary border-primary/30 bg-primary/10";
+      } else if (statusLower === "completed" || statusLower === "finished") {
+        statusColor = "text-success border-success/30 bg-success/10";
+      } else if (statusLower === "cancelled" || statusLower === "error") {
+        statusColor = "text-error border-error/30 bg-error/10";
+      } else if (statusLower === "pending") {
+        statusColor = "text-warning border-warning/30 bg-warning/10";
+      }
+
+      const oi = job.order_items;
+      const sku = oi?.variant_sku || "—";
+      const customer = oi?.orders?.customer_name || "—";
+      const orderId = oi?.orders?.platform_order_id || "";
+      const printer = job.printer_name || "—";
+      const progress = Math.min(100, Math.max(0, Math.round(Number(job.percent_complete) || 0)));
+      const created = job.created_at ? new Date(job.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+      const spJobId = job.simplyprint_job_id || "PENDING";
+
+      html += `
+        <tr class="border-b border-outline-variant/10 hover:bg-primary/[0.03] transition-colors font-data-mono">
+          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant">${spJobId}</td>
+          <td class="py-2 px-3 border-r border-outline-variant/10 text-primary font-bold">${sku}</td>
+          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant max-w-[180px] truncate" title="${job.print_file_name || ''}">${job.print_file_name || "—"}</td>
+          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant" title="${orderId}">${customer}</td>
+          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant">${printer}</td>
+          <td class="py-2 px-3 border-r border-outline-variant/10">
+            <div class="flex items-center gap-2">
+              <div class="flex-grow bg-black/40 rounded-full h-1.5 overflow-hidden w-20">
+                <div class="h-full rounded-full ${progress === 100 ? 'bg-success' : 'bg-primary'}" style="width:${progress}%"></div>
+              </div>
+              <span class="text-[10px] text-outline w-7 text-right">${progress}%</span>
+            </div>
+          </td>
+          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant">${created}</td>
+          <td class="py-2 px-3">
+            <span class="px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${statusColor}">${job.job_execution_status || "pending"}</span>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<div class="font-data-mono text-xs text-error text-center py-12">Error loading print jobs: ${err.message}</div>`;
+  }
+}
+
 // Fetch and Render Catalog
 async function fetchAndRenderCatalog() {
   if (!supabaseClient) return;
@@ -1496,7 +1586,7 @@ function setupTabs() {
         fetchAndRenderPrintersAndQueue();
       }
       if (tabId === "orders") fetchAndRenderOrders();
-      if (tabId === "logs") fetchAndRenderLogs();
+      if (tabId === "logs") { fetchAndRenderLogs(); fetchAndRenderLogsPagePrintJobs(); }
       if (tabId === "catalog") fetchAndRenderCatalog();
       if (tabId === "waybills") {
         fetchAgentHeartbeats();
@@ -3499,6 +3589,41 @@ function setupPrinterControls() {
 
   const refreshLogsBtn = document.getElementById("refresh-logs-btn");
   if (refreshLogsBtn) refreshLogsBtn.addEventListener("click", fetchAndRenderLogs);
+
+  const clearLogsBtn = document.getElementById("clear-logs-btn");
+  if (clearLogsBtn) clearLogsBtn.addEventListener("click", async () => {
+    if (!await showConfirmModal("Clear System Logs", "Delete all system log entries? This cannot be undone.", "Clear")) return;
+    clearLogsBtn.disabled = true;
+    try {
+      const { error } = await supabaseClient.from("system_logs").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (error) throw error;
+      showToast("System logs cleared.", "success");
+      fetchAndRenderLogs();
+    } catch (err) {
+      showToast("Failed to clear logs: " + err.message, "error");
+    } finally {
+      clearLogsBtn.disabled = false;
+    }
+  });
+
+  const refreshPrintJobsBtn = document.getElementById("refresh-print-jobs-btn");
+  if (refreshPrintJobsBtn) refreshPrintJobsBtn.addEventListener("click", fetchAndRenderLogsPagePrintJobs);
+
+  const clearPrintJobsBtn = document.getElementById("clear-print-jobs-btn");
+  if (clearPrintJobsBtn) clearPrintJobsBtn.addEventListener("click", async () => {
+    if (!await showConfirmModal("Clear Print Jobs", "Delete all print job records? This only removes the log entries — it does not cancel active prints in SimplyPrint.", "Clear")) return;
+    clearPrintJobsBtn.disabled = true;
+    try {
+      const { error } = await supabaseClient.from("print_jobs").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (error) throw error;
+      showToast("Print jobs cleared.", "success");
+      fetchAndRenderLogsPagePrintJobs();
+    } catch (err) {
+      showToast("Failed to clear print jobs: " + err.message, "error");
+    } finally {
+      clearPrintJobsBtn.disabled = false;
+    }
+  });
 });
 
 async function updateStockInDb(variantId, newQty) {

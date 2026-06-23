@@ -1333,15 +1333,20 @@
 
       <!-- 8. Logs Pane -->
       <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-logs">
+
+        <!-- System Logs -->
         <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
           <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 flex-wrap gap-4">
             <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">
               <span class="material-symbols-outlined text-primary">description</span>
-              <span>System Logs & Telemetry</span>
+              <span>System Logs</span>
             </h2>
             <div class="flex items-center gap-2">
               <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-logs-btn">
-                <span class="material-symbols-outlined text-sm">sync</span> Refresh Logs
+                <span class="material-symbols-outlined text-sm">sync</span> Refresh
+              </button>
+              <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-logs-btn">
+                <span class="material-symbols-outlined text-sm">delete_sweep</span> Clear Logs
               </button>
             </div>
           </div>
@@ -1366,6 +1371,32 @@
             </div>
           </div>
         </div>
+
+        <!-- Print Jobs -->
+        <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
+          <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 flex-wrap gap-4">
+            <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">
+              <span class="material-symbols-outlined text-cyan-400">print</span>
+              <span>Print Jobs</span>
+            </h2>
+            <div class="flex items-center gap-2">
+              <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-print-jobs-btn">
+                <span class="material-symbols-outlined text-sm">sync</span> Refresh
+              </button>
+              <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-print-jobs-btn">
+                <span class="material-symbols-outlined text-sm">delete_sweep</span> Clear Jobs
+              </button>
+            </div>
+          </div>
+
+          <!-- Print Jobs Table -->
+          <div class="glass-panel rounded-xl overflow-hidden border border-outline-variant/15 bg-black/10">
+            <div id="logs-print-jobs-list" class="max-h-[560px] overflow-y-auto">
+              <div class="text-center text-outline py-12 font-data-mono text-xs">Loading print jobs...</div>
+            </div>
+          </div>
+        </div>
+
       </section>
 
       <!-- 7. Printers Pane -->
@@ -1654,6 +1685,6 @@
       await import("https://unpkg.com/@oddbird/css-anchor-positioning");
     }
   </script>
-  <script src="app.js?v=1.5.3"></script>
+  <script src="app.js?v=1.5.4"></script>
 </body>
 </html>
