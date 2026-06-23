@@ -3145,6 +3145,37 @@ def foreman_dispatch(request: Request):
         logger.error(f"foreman/dispatch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class QueueFileRequest(BaseModel):
+    simplyprint_file_id: str
+    print_file_name: str = ""
+
+@app.post("/print-files/queue")
+def queue_single_file(req: QueueFileRequest, request: Request):
+    """Sends a single print file directly to the SimplyPrint queue."""
+    api_key = request.headers.get("X-SimplyPrint-Key") or os.getenv("SIMPLYPRINT_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="SimplyPrint API key not configured.")
+    sp_headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
+    base_url = f"https://api.simplyprint.io/{SIMPLYPRINT_COMPANY_ID}"
+    name_lower = req.print_file_name.lower()
+    is_a1_mini = ('a1m' in name_lower or 'mini' in name_lower) and not re.search(r'\bminifig', name_lower)
+    for_printers = [38959, 38960] if is_a1_mini else [38961, 39538]
+    try:
+        sp_res = http_session.post(f"{base_url}/queue/AddItem", headers=sp_headers, json={
+            "filesystem": req.simplyprint_file_id,
+            "amount": 1,
+            "for_printers": for_printers,
+            "position": "bottom"
+        }, timeout=15)
+        if not sp_res.ok:
+            raise HTTPException(status_code=sp_res.status_code, detail=f"SimplyPrint error: {sp_res.text}")
+        sp_job_id = sp_res.json().get("created_id")
+        return {"status": "success", "simplyprint_job_id": sp_job_id, "for_printers": for_printers}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/cancel")
 def cancel_order(req: CancelRequest, request: Request):
     """Cancels an order: aborts SimplyPrint jobs and marks the order cancelled in the database."""

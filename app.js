@@ -12,6 +12,7 @@ let waybillsStartDate = "";
 let waybillsEndDate = "";
 let ordersDateSortDirection = "desc"; // "desc" or "asc"
 let waybillsDateSortDirection = "desc"; // "desc" or "asc"
+let catalogSortOrder = "asc"; // "asc" or "desc"
 let cachedOrders = [];
 let cachedVariants = [];
 let cachedFilteredWaybills = [];
@@ -59,6 +60,18 @@ function showToast(message, type = "info") {
     toast.style.opacity = "0"; toast.style.transform = "translateX(12px)";
     setTimeout(() => toast.remove(), 220);
   }, 3500);
+}
+
+async function logAction(message, level = "info", meta = {}) {
+  if (!supabaseClient) return;
+  try {
+    await supabaseClient.from("system_logs").insert({
+      agent_name: "dashboard",
+      log_level: level,
+      log_message: message,
+      log_data: Object.keys(meta).length ? meta : null
+    });
+  } catch (_) {}
 }
 
 function loadingDiv() {
@@ -729,7 +742,8 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
           .update({ overall_order_status: newStatus })
           .eq("id", orderId);
         if (error) throw error;
-        
+
+        logAction(`Order status changed: ${orderId} → ${newStatus}`, "info", { order_id: orderId, new_status: newStatus });
         fetchSummaryStats();
         fetchAndRenderOrders();
       } catch (err) {
@@ -785,7 +799,8 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         
         const resData = await response.json();
         if (!response.ok) throw new Error(resData.error || `HTTP ${response.status}`);
-        
+
+        logAction(`Order deleted: ${platformOrderId}`, "warning", { order_id: orderId, platform_order_id: platformOrderId });
         fetchSummaryStats();
         fetchAndRenderOrders();
       } catch (err) {
@@ -1195,7 +1210,11 @@ async function fetchAndRenderCatalog() {
       productsMap[p.id].variations.push(v);
     });
 
-    const productsList = Object.values(productsMap);
+    let productsList = Object.values(productsMap);
+    productsList.sort((a, b) => {
+      const cmp = a.product_base_name.localeCompare(b.product_base_name);
+      return catalogSortOrder === "asc" ? cmp : -cmp;
+    });
 
     if (productsList.length === 0) {
       tbody.innerHTML = emptyDiv("No catalog items found matching filters.", "inventory_2");
@@ -1231,6 +1250,7 @@ async function fetchAndRenderCatalog() {
                   <span class="material-symbols-outlined text-[12px] text-surface-tint/70 select-none">description</span>
                   <span class="text-on-surface-variant truncate font-medium max-w-[120px] sm:max-w-[180px] select-all" title="${f.print_file_name}">${f.print_file_name}</span>
                   <span class="text-on-surface-variant/40 text-[9px] font-semibold flex-shrink-0 tracking-wider border-l border-outline-variant/10 pl-2 ml-1">${f.weight_g}G | ${f.print_time_m}M</span>
+                  ${f.simplyprint_file_id ? `<button class="btn-send-file-print flex-shrink-0 flex items-center justify-center w-5 h-5 rounded hover:bg-primary/20 text-primary/60 hover:text-primary transition-all active:scale-90" data-sp-file-id="${f.simplyprint_file_id}" data-file-name="${f.print_file_name}" title="Send to print queue" type="button"><span class="material-symbols-outlined text-[12px] pointer-events-none">print</span></button>` : ''}
                 </div>
               `).join("")}
             </div>
@@ -1257,6 +1277,7 @@ async function fetchAndRenderCatalog() {
               ${filesHtml}
             </div>
             <div class="flex-shrink-0 flex items-center gap-2 self-stretch md:self-auto justify-end border-t md:border-t-0 border-outline-variant/5 pt-2 md:pt-0">
+              ${v.seal_sticker_gdrive_url ? `<button class="btn-seal-sticker flex items-center gap-1 text-[10px] font-label-caps text-on-surface-variant/60 hover:text-amber-400 transition-colors active:scale-95 uppercase tracking-wider select-none" data-url="${v.seal_sticker_gdrive_url}" data-sku="${v.variant_sku}" title="Download seal sticker" type="button"><span class="material-symbols-outlined text-[13px] pointer-events-none">label</span>Seal</button>` : ''}
               <span class="text-[10px] font-label-caps text-on-surface-variant/60 uppercase tracking-wider select-none">Stock:</span>
               <div class="flex items-center bg-black/30 border border-outline-variant/20 rounded-lg p-0.5 overflow-hidden">
                 <button class="w-6 h-6 flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-white/10 rounded transition-all active:scale-95 btn-stock-dec" data-variant-id="${v.id}" type="button">-</button>
@@ -1597,6 +1618,14 @@ function setupCatalogSearch() {
     clearFiltersBtn.addEventListener("click", () => {
       if (brandSelect) brandSelect.value = "all";
       if (categorySelect) categorySelect.value = "all";
+      fetchAndRenderCatalog();
+    });
+  }
+
+  const sortSelect = document.getElementById("catalog-sort-order");
+  if (sortSelect) {
+    sortSelect.addEventListener("change", () => {
+      catalogSortOrder = sortSelect.value;
       fetchAndRenderCatalog();
     });
   }
@@ -2162,6 +2191,7 @@ function setupWaybillProcessing() {
       if (!response.ok) throw new Error(resData.error || `HTTP ${response.status}`);
 
       writeWaybillConsole(`[SUCCESS] Foreman response: ${JSON.stringify(resData.status || resData)}`, "info");
+      logAction(`Foreman dispatch triggered manually`, "info", { dispatched: resData.files_dispatched, processed: resData.processed_items_count });
       setTimeout(() => {
         fetchSummaryStats();
         if (currentTab === "waybills") fetchAndRenderWaybillsArchive();
@@ -3495,15 +3525,14 @@ async function updateStockInDb(variantId, newQty) {
 
     // Sync input fields in main catalog view
     const mainInputs = document.querySelectorAll(`.input-stock-qty[data-variant-id="${variantId}"]`);
-    mainInputs.forEach(input => {
-      input.value = newQty;
-    });
+    mainInputs.forEach(input => { input.value = newQty; });
 
     // Sync input fields in details modal
     const modalInputs = document.querySelectorAll(`.input-modal-stock-qty[data-variant-id="${variantId}"]`);
-    modalInputs.forEach(input => {
-      input.value = newQty;
-    });
+    modalInputs.forEach(input => { input.value = newQty; });
+
+    const sku = cached?.variant_sku || variantId;
+    logAction(`Stock updated: ${sku} → ${newQty}`, "info", { variant_id: variantId, new_quantity: newQty });
 
   } catch (err) {
     showToast("Failed to update stock quantity: " + err.message, "error");
@@ -3520,6 +3549,50 @@ function setupCatalogStockListeners() {
     const incBtn = e.target.closest(".btn-stock-inc");
     const detailsBtn = e.target.closest(".btn-product-details");
     const header = e.target.closest(".product-card-header");
+    const sealBtn = e.target.closest(".btn-seal-sticker");
+    const printFileBtn = e.target.closest(".btn-send-file-print");
+
+    if (sealBtn) {
+      e.stopPropagation();
+      const url = sealBtn.getAttribute("data-url");
+      const sku = sealBtn.getAttribute("data-sku");
+      // Convert Drive view URL to direct download
+      const fileIdMatch = url.match(/\/d\/([^/]+)\//);
+      const downloadUrl = fileIdMatch
+        ? `https://drive.google.com/uc?export=download&id=${fileIdMatch[1]}`
+        : url;
+      window.open(downloadUrl, "_blank");
+      logAction(`Seal sticker downloaded: ${sku}`, "info", { variant_sku: sku });
+      return;
+    }
+
+    if (printFileBtn) {
+      e.stopPropagation();
+      const spFileId = printFileBtn.getAttribute("data-sp-file-id");
+      const fileName = printFileBtn.getAttribute("data-file-name");
+      const backendUrl = (localStorage.getItem("orbot_backend_url") || "").replace(/\/$/, "");
+      if (!backendUrl) { showToast("Backend URL not set in Settings.", "warning"); return; }
+      const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
+      printFileBtn.disabled = true;
+      printFileBtn.querySelector(".material-symbols-outlined").textContent = "sync";
+      try {
+        const res = await fetch(`${backendUrl}/print-files/queue`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
+          body: JSON.stringify({ simplyprint_file_id: spFileId, print_file_name: fileName })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        showToast(`Queued: ${fileName}`, "success");
+        logAction(`File sent to print queue: ${fileName}`, "info", { simplyprint_file_id: spFileId, job_id: data.simplyprint_job_id });
+      } catch (err) {
+        showToast(`Failed to queue ${fileName}: ${err.message}`, "error");
+      } finally {
+        printFileBtn.disabled = false;
+        printFileBtn.querySelector(".material-symbols-outlined").textContent = "print";
+      }
+      return;
+    }
 
     if (detailsBtn) {
       e.stopPropagation();
