@@ -1526,10 +1526,9 @@ class ScoutAgent:
                 for email in emails:
                     logger.info(f"Processing order email: {email['subject']}")
                     if not email['body']:
-                        logger.warning(f"Email {email['id']} has no readable body text. Skipping.")
-                        self.mark_email_as_read(email['id'])
+                        logger.warning(f"Email {email['id']} has no readable body text. Leaving unread.")
                         continue
-                        
+
                     order_details = self.parse_email_with_llm(email['body'])
                     if order_details:
                         try:
