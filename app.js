@@ -969,6 +969,16 @@ function setupOrderFilters() {
     });
   }
 
+  const sortDateBtn = document.getElementById("orders-sort-date-btn");
+  const sortDateIcon = document.getElementById("orders-sort-date-icon");
+  if (sortDateBtn) {
+    sortDateBtn.addEventListener("click", () => {
+      ordersDateSortDirection = ordersDateSortDirection === "asc" ? "desc" : "asc";
+      if (sortDateIcon) sortDateIcon.style.transform = ordersDateSortDirection === "asc" ? "rotate(180deg)" : "rotate(0deg)";
+      fetchAndRenderOrders(false);
+    });
+  }
+
   const completeAllOrdersBtn = document.getElementById("orders-btn-complete-all");
   if (completeAllOrdersBtn) {
     completeAllOrdersBtn.addEventListener("click", async () => {
@@ -2750,6 +2760,18 @@ function setupWaybillFilters() {
   if (sortDateCol) {
     sortDateCol.addEventListener("click", () => {
       waybillsDateSortDirection = waybillsDateSortDirection === "asc" ? "desc" : "asc";
+      fetchAndRenderWaybillsArchive();
+    });
+  }
+
+  const waybillSortDateBtn = document.getElementById("waybills-sort-date-btn");
+  const waybillSortDateBtnIcon = document.getElementById("waybills-sort-date-icon");
+  if (waybillSortDateBtn) {
+    waybillSortDateBtn.addEventListener("click", () => {
+      waybillsDateSortDirection = waybillsDateSortDirection === "asc" ? "desc" : "asc";
+      const colIcon = document.getElementById("waybill-sort-icon");
+      if (colIcon) colIcon.style.transform = waybillsDateSortDirection === "asc" ? "rotate(180deg)" : "rotate(0deg)";
+      if (waybillSortDateBtnIcon) waybillSortDateBtnIcon.style.transform = waybillsDateSortDirection === "asc" ? "rotate(180deg)" : "rotate(0deg)";
       fetchAndRenderWaybillsArchive();
     });
   }
