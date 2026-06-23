@@ -977,20 +977,40 @@ class ScoutAgent:
             return []
 
     def _extract_email_body(self, payload):
+        """Extract email body, preferring text/plain, falling back to stripped text/html."""
+        plain, html = self._collect_parts(payload)
+        if plain:
+            return plain
+        if html:
+            # Strip HTML tags to get readable text for the LLM
+            import html as html_module
+            text = re.sub(r'<style[^>]*>.*?</style>', ' ', html, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'<script[^>]*>.*?</script>', ' ', text, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'<[^>]+>', ' ', text)
+            text = html_module.unescape(text)
+            text = re.sub(r'[ \t]+', ' ', text)
+            text = re.sub(r'\n{3,}', '\n\n', text)
+            return text.strip()
+        return ""
+
+    def _collect_parts(self, payload):
+        """Recursively collect text/plain and text/html content from MIME parts."""
+        plain, html = "", ""
         if 'parts' in payload:
             for part in payload['parts']:
-                if part['mimeType'] == 'text/plain':
-                    data = part['body'].get('data')
-                    if data:
-                        return base64.urlsafe_b64decode(data).decode('utf-8')
-                elif 'parts' in part:
-                    return self._extract_email_body(part)
+                p, h = self._collect_parts(part)
+                plain = plain or p
+                html = html or h
         else:
-            if payload['mimeType'] == 'text/plain':
-                data = payload['body'].get('data')
-                if data:
-                    return base64.urlsafe_b64decode(data).decode('utf-8')
-        return ""
+            mime = payload.get('mimeType', '')
+            data = payload.get('body', {}).get('data')
+            if data:
+                text = base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
+                if mime == 'text/plain':
+                    plain = text
+                elif mime == 'text/html':
+                    html = text
+        return plain, html
 
     def mark_email_as_read(self, message_id):
         try:
