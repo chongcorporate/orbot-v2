@@ -3140,6 +3140,28 @@ def telemetry_sync(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_sync)
     return {"status": "SimplyPrint telemetry sync triggered"}
 
+@app.get("/diagnostics/simplyprint")
+def diagnostics_simplyprint():
+    """Returns raw SimplyPrint printer list for diagnosing connectivity issues."""
+    api_key = os.getenv("SIMPLYPRINT_API_KEY")
+    if not api_key:
+        return {"error": "SIMPLYPRINT_API_KEY not set"}
+    headers = {"X-API-KEY": api_key, "Accept": "application/json", "Content-Type": "application/json"}
+    try:
+        r = http_session.post(f"https://api.simplyprint.io/{SIMPLYPRINT_COMPANY_ID}/printers/Get", headers=headers, json={}, timeout=10)
+        printers = r.json().get("data", []) if r.status_code == 200 else []
+        return {
+            "http_status": r.status_code,
+            "printer_count": len(printers),
+            "printers": [
+                {"id": p.get("id"), "name": p.get("printer", {}).get("name"), "online": p.get("printer", {}).get("online"), "state": p.get("printer", {}).get("state")}
+                for p in printers
+            ],
+            "raw_status": r.text[:500] if r.status_code != 200 else None
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.post("/scout/ingest-email")
 def scout_ingest_email(req: IngestEmailRequest):
     """Parses a raw order confirmation email body with Gemini and ingests the order."""
