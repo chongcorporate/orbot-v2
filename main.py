@@ -66,7 +66,7 @@ load_dotenv(_base_dir / ".env")
 # GOOGLE_TOKEN_JSON and GOOGLE_CREDENTIALS_JSON environment variables.
 _token_env = os.environ.get("GOOGLE_TOKEN_JSON")
 _creds_env = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-if _token_env and not (_base_dir / "token.json").exists():
+if _token_env:
     (_base_dir / "token.json").write_text(_token_env)
 if _creds_env and not (_base_dir / "credentials.json").exists():
     (_base_dir / "credentials.json").write_text(_creds_env)
@@ -2694,6 +2694,12 @@ async def run_scout_periodic_async():
         try:
             agent = await asyncio.to_thread(ScoutAgent)
             await asyncio.to_thread(agent.run)
+            await asyncio.to_thread(
+                supabase.table('agent_heartbeats').upsert({
+                    'agent_name': 'scout',
+                    'last_heartbeat': datetime.now().isoformat()
+                }).execute
+            )
         except Exception as e:
             print(f"Scout Periodic Poll Error: {e}")
         await asyncio.sleep(300)
