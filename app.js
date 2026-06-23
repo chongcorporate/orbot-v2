@@ -787,20 +787,28 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
       if (icon) icon.textContent = "sync";
       
       try {
-        const backendUrl = (localStorage.getItem("orbot_backend_url") || "").replace(/\/$/, "");
-        if (!backendUrl) throw new Error("Backend URL not set. Add your Railway URL in Settings.");
+        // Fetch order item IDs first
+        const { data: items, error: itemsErr } = await supabaseClient
+          .from("order_items").select("id").eq("order_id", orderId);
+        if (itemsErr) throw itemsErr;
 
-        const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
-        const response = await fetch(`${backendUrl}/cancel`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
-          body: JSON.stringify({ order_id: orderId })
-        });
+        // Delete print jobs for those items
+        if (items && items.length > 0) {
+          const itemIds = items.map(i => i.id);
+          const { error: pjErr } = await supabaseClient
+            .from("print_jobs").delete().in("order_item_id", itemIds);
+          if (pjErr) throw pjErr;
+        }
 
-        const rawText = await response.text();
-        let resData;
-        try { resData = JSON.parse(rawText); } catch { throw new Error(`Backend error (HTTP ${response.status}) calling ${backendUrl}/cancel: ${rawText.substring(0, 80)}`); }
-        if (!response.ok) throw new Error(resData.detail || resData.error || `HTTP ${response.status}`);
+        // Delete order items
+        const { error: oiErr } = await supabaseClient
+          .from("order_items").delete().eq("order_id", orderId);
+        if (oiErr) throw oiErr;
+
+        // Delete the order itself
+        const { error: oErr } = await supabaseClient
+          .from("orders").delete().eq("id", orderId);
+        if (oErr) throw oErr;
 
         logAction(`Order deleted: ${platformOrderId}`, "warning", { order_id: orderId, platform_order_id: platformOrderId });
         fetchSummaryStats();
