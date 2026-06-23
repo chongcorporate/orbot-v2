@@ -1554,23 +1554,56 @@ div[popover="hint"] {
   height: 100%;
 }
 .gantt-time-labels {
-  display: flex;
-  margin-left: 140px; /* Aligns with printer col width */
-  margin-bottom: 8px;
-  justify-content: space-between;
+  margin-left: 148px;
   font-size: 9px;
   font-weight: 600;
   color: var(--text-secondary);
   font-family: var(--font-mono);
 }
 
+.gantt-row-offline {
+  opacity: 0.45;
+}
+
+.gantt-idle-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.12);
+  font-family: var(--font-mono);
+  pointer-events: none;
+}
+
+.gantt-printer-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.badge-mini {
+  background: rgba(34, 211, 238, 0.12);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  color: rgb(34, 211, 238);
+}
+.badge-reg {
+  background: rgba(164, 232, 68, 0.10);
+  border: 1px solid rgba(164, 232, 68, 0.30);
+  color: var(--primary-color);
+}
+
 /* Custom Tooltip on Hover */
 .gantt-tooltip {
   position: absolute;
   bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: 250px;
+  width: 230px;
   padding: 10px;
   background-color: #1e1e21;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1578,7 +1611,7 @@ div[popover="hint"] {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease-in-out, transform 0.15s ease-in-out;
+  transition: opacity 0.15s ease-in-out;
   z-index: 100;
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -1589,6 +1622,5 @@ div[popover="hint"] {
 }
 .gantt-block:hover .gantt-tooltip {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
 }
 

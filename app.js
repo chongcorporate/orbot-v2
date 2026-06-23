@@ -2878,231 +2878,198 @@ function renderGanttChart(printers, queue, jobs) {
   if (!container) return;
 
   const allPrinters = printers || [];
-
   if (allPrinters.length === 0) {
-    container.innerHTML = `<div class="font-data-mono text-xs text-outline text-center py-12">No printers registered to display timeline.</div>`;
+    container.innerHTML = `<div class="font-data-mono text-xs text-outline text-center py-12">No printers registered.</div>`;
     return;
   }
 
-  // 1. Initialize printer timelines
-  const printerTimelines = {};
+  const MINI_IDS = [38959, 38960];
+  const REG_IDS  = [38961, 39538];
+  const nowMs = Date.now();
+
+  // Which printer group a file belongs to (same logic as Foreman dispatch)
+  function printerGroupFor(filename) {
+    const n = (filename || '').toLowerCase();
+    const isMini = (n.includes('a1m') || n.includes('mini')) && !/\bminifig\b/.test(n);
+    return isMini ? MINI_IDS : REG_IDS;
+  }
+
+  // Strip weight/time/extension suffix for display: "SC-DS-F1-APX - 58g-90m-a1.gcode.3mf" → "SC-DS-F1-APX"
+  function cleanName(name) {
+    return (name || '')
+      .replace(/\s*-\s*\d+g[-–]\d+[hm].*$/i, '')
+      .replace(/\.(gcode|3mf|stl)(\.3mf)?$/i, '')
+      .trim();
+  }
+
+  function fmtDur(ms) {
+    const m = Math.round(ms / 60000);
+    return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+  }
+  function fmtTime(ts) {
+    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+
+  // 1. Build timeline per printer
+  const tlById = {};
   allPrinters.forEach(p => {
-    const isOfflineOrError = !p.online || (p.state && p.state.toLowerCase().includes("error"));
-    // Find active job if any
+    const offline = !p.online || (p.state || '').toLowerCase().includes('error');
+    const isMini  = MINI_IDS.includes(p.id);
+    const remSec  = p.remaining_seconds || 0;
+    const busyEnd = offline ? nowMs : nowMs + remSec * 1000;
     const activeJob = (jobs || []).find(j => j.job_execution_status === 'printing' && j.printer_name === p.name);
-    const currentRemainingSec = p.remaining_seconds || 0;
-    const endTime = isOfflineOrError ? Date.now() : (Date.now() + (currentRemainingSec * 1000));
 
-    printerTimelines[p.name] = {
-      printer: p,
-      busyUntil: endTime,
-      schedule: [],
-      isOfflineOrError: isOfflineOrError
-    };
+    const tl = { printer: p, isMini, busyUntil: busyEnd, schedule: [], offline };
+    tlById[p.id] = tl;
 
-    if (!isOfflineOrError && (p.current_job_name || (p.state && p.state.toLowerCase() === "printing"))) {
-      printerTimelines[p.name].schedule.push({
+    if (!offline && (p.current_job_name || (p.state || '').toLowerCase() === 'printing')) {
+      tl.schedule.push({
         type: 'active',
         name: p.current_job_name || 'Active Job',
-        start: Date.now(),
-        end: endTime,
+        start: nowMs, end: busyEnd,
         percent: p.percent_complete || 0,
         job: activeJob
       });
     }
   });
 
-  // Helper to parse duration from file name or print_time_m
-  function getDurationMinutes(job) {
-    if (job && job.print_files && job.print_files.print_time_m) {
-      return job.print_files.print_time_m;
-    }
-    const name = job ? (job.print_file_name || job.name) : '';
-    if (!name) return 60; // 1 hour default
-    const nameLower = name.toLowerCase();
-    const match = nameLower.match(/\b(?:(\d+)h)?(?:(\d+)m)\b|\b(\d+)h\b/);
-    if (match) {
-      const h = match[1] || match[3];
-      const m = match[2];
-      const hVal = h ? parseInt(h) : 0;
-      const mVal = m ? parseInt(m) : 0;
-      return hVal * 60 + mVal;
-    }
-    return 60;
-  }
+  // 2. Assign queue items to correct printer group, earliest free first
+  const sortedQ = [...(queue || [])].sort((a, b) => (a.position || 0) - (b.position || 0));
+  sortedQ.forEach(q => {
+    const allowed = printerGroupFor(q.name);
+    const durMs   = (q.estimate_seconds || 3600) * 1000;
+    const job     = (jobs || []).find(j => String(j.simplyprint_job_id) === String(q.id));
 
-  // 2. Sort the queue items by position
-  const sortedQueue = [...(queue || [])].sort((a, b) => (a.position || 0) - (b.position || 0));
-
-  // 3. Simulate queue dispatching (sequential assignment to earliest free printer)
-  sortedQueue.forEach(q => {
-    // Find corresponding print job in DB to get SKU and Order details
-    const job = (jobs || []).find(j => String(j.simplyprint_job_id) === String(q.id));
-    const durationMins = job ? getDurationMinutes(job) : (q.estimate_seconds ? q.estimate_seconds / 60 : 60);
-    const durationMs = durationMins * 60 * 1000;
-
-    // Find printer that finishes earliest
-    let earliestPrinter = null;
-    let minTime = Infinity;
-    Object.keys(printerTimelines).forEach(name => {
-      if (printerTimelines[name].busyUntil < minTime) {
-        minTime = printerTimelines[name].busyUntil;
-        earliestPrinter = name;
-      }
+    // Pick earliest free printer in allowed group
+    let best = null, bestT = Infinity;
+    allowed.forEach(pid => {
+      const tl = tlById[pid];
+      if (tl && !tl.offline && tl.busyUntil < bestT) { bestT = tl.busyUntil; best = tl; }
     });
+    // Fallback: any printer in group (even offline) so the block still renders
+    if (!best) allowed.forEach(pid => {
+      const tl = tlById[pid];
+      if (tl && tl.busyUntil < bestT) { bestT = tl.busyUntil; best = tl; }
+    });
+    if (!best) return;
 
-    if (earliestPrinter) {
-      const startTime = printerTimelines[earliestPrinter].busyUntil;
-      const endTime = startTime + durationMs;
-
-      printerTimelines[earliestPrinter].schedule.push({
-        type: 'queued',
-        name: q.name,
-        start: startTime,
-        end: endTime,
-        percent: 0,
-        job: job
-      });
-
-      printerTimelines[earliestPrinter].busyUntil = endTime;
-    }
+    const start = best.busyUntil, end = start + durMs;
+    best.schedule.push({ type: 'queued', name: q.name, start, end, percent: 0, job });
+    best.busyUntil = end;
   });
 
-  // 4. Render timeline grid and rows
-  const timelineStart = Date.now();
-  const timelineDurationMs = ganttTimeWindow * 60 * 60 * 1000;
-  const timelineEnd = timelineStart + timelineDurationMs;
+  // 3. Render
+  const winMs  = ganttTimeWindow * 3600000;
+  const winEnd = nowMs + winMs;
 
-  // 12 timeline segments
-  const segmentMs = timelineDurationMs / 12;
-  let timeLabelsHtml = '';
-  for (let i = 0; i <= 12; i++) {
-    const tickTime = new Date(timelineStart + i * segmentMs);
-    const timeStr = tickTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    timeLabelsHtml += `<div style="width: ${i === 12 ? '0px' : 'calc(100% / 12)'}; text-align: left; transform: translateX(-50%);">${timeStr}</div>`;
+  // Time labels — 6 ticks
+  const N = 6;
+  let labelsHtml = '';
+  for (let i = 0; i <= N; i++) {
+    const pct   = (i / N) * 100;
+    const xform = i === 0 ? 'translateX(0)' : i === N ? 'translateX(-100%)' : 'translateX(-50%)';
+    labelsHtml += `<div style="position:absolute;left:${pct}%;transform:${xform};white-space:nowrap;">${fmtTime(nowMs + i * winMs / N)}</div>`;
   }
 
-  // Grid lines background html
-  let gridLinesHtml = '<div class="gantt-grid-lines">';
-  for (let i = 0; i <= 12; i++) {
-    gridLinesHtml += `<div class="gantt-grid-line" style="left: ${(i / 12) * 100}%;"></div>`;
-  }
-  gridLinesHtml += '</div>';
+  // Grid lines
+  let gridHtml = '<div class="gantt-grid-lines">';
+  for (let i = 0; i <= N; i++) gridHtml += `<div class="gantt-grid-line" style="left:${(i/N)*100}%;"></div>`;
+  gridHtml += '</div>';
+
+  // Rows: mini first, then regular; offline at bottom within each group
+  const sorted = Object.values(tlById).sort((a, b) => {
+    if (a.offline !== b.offline) return a.offline ? 1 : -1;
+    if (a.isMini !== b.isMini)   return a.isMini  ? -1 : 1;
+    return (a.printer.name || '').localeCompare(b.printer.name || '');
+  });
 
   let rowsHtml = '';
-  Object.keys(printerTimelines).forEach(printerName => {
-    const timeline = printerTimelines[printerName];
+  sorted.forEach(tl => {
+    const { printer: p, isMini, offline } = tl;
     let blocksHtml = '';
 
-    timeline.schedule.forEach(block => {
-      // Calculate start and end percentage relative to timeline window
-      const blockStart = block.start;
-      const blockEnd = block.end;
+    tl.schedule.forEach(block => {
+      if (block.end <= nowMs || block.start >= winEnd) return;
+      let lp = ((block.start - nowMs) / winMs) * 100;
+      let wp = ((block.end - block.start) / winMs) * 100;
+      if (lp < 0) { wp += lp; lp = 0; }
+      if (lp + wp > 100) wp = 100 - lp;
+      if (wp <= 0) return;
 
-      if (blockEnd <= timelineStart || blockStart >= timelineEnd) {
-        // Outside the timeline window
-        return;
-      }
+      const sku  = block.job?.order_items?.variant_sku || '';
+      const cust = block.job?.order_items?.orders?.customer_name || '';
+      const oid  = block.job?.order_items?.orders?.platform_order_id || '';
+      const disp = cleanName(block.name);
+      const dur  = fmtDur(block.end - block.start);
 
-      let leftPercent = ((blockStart - timelineStart) / timelineDurationMs) * 100;
-      let widthPercent = ((blockEnd - blockStart) / timelineDurationMs) * 100;
-
-      // Clip block to window bounds
-      if (leftPercent < 0) {
-        widthPercent += leftPercent;
-        leftPercent = 0;
-      }
-      if (leftPercent + widthPercent > 100) {
-        widthPercent = 100 - leftPercent;
-      }
-
-      if (widthPercent <= 0) return;
-
-      // Color coding by type
-      let blockClass = 'gantt-block-queued-other';
-      let typeLabel = 'Queued';
-      let sku = 'Unknown SKU';
-      let variantName = block.name;
-      let customerName = 'N/A';
-      let orderId = 'N/A';
-
+      // Block colour
+      let cls = 'gantt-block-queued-other';
+      let bgStyle = '';
+      const su = sku.toUpperCase();
       if (block.type === 'active') {
-        blockClass = 'gantt-block-active';
-        typeLabel = 'Active';
+        const pct = block.percent || 0;
+        bgStyle = `background:linear-gradient(to right,rgba(164,232,68,.28) ${pct}%,rgba(164,232,68,.07) ${pct}%);`;
+        cls = 'gantt-block-active';
+      } else if (su.includes('-DS') && !su.includes('-DS-NP')) {
+        cls = 'gantt-block-queued-ds';
+      } else if (su.includes('-FWM')) {
+        cls = 'gantt-block-queued-fwm';
+      } else if (su.includes('-WM')) {
+        cls = 'gantt-block-queued-wm';
       }
 
-      if (block.job) {
-        sku = block.job.order_items?.variant_sku || block.job.variant_sku || 'N/A';
-        variantName = block.job.order_items?.variant_name || block.job.print_file_name || 'N/A';
-        customerName = block.job.order_items?.orders?.customer_name || 'N/A';
-        orderId = block.job.order_items?.orders?.platform_order_id || 'N/A';
+      // Tooltip edge-clamping
+      const ttPos = lp > 65
+        ? 'right:0;left:auto;transform:none;'
+        : lp < 10
+          ? 'left:0;transform:none;'
+          : 'left:50%;transform:translateX(-50%);';
 
-        if (block.type !== 'active') {
-          const skuUpper = sku.toUpperCase();
-          if (skuUpper.includes('-DS-NP')) {
-            blockClass = 'gantt-block-queued-other';
-          } else if (skuUpper.includes('-DS')) {
-            blockClass = 'gantt-block-queued-ds';
-          } else if (skuUpper.includes('-FWM')) {
-            blockClass = 'gantt-block-queued-fwm';
-          } else if (skuUpper.includes('-WM')) {
-            blockClass = 'gantt-block-queued-wm';
-          }
-        }
-      }
-
-      // Format duration for tooltip
-      const durationMins = Math.round((blockEnd - blockStart) / 60000);
-      const durStr = durationMins >= 60 ? `${Math.floor(durationMins/60)}h ${durationMins%60}m` : `${durationMins}m`;
-
-      // Build rich tooltip HTML
-      const tooltipHtml = `
-        <div class="gantt-tooltip">
-          <div class="font-bold border-b border-outline-variant/20 pb-1.5 mb-1.5 text-primary text-[10px]">
-            [${typeLabel}] ${sku}
+      const tooltip = `
+        <div class="gantt-tooltip" style="${ttPos}">
+          <div class="text-primary font-bold text-[10px] border-b border-white/10 pb-1.5 mb-1.5 truncate">${sku || disp}</div>
+          <div class="space-y-0.5 text-[9px] text-on-surface-variant">
+            <div class="truncate"><span class="opacity-50">File</span>&nbsp;${disp}</div>
+            ${oid  ? `<div><span class="opacity-50">Order</span>&nbsp;${oid}</div>` : ''}
+            ${cust ? `<div><span class="opacity-50">Customer</span>&nbsp;${cust}</div>` : ''}
+            <div><span class="opacity-50">Duration</span>&nbsp;${dur}</div>
+            <div><span class="opacity-50">${block.type === 'active' ? 'Finishes' : 'Starts ~'}</span>&nbsp;${fmtTime(block.type === 'active' ? block.end : block.start)}</div>
+            ${block.type === 'active' ? `<div class="text-primary font-bold mt-0.5">${block.percent}% complete</div>` : ''}
           </div>
-          <div class="space-y-1 text-on-surface-variant">
-            <div class="overflow-hidden text-ellipsis whitespace-nowrap" style="max-width: 220px;"><strong>File:</strong> ${block.name}</div>
-            <div><strong>Order:</strong> ${orderId}</div>
-            <div><strong>Customer:</strong> ${customerName}</div>
-            <div><strong>Duration:</strong> ${durStr}</div>
-            <div><strong>Est. Start:</strong> ${new Date(blockStart).toLocaleTimeString()}</div>
-            <div><strong>Est. Finish:</strong> ${new Date(blockEnd).toLocaleTimeString()}</div>
-            ${block.type === 'active' ? `<div><strong>Progress:</strong> ${block.percent}%</div>` : ''}
-          </div>
-        </div>
-      `;
+        </div>`;
 
-      // Main block HTML
       blocksHtml += `
-        <div class="gantt-block ${blockClass}" style="left: ${leftPercent}%; width: ${widthPercent}%;">
-          <span class="gantt-block-title">${sku}</span>
-          ${tooltipHtml}
-        </div>
-      `;
+        <div class="gantt-block ${cls}" style="left:${lp.toFixed(2)}%;width:${wp.toFixed(2)}%;${bgStyle}">
+          ${wp > 5 ? `<span class="gantt-block-title">${disp}</span>` : ''}
+          ${tooltip}
+        </div>`;
     });
 
+    if (!blocksHtml && !offline) {
+      blocksHtml = `<div class="gantt-idle-label">IDLE</div>`;
+    }
+
+    const badge = `<span class="gantt-printer-badge ${isMini ? 'badge-mini' : 'badge-reg'}">${isMini ? 'MINI' : 'A1'}</span>`;
+
     rowsHtml += `
-      <div class="gantt-row ${timeline.isOfflineOrError ? 'opacity-65' : ''}">
-        <div class="gantt-printer-col" title="${printerName}${timeline.isOfflineOrError ? ' (offline)' : ''}">
-          ${printerName}${timeline.isOfflineOrError ? ' <span class="text-[9px] opacity-75 font-normal block">(offline)</span>' : ''}
+      <div class="gantt-row ${offline ? 'gantt-row-offline' : ''}">
+        <div class="gantt-printer-col">
+          <div class="flex items-center gap-1.5 min-w-0">
+            ${badge}
+            <span class="truncate text-[11px] font-semibold" title="${p.name}">${p.name}</span>
+          </div>
+          ${offline ? '<span class="text-[9px] text-error/60 mt-0.5 block">offline</span>' : ''}
         </div>
         <div class="gantt-timeline-col">
-          ${gridLinesHtml}
+          ${gridHtml}
           ${blocksHtml}
         </div>
-      </div>
-    `;
+      </div>`;
   });
 
   container.innerHTML = `
-    <div class="gantt-time-labels">
-      ${timeLabelsHtml}
-    </div>
-    <div class="flex flex-col gap-1">
-      ${rowsHtml}
-    </div>
-  `;
+    <div class="gantt-time-labels" style="position:relative;height:18px;margin-bottom:8px;">${labelsHtml}</div>
+    <div class="flex flex-col">${rowsHtml}</div>`;
 }
 
 async function fetchAndRenderPrintersAndQueue() {
