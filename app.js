@@ -1654,7 +1654,11 @@ function setupSettings() {
   saveBtn.addEventListener("click", () => {
     const url = document.getElementById("setting-supabase-url").value.trim();
     const key = document.getElementById("setting-supabase-key").value.trim();
-    const backendUrl = document.getElementById("setting-backend-url").value.trim();
+    let backendUrl = document.getElementById("setting-backend-url").value.trim();
+    if (backendUrl && !backendUrl.startsWith("http://") && !backendUrl.startsWith("https://")) {
+      backendUrl = "https://" + backendUrl;
+      document.getElementById("setting-backend-url").value = backendUrl;
+    }
     const spKey = document.getElementById("setting-simplyprint-key").value.trim();
 
     localStorage.setItem("orbot_supabase_url", url);
