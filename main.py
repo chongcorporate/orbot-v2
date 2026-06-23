@@ -1179,7 +1179,7 @@ class ScoutAgent:
         if is_f1 and is_sc and norm_var:
             tier_suffix = get_f1_multi_tier_suffix(norm_var, listing_title)
             if tier_suffix:
-                target_sku = f"BO-SC-DS-F1-{tier_suffix}"
+                target_sku = f"BLO-SC-DS-F1-{tier_suffix}"
                 logger.info(f"[Matching] F1 Multi-tier matching constructed target SKU '{target_sku}'")
                 try:
                     res = self.supabase.table("variants").select("id, variant_sku").eq("variant_sku", target_sku).execute()
@@ -1202,7 +1202,7 @@ class ScoutAgent:
         if is_f1 and is_sc and is_vertical and norm_var:
             suffix = get_f1_sku_suffix(norm_var)
             if suffix:
-                target_sku = f"BO-SC-VDS-F1-{suffix}"
+                target_sku = f"BLO-SC-VDS-F1-{suffix}"
                 logger.info(f"[Matching] Stage 2.5: F1 Team matching constructed target SKU '{target_sku}'")
                 try:
                     res = self.supabase.table("variants").select("id, variant_sku").eq("variant_sku", target_sku).execute()
@@ -1243,7 +1243,8 @@ class ScoutAgent:
                                 if wm_var:
                                     best_var = wm_var
                         if not best_var:
-                            best_var = variations.data[0]
+                            logger.warning(f"[Matching] Stage 3: found listing '{best_fuzzy['platform_listing_name']}' but no variation matched '{norm_var}'. Not guessing.")
+                            return None, False
                         return best_var["variant_id"], True
             except Exception as e:
                 logger.error(f"[Matching] Stage 3 database error: {e}")
