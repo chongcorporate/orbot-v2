@@ -1358,7 +1358,7 @@ async function runManualIngestion() {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Edge Function returned HTTP ${response.status}: ${errorText}`);
+      throw new Error(`Backend returned HTTP ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
