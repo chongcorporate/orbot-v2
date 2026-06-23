@@ -223,7 +223,7 @@ def get_f1_multi_tier_suffix(var_name: Optional[str], listing_title: str) -> str
 
 class OrderItem(BaseModel):
     listing_title: str = Field(description="The name of the product listing. CRITICAL: Strip off any leading item numbering, indices, or list prefixes like '1. ', '2) ', '• ' so that it is just the text name, e.g. 'Display Stand for Time Machine...'.")
-    variation_name: Optional[str] = Field(default=None, description="The specific variation/option selected (e.g. 'Base - Plaque'). Use None or empty string if no variation is mentioned.")
+    variation_name: Optional[str] = Field(default=None, description="The specific variation/option selected. CRITICAL: Copy the variation name EXACTLY as it appears in the email — do NOT strip trailing numbers, commas, or suffixes (e.g. '(75394)Base - Plaque,1' must stay '(75394)Base - Plaque,1', not 'Base - Plaque'). These trailing values are part of the variant identifier, not quantities. Use None if no variation is mentioned.")
     purchased_quantity: int = Field(description="Quantity ordered.")
 
 class OrderDetails(BaseModel):
