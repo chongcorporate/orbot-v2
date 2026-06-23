@@ -1044,7 +1044,7 @@ class ScoutAgent:
         prompt = f"Extract structured order details from this email:\n\n{cleaned_body}"
         try:
             response = self.ai_client.models.generate_content(
-                model='gemini-3.1-flash-lite',
+                model='gemini-2.0-flash-lite',
                 contents=prompt,
                 config={
                     'response_mime_type': 'application/json',
@@ -1052,7 +1052,7 @@ class ScoutAgent:
                     'temperature': 0.1
                 }
             )
-            self._log_gemini_usage('gemini-3.1-flash-lite', response)
+            self._log_gemini_usage('gemini-2.0-flash-lite', response)
             order_data = json.loads(response.text)
             return OrderDetails(**order_data)
         except Exception as e:
@@ -1442,7 +1442,7 @@ class ScoutAgent:
                 platform_order_id: str = Field(description="The platform order ID to cancel")
                 
             response = self.ai_client.models.generate_content(
-                model='gemini-3.1-flash-lite',
+                model='gemini-2.0-flash-lite',
                 contents=prompt,
                 config={
                     'response_mime_type': 'application/json',
@@ -1450,7 +1450,7 @@ class ScoutAgent:
                     'temperature': 0.1
                 }
             )
-            self._log_gemini_usage('gemini-3.1-flash-lite', response)
+            self._log_gemini_usage('gemini-2.0-flash-lite', response)
             cancel_data = json.loads(response.text)
             platform_order_id = cancel_data.get("platform_order_id")
             
@@ -1884,10 +1884,10 @@ def classify_document(text):
     )
     try:
         response = ai_client.models.generate_content(
-            model='gemini-3.1-flash-lite',
+            model='gemini-2.0-flash-lite',
             contents=prompt
         )
-        log_gemini_usage("Waybill Agent", "gemini-3.1-flash-lite", response)
+        log_gemini_usage("Waybill Agent", "gemini-2.0-flash-lite", response)
         res_text = response.text.replace('```json', '').replace('```', '').strip()
         data = json.loads(res_text)
         return data.get('class')
@@ -1904,7 +1904,7 @@ def parse_packing_list(text):
     )
     try:
         response = ai_client.models.generate_content(
-            model='gemini-3.1-flash-lite',
+            model='gemini-2.0-flash-lite',
             contents=prompt,
             config={
                 'response_mime_type': 'application/json',
@@ -1912,7 +1912,7 @@ def parse_packing_list(text):
                 'temperature': 0.1
             }
         )
-        log_gemini_usage("Waybill Agent", "gemini-3.1-flash-lite", response)
+        log_gemini_usage("Waybill Agent", "gemini-2.0-flash-lite", response)
         res_text = response.text.strip()
         data = json.loads(res_text)
         orders = data.get('orders', [])
@@ -1952,8 +1952,8 @@ def process_ingestion(service, waybill_pdf_path, packing_list_pdf_path=None, way
                         f"Text:\n{text}"
                     )
                     try:
-                        response = ai_client.models.generate_content(model='gemini-3.1-flash-lite', contents=prompt)
-                        log_gemini_usage("Waybill Agent", "gemini-3.1-flash-lite", response)
+                        response = ai_client.models.generate_content(model='gemini-2.0-flash-lite', contents=prompt)
+                        log_gemini_usage("Waybill Agent", "gemini-2.0-flash-lite", response)
                         res_text = response.text.replace('```json', '').replace('```', '').strip()
                         order_id = json.loads(res_text).get('order_id')
                     except Exception as e:
@@ -1987,8 +1987,8 @@ def process_ingestion(service, waybill_pdf_path, packing_list_pdf_path=None, way
                     f"Text:\n{text}"
                 )
                 try:
-                    response = ai_client.models.generate_content(model='gemini-3.1-flash-lite', contents=prompt)
-                    log_gemini_usage("Waybill Agent", "gemini-3.1-flash-lite", response)
+                    response = ai_client.models.generate_content(model='gemini-2.0-flash-lite', contents=prompt)
+                    log_gemini_usage("Waybill Agent", "gemini-2.0-flash-lite", response)
                     res_text = response.text.replace('```json', '').replace('```', '').strip()
                     order_id = json.loads(res_text).get('order_id')
                 except:
@@ -3212,11 +3212,11 @@ def cancel_order(req: CancelRequest, request: Request):
             class _CancelSchema(BaseModel):
                 platform_order_id: str = Field(description="The platform order ID to cancel")
             response = ai_client.models.generate_content(
-                model='gemini-3.1-flash-lite',
+                model='gemini-2.0-flash-lite',
                 contents=f"Extract the Order ID from this cancellation email. Return ONLY JSON: {{\"platform_order_id\": \"string\"}}.\n\n{req.email_body}",
                 config={'response_mime_type': 'application/json', 'response_schema': _CancelSchema, 'temperature': 0.1}
             )
-            log_gemini_usage('Cancellation', 'gemini-3.1-flash-lite', response)
+            log_gemini_usage('Cancellation', 'gemini-2.0-flash-lite', response)
             cancel_data = json.loads(response.text)
             platform_order_id = cancel_data.get("platform_order_id")
             if not platform_order_id:
