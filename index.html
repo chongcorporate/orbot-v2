@@ -532,31 +532,43 @@
         <!-- Top Row: Stats Summary Cards & Print Queue Depth -->
         <div class="grid grid-cols-12 gap-5">
           <div class="col-span-12 lg:col-span-10 grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-orange">
+            <div id="stat-card-orders-today" class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-orange cursor-pointer" title="Go to Orders">
               <div class="absolute inset-0 bg-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Orders Today</span>
+              <div class="flex justify-between items-start">
+                <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Orders Today</span>
+                <span class="material-symbols-outlined text-[13px] text-outline opacity-0 group-hover:opacity-60 transition-opacity">arrow_forward</span>
+              </div>
               <div class="flex items-end justify-between mt-auto pt-2">
                 <span class="font-headline-md text-display-lg text-[#ff8c00] drop-shadow-[0_0_12px_rgba(255,140,0,0.2)]" id="stats-orders">-</span>
                 <span class="font-data-mono text-[10px] text-outline self-end pb-1" id="stats-orders-trend"></span>
               </div>
             </div>
-            <div class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-purple">
+            <div id="stat-card-pending" class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-purple cursor-pointer" title="Go to Orders">
               <div class="absolute inset-0 bg-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Pending Orders</span>
+              <div class="flex justify-between items-start">
+                <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Pending Orders</span>
+                <span class="material-symbols-outlined text-[13px] text-outline opacity-0 group-hover:opacity-60 transition-opacity">arrow_forward</span>
+              </div>
               <div class="flex items-end justify-between mt-auto pt-2">
                 <span class="font-headline-md text-display-lg text-[#bc13fe] drop-shadow-[0_0_12px_rgba(188,19,254,0.2)]" id="stats-items">-</span>
               </div>
             </div>
-            <div class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-yellow">
+            <div id="stat-card-hold" class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-yellow cursor-pointer" title="Go to Orders">
               <div class="absolute inset-0 bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Orders On Hold</span>
+              <div class="flex justify-between items-start">
+                <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Orders On Hold</span>
+                <span class="material-symbols-outlined text-[13px] text-outline opacity-0 group-hover:opacity-60 transition-opacity">arrow_forward</span>
+              </div>
               <div class="flex items-end justify-between mt-auto pt-2">
                 <span class="font-headline-md text-display-lg text-[#eab308] drop-shadow-[0_0_12px_rgba(234,179,8,0.2)]" id="stats-hold">-</span>
               </div>
             </div>
-            <div class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-cyan">
+            <div id="stat-card-queue" class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-cyan cursor-pointer" title="Go to Printers">
               <div class="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Queue Depth</span>
+              <div class="flex justify-between items-start">
+                <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Queue Depth</span>
+                <span class="material-symbols-outlined text-[13px] text-outline opacity-0 group-hover:opacity-60 transition-opacity">arrow_forward</span>
+              </div>
               <div class="flex items-baseline justify-between mt-auto pt-2">
                 <span class="font-headline-md text-display-lg text-primary drop-shadow-[0_0_12px_rgba(164,232,68,0.2)]" id="stats-queue-depth">-</span>
                 <span class="font-data-mono text-[11px] text-outline" id="stats-queue-time">0m</span>
@@ -565,7 +577,7 @@
           </div>
           <!-- System Errors Card -->
           <div class="col-span-12 lg:col-span-2">
-            <div class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden border-error/30 shadow-[0_0_15px_rgba(147,0,10,0.1)] group h-full glow-hover-red">
+            <div id="stat-card-errors" class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden border-error/30 shadow-[0_0_15px_rgba(147,0,10,0.1)] group h-full glow-hover-red cursor-pointer" title="Go to Logs">
               <div class="absolute inset-0 bg-error/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div class="flex justify-between items-center w-full z-10">
                 <span class="font-label-caps text-label-caps text-error uppercase">System Errors</span>
@@ -1685,6 +1697,6 @@
       await import("https://unpkg.com/@oddbird/css-anchor-positioning");
     }
   </script>
-  <script src="app.js?v=1.5.7"></script>
+  <script src="app.js?v=1.5.8"></script>
 </body>
 </html>

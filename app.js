@@ -3593,6 +3593,28 @@ function setupPrinterControls() {
   const overviewRefreshOrdersBtn = document.getElementById("overview-orders-btn-refresh");
   if (overviewRefreshOrdersBtn) overviewRefreshOrdersBtn.addEventListener("click", fetchAndRenderOrders);
 
+  // Stat card navigation
+  function navigateToTab(tabId) {
+    const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+    if (btn) btn.click();
+  }
+  const statCardMap = {
+    "stat-card-orders-today": "orders",
+    "stat-card-pending": "orders",
+    "stat-card-hold": "orders",
+    "stat-card-queue": "printers",
+    "stat-card-errors": "logs",
+  };
+  Object.entries(statCardMap).forEach(([id, tab]) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("click", () => navigateToTab(tab));
+  });
+
+  // Auto-refresh pending orders table every 30s when on overview tab
+  setInterval(() => {
+    if (currentTab === "overview") fetchAndRenderOrders();
+  }, 30000);
+
   const clearDbBtn = document.getElementById("clear-db-btn");
   if (clearDbBtn) clearDbBtn.addEventListener("click", clearDatabase);
 
