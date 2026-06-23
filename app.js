@@ -1799,6 +1799,15 @@ async function forceReleaseOrder(orderId) {
 }
 
 // Heartbeats & Agent Management
+function timeAgo(dateStr) {
+  if (!dateStr) return "—";
+  const diff = Date.now() - new Date(dateStr).getTime();
+  if (diff < 60000) return "just now";
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  return `${Math.floor(diff / 86400000)}d ago`;
+}
+
 async function fetchAgentHeartbeats() {
   if (!supabaseClient) return;
   try {
@@ -1807,42 +1816,53 @@ async function fetchAgentHeartbeats() {
       .select("*");
     if (error) throw error;
 
-    const now = new Date();
-    const isOnline = (hbTimeStr) => {
+    const now = Date.now();
+    const isOnline = (hbTimeStr, thresholdMs = 120000) => {
       if (!hbTimeStr) return false;
-      const hbTime = new Date(hbTimeStr);
-      return (now - hbTime) < 15000; // Online if within 15 seconds
+      return (now - new Date(hbTimeStr).getTime()) < thresholdMs;
     };
 
-    const hb = heartbeats.find(h => h.agent_name === "orbot_service");
-    const online = hb && isOnline(hb.last_heartbeat);
+    const hbMap = Object.fromEntries((heartbeats || []).map(h => [h.agent_name, h]));
 
+    // --- orbot_service (legacy + header elements) ---
+    const svcHb = hbMap["orbot_service"];
+    const svcOnline = isOnline(svcHb?.last_heartbeat, 120000);
     const prefixes = ["", "waybill-", "overview-", "header-"];
     prefixes.forEach(prefix => {
       const dotEl = document.getElementById(`${prefix}hb-orbot_service-dot`);
       const textEl = document.getElementById(`${prefix}hb-orbot_service-text`);
-      
       if (dotEl && textEl) {
-        if (online) {
-          // Adjust class name/appearance depending on context
-          if (prefix === "header-" || prefix === "waybill-") {
-            dotEl.className = prefix === "waybill-" ? "w-1.5 h-1.5 rounded-full bg-success" : "w-2.5 h-2.5 rounded-full bg-success";
-          } else {
-            dotEl.className = "status-light-online";
-          }
+        if (svcOnline) {
+          dotEl.className = (prefix === "waybill-") ? "w-1.5 h-1.5 rounded-full bg-success" : (prefix === "header-") ? "w-2.5 h-2.5 rounded-full bg-success" : "status-light-online";
           textEl.innerText = "Online";
           textEl.style.color = "#10b981";
         } else {
-          if (prefix === "header-" || prefix === "waybill-") {
-            dotEl.className = prefix === "waybill-" ? "w-1.5 h-1.5 rounded-full bg-error" : "w-2.5 h-2.5 rounded-full bg-error";
-          } else {
-            dotEl.className = "status-light-offline";
-          }
+          dotEl.className = (prefix === "waybill-") ? "w-1.5 h-1.5 rounded-full bg-error" : (prefix === "header-") ? "w-2.5 h-2.5 rounded-full bg-error" : "status-light-offline";
           textEl.innerText = "Offline";
           textEl.style.color = "#ff5252";
         }
       }
     });
+
+    // --- Agents page cards ---
+    const agentConfigs = [
+      { name: "orbot_service", threshold: 120000, color: "#a4e844", dotId: "agents-hb-service-dot", textId: "agents-hb-service-text", timeId: "agents-hb-service-time" },
+      { name: "scout",         threshold: 600000, color: "#22d3ee", dotId: "agents-hb-scout-dot",   textId: "agents-hb-scout-text",   timeId: "agents-hb-scout-time" },
+      { name: "orbot_service", threshold: 120000, color: "#a4e844", dotId: "agents-hb-foreman-dot", textId: "agents-hb-foreman-text", timeId: "agents-hb-foreman-time" },
+      { name: "waybill_agent", threshold: 600000, color: "#ffaa6b", dotId: "agents-hb-waybill-dot",  textId: "agents-hb-waybill-text",  timeId: "agents-hb-waybill-time" },
+      { name: "orbot_service", threshold: 120000, color: "#7ea6e8", dotId: "agents-hb-spsync-dot",  textId: "agents-hb-spsync-text",  timeId: "agents-hb-spsync-time" },
+    ];
+    agentConfigs.forEach(({ name, threshold, color, dotId, textId, timeId }) => {
+      const hb = hbMap[name];
+      const online = isOnline(hb?.last_heartbeat, threshold);
+      const dotEl = document.getElementById(dotId);
+      const textEl = document.getElementById(textId);
+      const timeEl = document.getElementById(timeId);
+      if (dotEl) dotEl.style.background = online ? "#10b981" : "#ff5252";
+      if (textEl) { textEl.innerText = online ? "Online" : "Offline"; textEl.style.color = online ? "#10b981" : "#ff5252"; }
+      if (timeEl) timeEl.innerText = timeAgo(hb?.last_heartbeat);
+    });
+
   } catch (err) {
     console.error("Error fetching heartbeats:", err);
   }
