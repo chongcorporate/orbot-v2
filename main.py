@@ -1315,10 +1315,31 @@ class ScoutAgent:
                 if is_fuzzy:
                     has_fuzzy_match = True
                     fuzzy_item_details += f"Listing: '{listing_title}' (Var: '{variation_name}'); "
-                
+
                 var_info = self.supabase.table("variants").select("variant_sku, variant_name").eq("id", variant_id).execute()
                 v_sku = var_info.data[0]["variant_sku"] if var_info.data else None
                 v_name = var_info.data[0]["variant_name"] if var_info.data else None
+
+                # Sanity-check: if the variation name ends with a number (e.g. "Plaque,1"),
+                # the matched SKU must end with that same number (e.g. DS-1). A mismatch
+                # means bad listing_variations data — hold the order rather than print wrong.
+                if variation_name and v_sku:
+                    num_m = re.search(r',\s*(\d+)\s*$', variation_name)
+                    if num_m and not re.search(r'-' + num_m.group(1) + r'$', v_sku):
+                        has_matching_failure = True
+                        msg = (f"Numeric mismatch: variation '{variation_name}' mapped to SKU '{v_sku}' "
+                               f"for '{listing_title}' in order {order_details.platform_order_id}. "
+                               f"Check listing_variations data.")
+                        logger.error(msg)
+                        self.log_to_db("error", msg, {"platform_order_id": order_details.platform_order_id,
+                                                       "variation_name": variation_name, "matched_sku": v_sku})
+                        missing_item_details += f"Numeric mismatch: '{variation_name}' → '{v_sku}'; "
+                        fake_key = f"non_existent_{item_index}"
+                        item_index += 1
+                        resolved_items[fake_key] = {"variant_sku": v_sku, "variant_name": v_name,
+                                                     "quantity": quantity, "variation_names": {variation_name},
+                                                     "is_fake": True}
+                        continue
                 
                 if variant_id not in resolved_items:
                     resolved_items[variant_id] = {
