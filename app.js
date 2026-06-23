@@ -799,7 +799,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
 
         const rawText = await response.text();
         let resData;
-        try { resData = JSON.parse(rawText); } catch { throw new Error(`Backend error (HTTP ${response.status}): ${rawText.substring(0, 120)}`); }
+        try { resData = JSON.parse(rawText); } catch { throw new Error(`Backend error (HTTP ${response.status}) calling ${backendUrl}/cancel: ${rawText.substring(0, 80)}`); }
         if (!response.ok) throw new Error(resData.detail || resData.error || `HTTP ${response.status}`);
 
         logAction(`Order deleted: ${platformOrderId}`, "warning", { order_id: orderId, platform_order_id: platformOrderId });
