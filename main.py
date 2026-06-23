@@ -2988,8 +2988,8 @@ def _do_cancel_order(order_id: str, platform_order_id: Optional[str] = None, sp_
     company_id = SIMPLYPRINT_COMPANY_ID
 
     if not platform_order_id:
-        r = supabase.table('orders').select('platform_order_id').eq('id', order_id).maybeSingle().execute()
-        platform_order_id = (r.data or {}).get('platform_order_id', order_id)
+        r = supabase.table('orders').select('platform_order_id').eq('id', order_id).limit(1).execute()
+        platform_order_id = (r.data[0] if r.data else {}).get('platform_order_id', order_id)
 
     items_res = supabase.table('order_items').select('id').eq('order_id', order_id).execute()
     order_items = items_res.data or []
@@ -3223,10 +3223,10 @@ def cancel_order(req: CancelRequest, request: Request):
                 raise HTTPException(status_code=422, detail="Could not extract order ID from email body.")
 
         if platform_order_id and not order_id:
-            r = supabase.table('orders').select('id').eq('platform_order_id', platform_order_id).maybeSingle().execute()
+            r = supabase.table('orders').select('id').eq('platform_order_id', platform_order_id).limit(1).execute()
             if not r.data:
                 return {"status": "ignored", "reason": "Order not found"}
-            order_id = r.data['id']
+            order_id = r.data[0]['id']
 
         if not order_id:
             raise HTTPException(status_code=400, detail="Provide order_id, platform_order_id, or email_body.")
