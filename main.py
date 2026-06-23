@@ -1373,8 +1373,12 @@ class ScoutAgent:
             raise Exception(f"Order {order_details.platform_order_id} ingested with missing items: {missing_item_details}")
 
         if successful_items > 0:
-            print("Order ingested, Foreman trigger activated.")
             self.log_to_db("info", f"Successfully ingested order {order_details.platform_order_id} with {successful_items} items.", {"platform_order_id": order_details.platform_order_id})
+            try:
+                dispatch_result = run_foreman_dispatch()
+                logger.info(f"[Foreman] Auto-dispatch after ingestion: {dispatch_result.get('message', dispatch_result)}")
+            except Exception as fe:
+                logger.error(f"[Foreman] Auto-dispatch failed for order {order_details.platform_order_id}: {fe}")
         else:
             msg = f"Order {order_details.platform_order_id} was created but no items were successfully matched/inserted."
             logger.warning(msg)
