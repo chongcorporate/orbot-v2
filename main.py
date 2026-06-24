@@ -1107,7 +1107,7 @@ class ScoutAgent:
 
         try:
             response = self.ai_client.models.generate_content(
-                model='gemini-2.0-flash',
+                model='gemini-2.5-flash',
                 contents=prompt,
                 config={
                     'response_mime_type': 'application/json',
@@ -1115,7 +1115,7 @@ class ScoutAgent:
                     'temperature': 0.1
                 }
             )
-            self._log_gemini_usage('gemini-2.0-flash', response)
+            self._log_gemini_usage('gemini-2.5-flash', response)
             order_data = json.loads(response.text)
             # Override with regex-extracted fields (more reliable)
             order_data.update({k: v for k, v in prefilled.items() if v})
@@ -1533,7 +1533,7 @@ class ScoutAgent:
                 platform_order_id: str = Field(description="The platform order ID to cancel")
                 
             response = self.ai_client.models.generate_content(
-                model='gemini-2.0-flash',
+                model='gemini-2.5-flash',
                 contents=prompt,
                 config={
                     'response_mime_type': 'application/json',
@@ -1541,7 +1541,7 @@ class ScoutAgent:
                     'temperature': 0.1
                 }
             )
-            self._log_gemini_usage('gemini-2.0-flash', response)
+            self._log_gemini_usage('gemini-2.5-flash', response)
             cancel_data = json.loads(response.text)
             platform_order_id = cancel_data.get("platform_order_id")
             
@@ -1968,10 +1968,10 @@ def classify_document(text):
     )
     try:
         response = ai_client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-2.5-flash',
             contents=prompt
         )
-        log_gemini_usage("Waybill Agent", "gemini-2.0-flash", response)
+        log_gemini_usage("Waybill Agent", "gemini-2.5-flash", response)
         res_text = response.text.replace('```json', '').replace('```', '').strip()
         data = json.loads(res_text)
         return data.get('class')
@@ -1988,7 +1988,7 @@ def parse_packing_list(text):
     )
     try:
         response = ai_client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-2.5-flash',
             contents=prompt,
             config={
                 'response_mime_type': 'application/json',
@@ -1996,7 +1996,7 @@ def parse_packing_list(text):
                 'temperature': 0.1
             }
         )
-        log_gemini_usage("Waybill Agent", "gemini-2.0-flash", response)
+        log_gemini_usage("Waybill Agent", "gemini-2.5-flash", response)
         res_text = response.text.strip()
         data = json.loads(res_text)
         orders = data.get('orders', [])
@@ -2036,8 +2036,8 @@ def process_ingestion(service, waybill_pdf_path, packing_list_pdf_path=None, way
                         f"Text:\n{text}"
                     )
                     try:
-                        response = ai_client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
-                        log_gemini_usage("Waybill Agent", "gemini-2.0-flash", response)
+                        response = ai_client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+                        log_gemini_usage("Waybill Agent", "gemini-2.5-flash", response)
                         res_text = response.text.replace('```json', '').replace('```', '').strip()
                         order_id = json.loads(res_text).get('order_id')
                     except Exception as e:
@@ -2071,8 +2071,8 @@ def process_ingestion(service, waybill_pdf_path, packing_list_pdf_path=None, way
                     f"Text:\n{text}"
                 )
                 try:
-                    response = ai_client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
-                    log_gemini_usage("Waybill Agent", "gemini-2.0-flash", response)
+                    response = ai_client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+                    log_gemini_usage("Waybill Agent", "gemini-2.5-flash", response)
                     res_text = response.text.replace('```json', '').replace('```', '').strip()
                     order_id = json.loads(res_text).get('order_id')
                 except:
@@ -3401,8 +3401,8 @@ def _launch_generate_copy(set_name: str, set_number: str, theme: str, product_ty
         f"available variants, Blocked Off brand. Malaysian English is fine.\n"
         f"Return ONLY the JSON. No extra text."
     )
-    response = ai_client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
-    log_gemini_usage("Product Launch", "gemini-2.0-flash", response)
+    response = ai_client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+    log_gemini_usage("Product Launch", "gemini-2.5-flash", response)
     text = re.sub(r'^```(?:json)?\s*|\s*```$', '', response.text.strip(), flags=re.MULTILINE).strip()
     try:
         return json.loads(text)
@@ -3658,11 +3658,11 @@ def cancel_order(req: CancelRequest, request: Request):
             class _CancelSchema(BaseModel):
                 platform_order_id: str = Field(description="The platform order ID to cancel")
             response = ai_client.models.generate_content(
-                model='gemini-2.0-flash',
+                model='gemini-2.5-flash',
                 contents=f"Extract the Order ID from this cancellation email. Return ONLY JSON: {{\"platform_order_id\": \"string\"}}.\n\n{req.email_body}",
                 config={'response_mime_type': 'application/json', 'response_schema': _CancelSchema, 'temperature': 0.1}
             )
-            log_gemini_usage('Cancellation', 'gemini-2.0-flash', response)
+            log_gemini_usage('Cancellation', 'gemini-2.5-flash', response)
             cancel_data = json.loads(response.text)
             platform_order_id = cancel_data.get("platform_order_id")
             if not platform_order_id:
