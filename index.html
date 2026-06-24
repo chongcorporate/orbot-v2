@@ -958,80 +958,86 @@
             </div>
           </div>
 
-          <!-- Right: Waybill Status Table -->
+          <!-- Right: Waybill Status Table / Compiled PDFs -->
           <div class="col-span-12 lg:col-span-7 xl:col-span-8 flex flex-col gap-3">
 
-            <!-- Filter Bar -->
-            <div class="glass-panel rounded-xl p-3 flex flex-wrap items-center gap-2">
-              <!-- Search -->
-              <div class="relative flex items-center flex-grow min-w-[160px]">
-                <span class="material-symbols-outlined absolute left-3 text-outline text-sm select-none">search</span>
-                <input type="text" id="waybill-search-input" placeholder="Search order ID, customer..." class="w-full pl-8 pr-3 py-1.5 bg-black/20 border border-outline-variant/20 rounded-lg text-xs text-on-surface placeholder:text-outline/50 focus:outline-none focus:border-primary/50 transition-all font-data-mono">
-              </div>
-              <!-- Status chips -->
-              <div class="flex gap-1 p-0.5 bg-black/20 rounded-lg border border-outline-variant/15 overflow-x-auto flex-shrink-0" id="waybill-filters">
-                <button class="filter-btn px-2.5 py-1 rounded text-[10px] font-label-caps transition-all bg-primary/15 text-primary active" data-status="all">All</button>
-                <button class="filter-btn px-2.5 py-1 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-status="pending">Pending</button>
-                <button class="filter-btn px-2.5 py-1 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-status="ready">Ready</button>
-                <button class="filter-btn px-2.5 py-1 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-status="on hold">On Hold</button>
-                <button class="filter-btn px-2.5 py-1 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-status="failed">Failed</button>
-                <button class="filter-btn px-2.5 py-1 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-status="printed">Printed</button>
-              </div>
-              <!-- Date range -->
-              <div class="flex items-center gap-1.5 flex-shrink-0">
-                <span class="material-symbols-outlined text-outline text-sm select-none">calendar_month</span>
-                <input type="date" id="waybills-date-start" class="bg-black/20 text-on-surface text-xs rounded border border-outline-variant/20 px-2 py-1 outline-none focus:border-primary/50 transition-all font-data-mono">
-                <span class="text-outline text-[10px]">–</span>
-                <input type="date" id="waybills-date-end" class="bg-black/20 text-on-surface text-xs rounded border border-outline-variant/20 px-2 py-1 outline-none focus:border-primary/50 transition-all font-data-mono">
-                <button id="waybills-clear-date-btn" class="hidden text-outline hover:text-error text-xs p-0.5 rounded transition-all">
-                  <span class="material-symbols-outlined text-sm">close</span>
-                </button>
-                <button id="waybills-sort-date-btn" class="text-outline hover:text-primary p-0.5 rounded transition-all" title="Toggle sort">
-                  <span class="material-symbols-outlined text-sm" id="waybills-sort-date-icon">arrow_downward</span>
-                </button>
-              </div>
-              <!-- Mass edit -->
-              <select id="waybills-mass-edit-select" class="bg-black/20 text-on-surface text-xs rounded border border-outline-variant/20 px-2 py-1.5 outline-none focus:border-primary/50 transition-all cursor-pointer flex-shrink-0">
-                <option value="" disabled selected>Mass set status…</option>
-                <option value="pending">Pending</option>
-                <option value="ready">Ready</option>
-                <option value="on hold">On Hold</option>
-                <option value="failed">Failed</option>
-                <option value="printed">Printed</option>
-              </select>
+            <!-- Panel toggle -->
+            <div class="flex gap-1 p-0.5 bg-black/20 rounded-lg border border-outline-variant/15 self-start">
+              <button id="waybill-tab-orders" class="px-3 py-1.5 rounded text-[10px] font-label-caps transition-all bg-primary/15 text-primary">Orders</button>
+              <button id="waybill-tab-pdfs" class="px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5">Compiled PDFs</button>
             </div>
 
-            <!-- Table -->
-            <div class="overflow-y-auto rounded-xl border border-outline-variant/15 bg-black/10 h-[calc(100vh-340px)] min-h-[400px]">
-              <table class="min-w-full text-left border-separate border-spacing-y-1.5">
-                <thead class="sticky top-0 z-10">
-                  <tr>
-                    <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Order</th>
-                    <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Customer</th>
-                    <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Status</th>
-                    <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Raw PDF</th>
-                    <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Processed</th>
-                    <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low cursor-pointer select-none hover:text-on-surface transition-colors" id="waybill-sort-date-col">
-                      <span class="flex items-center gap-1">Date <span id="waybill-sort-icon" class="material-symbols-outlined text-sm">arrow_drop_down</span></span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody id="waybills-tbody" class="text-sm">
-                  <tr><td colspan="6" class="px-6 py-10 text-center text-outline font-data-mono text-xs">Loading waybills…</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+            <!-- Orders panel -->
+            <div id="waybill-panel-orders" class="flex flex-col gap-3">
+              <!-- Filter Bar -->
+              <div class="glass-panel rounded-xl p-3 flex flex-wrap items-center gap-2">
+                <!-- Search -->
+                <div class="relative flex items-center flex-grow min-w-[160px]">
+                  <span class="material-symbols-outlined absolute left-3 text-outline text-sm select-none">search</span>
+                  <input type="text" id="waybill-search-input" placeholder="Search order ID, customer..." class="w-full pl-8 pr-3 py-1.5 bg-black/20 border border-outline-variant/20 rounded-lg text-xs text-on-surface placeholder:text-outline/50 focus:outline-none focus:border-primary/50 transition-all font-data-mono">
+                </div>
+                <!-- Status chips -->
+                <div class="flex gap-1 p-0.5 bg-black/20 rounded-lg border border-outline-variant/15 overflow-x-auto flex-shrink-0" id="waybill-filters">
+                  <button class="filter-btn px-2.5 py-1 rounded text-[10px] font-label-caps transition-all bg-primary/15 text-primary active" data-status="all">All</button>
+                  <button class="filter-btn px-2.5 py-1 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-status="pending">Pending</button>
+                  <button class="filter-btn px-2.5 py-1 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-status="ready">Ready</button>
+                  <button class="filter-btn px-2.5 py-1 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-status="on hold">On Hold</button>
+                  <button class="filter-btn px-2.5 py-1 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-status="failed">Failed</button>
+                  <button class="filter-btn px-2.5 py-1 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-status="printed">Printed</button>
+                </div>
+                <!-- Date range -->
+                <div class="flex items-center gap-1.5 flex-shrink-0">
+                  <span class="material-symbols-outlined text-outline text-sm select-none">calendar_month</span>
+                  <input type="date" id="waybills-date-start" class="bg-black/20 text-on-surface text-xs rounded border border-outline-variant/20 px-2 py-1 outline-none focus:border-primary/50 transition-all font-data-mono">
+                  <span class="text-outline text-[10px]">–</span>
+                  <input type="date" id="waybills-date-end" class="bg-black/20 text-on-surface text-xs rounded border border-outline-variant/20 px-2 py-1 outline-none focus:border-primary/50 transition-all font-data-mono">
+                  <button id="waybills-clear-date-btn" class="hidden text-outline hover:text-error text-xs p-0.5 rounded transition-all">
+                    <span class="material-symbols-outlined text-sm">close</span>
+                  </button>
+                  <button id="waybills-sort-date-btn" class="text-outline hover:text-primary p-0.5 rounded transition-all" title="Toggle sort">
+                    <span class="material-symbols-outlined text-sm" id="waybills-sort-date-icon">arrow_downward</span>
+                  </button>
+                </div>
+                <!-- Mass edit -->
+                <select id="waybills-mass-edit-select" class="bg-black/20 text-on-surface text-xs rounded border border-outline-variant/20 px-2 py-1.5 outline-none focus:border-primary/50 transition-all cursor-pointer flex-shrink-0">
+                  <option value="" disabled selected>Mass set status…</option>
+                  <option value="pending">Pending</option>
+                  <option value="ready">Ready</option>
+                  <option value="on hold">On Hold</option>
+                  <option value="failed">Failed</option>
+                  <option value="printed">Printed</option>
+                </select>
+              </div>
 
-        <!-- Compiled Master PDFs -->
-        <div class="glass-panel rounded-xl p-5 flex flex-col gap-3">
-          <h3 class="font-headline-sm text-on-surface flex items-center gap-2 select-none">
-            <span class="material-symbols-outlined text-primary">picture_as_pdf</span>
-            Compiled Master PDFs
-          </h3>
-          <div class="overflow-y-auto rounded-lg border border-outline-variant/15 bg-black/10 h-[220px]" id="master-pdfs-container">
-            <div class="text-center text-outline py-10 font-data-mono text-xs">Loading…</div>
+              <!-- Table -->
+              <div class="overflow-y-auto rounded-xl border border-outline-variant/15 bg-black/10 h-[calc(100vh-380px)] min-h-[360px]">
+                <table class="min-w-full text-left border-separate border-spacing-y-1.5">
+                  <thead class="sticky top-0 z-10">
+                    <tr>
+                      <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Order</th>
+                      <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Customer</th>
+                      <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Status</th>
+                      <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Raw PDF</th>
+                      <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Processed</th>
+                      <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low cursor-pointer select-none hover:text-on-surface transition-colors" id="waybill-sort-date-col">
+                        <span class="flex items-center gap-1">Date <span id="waybill-sort-icon" class="material-symbols-outlined text-sm">arrow_drop_down</span></span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody id="waybills-tbody" class="text-sm">
+                    <tr><td colspan="6" class="px-6 py-10 text-center text-outline font-data-mono text-xs">Loading waybills…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Compiled PDFs panel (hidden by default) -->
+            <div id="waybill-panel-pdfs" class="hidden">
+              <div class="overflow-y-auto rounded-xl border border-outline-variant/15 bg-black/10 h-[calc(100vh-340px)] min-h-[360px]" id="master-pdfs-container">
+                <div class="text-center text-outline py-10 font-data-mono text-xs">Loading…</div>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -1600,65 +1606,68 @@
       <!-- 9. Logs Pane -->
       <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-logs">
 
-        <!-- System Logs -->
+        <!-- Logs (System + Print Jobs merged) -->
         <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
           <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 flex-wrap gap-4">
             <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">
-              <span class="material-symbols-outlined text-primary">description</span>
-              <span>System Logs</span>
+              <span class="material-symbols-outlined text-primary" id="logs-panel-icon">description</span>
+              <span id="logs-panel-title">System Logs</span>
             </h2>
-            <div class="flex items-center gap-2">
-              <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-logs-btn">
-                <span class="material-symbols-outlined text-sm">sync</span> Refresh
-              </button>
-              <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-logs-btn">
-                <span class="material-symbols-outlined text-sm">delete_sweep</span> Clear Logs
-              </button>
+            <div class="flex items-center gap-3 flex-wrap">
+              <!-- Tab toggle -->
+              <div class="flex gap-1 p-0.5 bg-black/20 rounded-lg border border-outline-variant/15">
+                <button id="logs-tab-system" class="px-3 py-1.5 rounded text-[10px] font-label-caps transition-all bg-primary/15 text-primary">System Logs</button>
+                <button id="logs-tab-printjobs" class="px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5">Print Jobs</button>
+              </div>
+              <!-- System logs actions -->
+              <div id="logs-actions-system" class="flex items-center gap-2">
+                <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-logs-btn">
+                  <span class="material-symbols-outlined text-sm">sync</span> Refresh
+                </button>
+                <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-logs-btn">
+                  <span class="material-symbols-outlined text-sm">delete_sweep</span> Clear Logs
+                </button>
+              </div>
+              <!-- Print jobs actions (hidden by default) -->
+              <div id="logs-actions-printjobs" class="hidden flex items-center gap-2">
+                <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-print-jobs-btn">
+                  <span class="material-symbols-outlined text-sm">sync</span> Refresh
+                </button>
+                <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-print-jobs-btn">
+                  <span class="material-symbols-outlined text-sm">delete_sweep</span> Clear Jobs
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- Filters Row -->
-          <div class="flex justify-between items-center flex-wrap gap-3">
-            <div id="logs-filters" class="flex items-center gap-1.5 bg-surface-container-low p-1 rounded-lg border border-outline-variant/15">
-              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all bg-primary/10 text-primary active" data-level="all">All Logs</button>
-              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-level="info">Info</button>
-              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-level="warning">Warning</button>
-              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-level="error">Error</button>
+          <!-- System Logs content -->
+          <div id="logs-panel-system">
+            <!-- Filters Row -->
+            <div class="flex justify-between items-center flex-wrap gap-3 mb-4">
+              <div id="logs-filters" class="flex items-center gap-1.5 bg-surface-container-low p-1 rounded-lg border border-outline-variant/15">
+                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all bg-primary/10 text-primary active" data-level="all">All Logs</button>
+                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-level="info">Info</button>
+                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-level="warning">Warning</button>
+                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-level="error">Error</button>
+              </div>
+              <div class="text-[11px] font-data-mono text-outline">
+                Showing last 60 system entries
+              </div>
             </div>
-            <div class="text-[11px] font-data-mono text-outline">
-              Showing last 60 system entries
-            </div>
-          </div>
-
-          <!-- Logs Container -->
-          <div class="glass-panel rounded-xl overflow-hidden border border-outline-variant/15 bg-black/10">
-            <div id="logs-list" class="flex flex-col gap-3.5 max-h-[720px] overflow-y-auto p-4 bg-slate-950/20">
-              <div class="text-center text-outline py-12">Loading system logs...</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Print Jobs -->
-        <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
-          <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 flex-wrap gap-4">
-            <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">
-              <span class="material-symbols-outlined text-cyan-400">print</span>
-              <span>Print Jobs</span>
-            </h2>
-            <div class="flex items-center gap-2">
-              <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-print-jobs-btn">
-                <span class="material-symbols-outlined text-sm">sync</span> Refresh
-              </button>
-              <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-print-jobs-btn">
-                <span class="material-symbols-outlined text-sm">delete_sweep</span> Clear Jobs
-              </button>
+            <!-- Logs Container -->
+            <div class="glass-panel rounded-xl overflow-hidden border border-outline-variant/15 bg-black/10">
+              <div id="logs-list" class="flex flex-col gap-3.5 max-h-[720px] overflow-y-auto p-4 bg-slate-950/20">
+                <div class="text-center text-outline py-12">Loading system logs...</div>
+              </div>
             </div>
           </div>
 
-          <!-- Print Jobs Table -->
-          <div class="glass-panel rounded-xl overflow-hidden border border-outline-variant/15 bg-black/10">
-            <div id="logs-print-jobs-list" class="max-h-[560px] overflow-y-auto">
-              <div class="text-center text-outline py-12 font-data-mono text-xs">Loading print jobs...</div>
+          <!-- Print Jobs content (hidden by default) -->
+          <div id="logs-panel-printjobs" class="hidden">
+            <div class="glass-panel rounded-xl overflow-hidden border border-outline-variant/15 bg-black/10">
+              <div id="logs-print-jobs-list" class="max-h-[720px] overflow-y-auto">
+                <div class="text-center text-outline py-12 font-data-mono text-xs">Loading print jobs...</div>
+              </div>
             </div>
           </div>
         </div>
@@ -1973,6 +1982,6 @@
       await import("https://unpkg.com/@oddbird/css-anchor-positioning");
     }
   </script>
-  <script src="app.js?v=1.6.4"></script>
+  <script src="app.js?v=1.6.5"></script>
 </body>
 </html>

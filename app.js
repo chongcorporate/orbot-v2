@@ -1599,12 +1599,11 @@ function setupTabs() {
         fetchAndRenderPrintersAndQueue();
       }
       if (tabId === "orders") fetchAndRenderOrders();
-      if (tabId === "logs") { fetchAndRenderLogs(); fetchAndRenderLogsPagePrintJobs(); }
+      if (tabId === "logs") { fetchAndRenderLogs(); }
       if (tabId === "catalog") fetchAndRenderCatalog();
       if (tabId === "waybills") {
         fetchAgentHeartbeats();
         fetchAndRenderWaybillsArchive();
-        fetchAndRenderMasterPDFs();
       }
       if (tabId === "agents") {
         fetchAgentHeartbeats();
@@ -3614,6 +3613,58 @@ function setupPrinterControls() {
   setupCatalogDetailModal();
   setupCatalogEditModal();
   setupSystemErrorReset();
+
+  // Waybill panel toggle (Orders ↔ Compiled PDFs)
+  const waybillTabOrders = document.getElementById("waybill-tab-orders");
+  const waybillTabPdfs = document.getElementById("waybill-tab-pdfs");
+  const waybillPanelOrders = document.getElementById("waybill-panel-orders");
+  const waybillPanelPdfs = document.getElementById("waybill-panel-pdfs");
+  function setWaybillTab(tab) {
+    const isOrders = tab === "orders";
+    waybillPanelOrders.classList.toggle("hidden", !isOrders);
+    waybillPanelPdfs.classList.toggle("hidden", isOrders);
+    waybillTabOrders.classList.toggle("bg-primary/15", isOrders);
+    waybillTabOrders.classList.toggle("text-primary", isOrders);
+    waybillTabOrders.classList.toggle("text-outline", !isOrders);
+    waybillTabOrders.classList.toggle("hover:bg-white/5", !isOrders);
+    waybillTabPdfs.classList.toggle("bg-primary/15", !isOrders);
+    waybillTabPdfs.classList.toggle("text-primary", !isOrders);
+    waybillTabPdfs.classList.toggle("text-outline", isOrders);
+    waybillTabPdfs.classList.toggle("hover:bg-white/5", isOrders);
+    if (!isOrders) fetchAndRenderMasterPDFs();
+  }
+  if (waybillTabOrders) waybillTabOrders.addEventListener("click", () => setWaybillTab("orders"));
+  if (waybillTabPdfs) waybillTabPdfs.addEventListener("click", () => setWaybillTab("pdfs"));
+
+  // Logs panel toggle (System Logs ↔ Print Jobs)
+  const logsTabSystem = document.getElementById("logs-tab-system");
+  const logsTabPrintjobs = document.getElementById("logs-tab-printjobs");
+  const logsPanelSystem = document.getElementById("logs-panel-system");
+  const logsPanelPrintjobs = document.getElementById("logs-panel-printjobs");
+  const logsActionsSystem = document.getElementById("logs-actions-system");
+  const logsActionsPrintjobs = document.getElementById("logs-actions-printjobs");
+  function setLogsTab(tab) {
+    const isSystem = tab === "system";
+    logsPanelSystem.classList.toggle("hidden", !isSystem);
+    logsPanelPrintjobs.classList.toggle("hidden", isSystem);
+    logsActionsSystem.classList.toggle("hidden", !isSystem);
+    logsActionsPrintjobs.classList.toggle("hidden", isSystem);
+    logsTabSystem.classList.toggle("bg-primary/15", isSystem);
+    logsTabSystem.classList.toggle("text-primary", isSystem);
+    logsTabSystem.classList.toggle("text-outline", !isSystem);
+    logsTabSystem.classList.toggle("hover:bg-white/5", !isSystem);
+    logsTabPrintjobs.classList.toggle("bg-primary/15", !isSystem);
+    logsTabPrintjobs.classList.toggle("text-primary", !isSystem);
+    logsTabPrintjobs.classList.toggle("text-outline", isSystem);
+    logsTabPrintjobs.classList.toggle("hover:bg-white/5", isSystem);
+    const titleEl = document.getElementById("logs-panel-title");
+    const iconEl = document.getElementById("logs-panel-icon");
+    if (titleEl) titleEl.textContent = isSystem ? "System Logs" : "Print Jobs";
+    if (iconEl) iconEl.textContent = isSystem ? "description" : "print";
+    if (!isSystem) fetchAndRenderLogsPagePrintJobs();
+  }
+  if (logsTabSystem) logsTabSystem.addEventListener("click", () => setLogsTab("system"));
+  if (logsTabPrintjobs) logsTabPrintjobs.addEventListener("click", () => setLogsTab("printjobs"));
 
   // Action Buttons Events
   const refreshOrdersBtn = document.getElementById("refresh-orders-btn");
