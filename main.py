@@ -1110,15 +1110,30 @@ class ScoutAgent:
                             logger.info(f"[Matching] Stage 1.5 Success (Normalized): mapped '{norm_var}' to '{v['platform_variation_name']}' -> {v['variant_id']}")
                             return v["variant_id"], False
 
-                # Stage 1.6: Strip trailing comma-suffix (e.g. ",1" or ", Black") for DS-NP variants.
-                # DS-NP has no plaque count so anything after the comma is irrelevant to matching.
+                # Stage 1.6: "Base - Blank,N" → DS-NP direct lookup.
+                # Any variation whose pre-comma part is "Base - Blank" means no-nameplate;
+                # the trailing number is always irrelevant regardless of product.
+                if re.match(r'(?i)^base\s*-\s*blank\b', norm_var) and all_vars_res.data:
+                    # Find the DS-NP variant in this listing
+                    ds_np_ids = [v["variant_id"] for v in all_vars_res.data]
+                    if ds_np_ids:
+                        vt_res = self.supabase.table("variants").select("id, variant_type").in_("id", ds_np_ids).eq("variant_type", "DS-NP").execute()
+                        if vt_res.data:
+                            logger.info(f"[Matching] Stage 1.6 Success (Base-Blank→DS-NP): '{norm_var}' → {vt_res.data[0]['id']}")
+                            return vt_res.data[0]["id"], False
+
+                # Stage 1.6b: Strip trailing comma-suffix and retry — safe only when the matched
+                # DB entry also belongs to a DS-NP variant (avoids crossing plaque-count variants).
                 stripped_var = re.sub(r',.*$', '', norm_var).strip()
                 if stripped_var and stripped_var != norm_var and all_vars_res.data:
                     for v in all_vars_res.data:
                         db_stripped = re.sub(r',.*$', '', v["platform_variation_name"]).strip()
                         if db_stripped.lower() == stripped_var.lower():
-                            logger.info(f"[Matching] Stage 1.6 Success (DS-NP strip): matched '{norm_var}' → '{v['platform_variation_name']}' -> {v['variant_id']}")
-                            return v["variant_id"], False
+                            # Only use if this variant is DS-NP, otherwise comma-N is meaningful
+                            vt_chk = self.supabase.table("variants").select("variant_type").eq("id", v["variant_id"]).limit(1).execute()
+                            if vt_chk.data and vt_chk.data[0].get("variant_type") == "DS-NP":
+                                logger.info(f"[Matching] Stage 1.6b Success (DS-NP strip): matched '{norm_var}' → '{v['platform_variation_name']}' -> {v['variant_id']}")
+                                return v["variant_id"], False
                 if all_vars_res.data and len(all_vars_res.data) == 1:
                     db_var_name = all_vars_res.data[0]["platform_variation_name"].strip()
                     if db_var_name == "" or db_var_name.lower() == "default" or norm_var == "":
