@@ -1109,6 +1109,16 @@ class ScoutAgent:
                         if clean_space(v["platform_variation_name"]) == clean_norm_var:
                             logger.info(f"[Matching] Stage 1.5 Success (Normalized): mapped '{norm_var}' to '{v['platform_variation_name']}' -> {v['variant_id']}")
                             return v["variant_id"], False
+
+                # Stage 1.6: Strip trailing comma-suffix (e.g. ",1" or ", Black") for DS-NP variants.
+                # DS-NP has no plaque count so anything after the comma is irrelevant to matching.
+                stripped_var = re.sub(r',.*$', '', norm_var).strip()
+                if stripped_var and stripped_var != norm_var and all_vars_res.data:
+                    for v in all_vars_res.data:
+                        db_stripped = re.sub(r',.*$', '', v["platform_variation_name"]).strip()
+                        if db_stripped.lower() == stripped_var.lower():
+                            logger.info(f"[Matching] Stage 1.6 Success (DS-NP strip): matched '{norm_var}' → '{v['platform_variation_name']}' -> {v['variant_id']}")
+                            return v["variant_id"], False
                 if all_vars_res.data and len(all_vars_res.data) == 1:
                     db_var_name = all_vars_res.data[0]["platform_variation_name"].strip()
                     if db_var_name == "" or db_var_name.lower() == "default" or norm_var == "":
@@ -1323,7 +1333,8 @@ class ScoutAgent:
                 # Sanity-check: if the variation name ends with a number (e.g. "Plaque,1"),
                 # the matched SKU must end with that same number (e.g. DS-1). A mismatch
                 # means bad listing_variations data — hold the order rather than print wrong.
-                if variation_name and v_sku:
+                # DS-NP variants have no plaque count so any trailing ",N" is irrelevant — skip.
+                if variation_name and v_sku and not v_sku.endswith('-NP'):
                     num_m = re.search(r',\s*(\d+)\s*$', variation_name)
                     if num_m and not re.search(r'-' + num_m.group(1) + r'$', v_sku):
                         has_matching_failure = True
@@ -2253,6 +2264,52 @@ def check_and_update_item_completion(order_item_id):
     except Exception as e:
         log_system("error", f"check_and_update_item_completion failed for item {order_item_id}: {e}", agent_name="Waybill Agent")
 
+# --- SimplyPrint file compatibility cache ---
+# Maps simplyprint_file_id (hex str) → is_a1_mini (bool).
+# Populated by _rebuild_sp_file_compat_cache(); checked at dispatch time.
+_sp_file_compat_cache: dict = {}
+_sp_file_cache_last_built: float = 0.0
+
+def _rebuild_sp_file_compat_cache(api_key: str, max_seconds: float = 30.0):
+    """Recursively traverses SimplyPrint folders and populates the file→printer-type cache."""
+    global _sp_file_compat_cache, _sp_file_cache_last_built
+    headers = {"X-API-KEY": api_key, "Accept": "application/json", "Content-Type": "application/json"}
+    base = f"https://api.simplyprint.io/{SIMPLYPRINT_COMPANY_ID}"
+    cache: dict = {}
+    deadline = time.time() + max_seconds
+
+    def _traverse(folder_id: int):
+        if time.time() > deadline:
+            return
+        try:
+            r = http_session.post(f"{base}/files/GetFiles", headers=headers, json={"f": folder_id}, timeout=10)
+            if r.status_code != 200 or not r.json().get("status"):
+                return
+            data = r.json()
+            for file in data.get("files", []):
+                fid = file.get("id")
+                if not fid:
+                    continue
+                gca = file.get("gcodeAnalysis") or {}
+                printer_model_str = (gca.get("forPrinterModel") or "").lower()
+                if "mini" in printer_model_str:
+                    cache[fid] = True   # A1 Mini
+                elif printer_model_str:
+                    cache[fid] = False  # Regular A1
+            for sub in data.get("folders", []):
+                if time.time() > deadline:
+                    return
+                time.sleep(0.05)
+                _traverse(sub.get("id"))
+        except Exception as e:
+            print(f"[-] SP file cache: error traversing folder {folder_id}: {e}")
+
+    _traverse(0)
+    _sp_file_compat_cache = cache
+    _sp_file_cache_last_built = time.time()
+    print(f"[+] SP file compat cache built: {len(cache)} files indexed")
+
+
 def sync_simplyprint_printers_and_queue(printers_data, queue_data):
     try:
         active_ids = []
@@ -2545,7 +2602,15 @@ async def run_waybill_daemon_async():
                 last_sp_sync_time = current_time
             except Exception as spe:
                 print(f"[-] Error syncing SimplyPrint status: {spe}")
-            
+
+            # Rebuild file compat cache every 30 min (6 × 5-min sync cycles)
+            try:
+                sp_api_key = os.getenv("SIMPLYPRINT_API_KEY")
+                if sp_api_key and (current_time - _sp_file_cache_last_built >= 1800):
+                    await asyncio.to_thread(_rebuild_sp_file_compat_cache, sp_api_key)
+            except Exception as fce:
+                print(f"[-] Error rebuilding SP file compat cache: {fce}")
+
             try:
                 await asyncio.to_thread(run_retention_cleanup)
             except Exception as rce:
