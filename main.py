@@ -1107,7 +1107,7 @@ class ScoutAgent:
 
         try:
             response = self.ai_client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-2.5-flash-lite',
                 contents=prompt,
                 config={
                     'response_mime_type': 'application/json',
@@ -1115,7 +1115,7 @@ class ScoutAgent:
                     'temperature': 0.1
                 }
             )
-            self._log_gemini_usage('gemini-2.5-flash', response)
+            self._log_gemini_usage('gemini-2.5-flash-lite', response)
             order_data = json.loads(response.text)
             # Override with regex-extracted fields (more reliable)
             order_data.update({k: v for k, v in prefilled.items() if v})
