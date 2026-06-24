@@ -1181,6 +1181,26 @@ class ScoutAgent:
                             logger.info(f"[Matching] Stage 1.5 Success (Normalized): mapped '{norm_var}' to '{v['platform_variation_name']}' -> {v['variant_id']}")
                             return v["variant_id"], False
 
+                # Stage 1.6c: "Base - Plaque,N" → DS-N direct lookup.
+                # The trailing comma-number IS the plaque count and directly identifies DS-N.
+                plaque_m = re.match(r'(?i)^(?:\(\d+\))?base\s*-\s*plaque\s*,\s*(\d+)\s*$', norm_var)
+                if plaque_m and all_vars_res.data:
+                    plaque_count = plaque_m.group(1)
+                    # First: scan listing_variations for a "Plaque,N" entry with matching N
+                    for v in all_vars_res.data:
+                        pm = re.search(r'(?i)plaque\s*,\s*(\d+)\s*$', v["platform_variation_name"])
+                        if pm and pm.group(1) == plaque_count:
+                            logger.info(f"[Matching] Stage 1.6c Success (Plaque,{plaque_count}→DS-{plaque_count}): '{norm_var}' → {v['variant_id']}")
+                            return v["variant_id"], False
+                    # Fallback: match by variant SKU suffix -DS-{N}
+                    variant_ids = [v["variant_id"] for v in all_vars_res.data]
+                    sku_res = self.supabase.table("variants").select("id, variant_sku").in_("id", variant_ids).execute()
+                    target_suffix = f"-DS-{plaque_count}"
+                    matched_v = next((v for v in sku_res.data if v["variant_sku"].endswith(target_suffix)), None)
+                    if matched_v:
+                        logger.info(f"[Matching] Stage 1.6c Success (SKU suffix -DS-{plaque_count}): '{norm_var}' → {matched_v['id']} ({matched_v['variant_sku']})")
+                        return matched_v["id"], False
+
                 # Stage 1.6: "Base - Blank,N" → DS-NP direct lookup.
                 # Any variation whose pre-comma part is "Base - Blank" means no-nameplate;
                 # the trailing number is always irrelevant regardless of product.
