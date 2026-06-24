@@ -319,6 +319,213 @@ def normalize_filename(name: str) -> str:
         name = new_name
     return name.strip()
 
+def normalize_variation(raw: str) -> str:
+    """Canonical normalization for matching variation names.
+    Strips leading (set_number) prefix, lowercases, normalizes spacing around - and ,."""
+    s = (raw or "").strip().lower()
+    s = re.sub(r'^\(\d+\)\s*', '', s)       # strip leading (N) prefix
+    s = re.sub(r'\s*-\s*', ' - ', s)         # normalize hyphens: space-hyphen-space
+    s = re.sub(r'\s*,\s*', ',', s)           # normalize commas: no spaces
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+def extract_set_number_from_text(text: str) -> Optional[str]:
+    """Extract first LEGO set number (4-6 digits, not a year) from any text string."""
+    matches = re.findall(r'\b\d{4,6}\b', text or "")
+    non_years = [m for m in matches if not re.match(r'^(19|20)\d{2}$', m)]
+    return non_years[0] if non_years else None
+
+def extract_variant_intent(norm_var: str, listing_title: str = '') -> dict:
+    """Extract structured matching intent from a normalized variation name.
+    Returns dict with keys: variant_type (str), plaque_count (int|None), set_number_override (str|None)."""
+    combined = f"{norm_var} {listing_title}".lower()
+
+    # Wall / flush wall mount
+    if re.search(r'\b(fwm|flush)\b', norm_var) or 'flush' in listing_title.lower():
+        return {"variant_type": "FWM", "plaque_count": None, "set_number_override": None}
+    if re.search(r'\b(wall|mount|wm)\b', norm_var):
+        return {"variant_type": "WM", "plaque_count": None, "set_number_override": None}
+
+    # Plaque count: "base - plaque,N" or "plaque,N"
+    m = re.search(r'plaque,(\d+)', norm_var)
+    if m:
+        return {"variant_type": "DS", "plaque_count": int(m.group(1)), "set_number_override": None}
+
+    # No nameplate: "blank"
+    if re.search(r'\bblank\b', norm_var):
+        # Star Wars: set number may appear after comma in variation (e.g. "base - blank,75389")
+        set_override = extract_set_number_from_text(norm_var)
+        return {"variant_type": "DS-NP", "plaque_count": None, "set_number_override": set_override}
+
+    return {"variant_type": "DS", "plaque_count": None, "set_number_override": None}
+
+def _self_heal_listing_variation(supabase_client, listing_id: Optional[str], listing_title: str,
+                                  variant_id: str, norm_var: str, raw_var: Optional[str]) -> None:
+    """Write a fallback-matched listing_variation back to DB so future orders hit Stage 1."""
+    if not listing_id:
+        return
+    try:
+        supabase_client.table("listing_variations").insert({
+            "listing_id":               listing_id,
+            "variant_id":               variant_id,
+            "platform_variation_name":  raw_var or norm_var,
+            "normalized_variation_name": norm_var,
+            "reference_name":           f"{listing_title} [{raw_var or norm_var}]",
+            "match_source":             "self_heal",
+        }).execute()
+        logger.info(f"[Matching] Self-healed listing variation for '{listing_title}' → '{norm_var}'")
+    except Exception:
+        pass  # duplicate = already healed, safe to ignore
+
+def resolve_variant(supabase_client, listing_title: str, variation_name: Optional[str]) -> tuple[Optional[str], bool]:
+    """Canonical variant resolver shared by Scout and Foreman.
+    Returns (variant_id, is_new_match). is_new_match=True means matched via fallback."""
+    norm_var = normalize_variation(variation_name)
+    exact_listing_id = None
+
+    logger.info(f"[Matching] Stage 1: listing='{listing_title}' norm_var='{norm_var}'")
+    try:
+        listing_res = supabase_client.table("listings").select("id").eq("platform_listing_name", listing_title).limit(1).execute()
+        if listing_res.data:
+            listing_id = listing_res.data[0]["id"]
+            exact_listing_id = listing_id
+
+            lv_res = supabase_client.table("listing_variations")\
+                .select("variant_id")\
+                .eq("listing_id", listing_id)\
+                .eq("normalized_variation_name", norm_var)\
+                .limit(1).execute()
+            if lv_res.data:
+                logger.info(f"[Matching] Stage 1 Success: '{norm_var}' → {lv_res.data[0]['variant_id']}")
+                return lv_res.data[0]["variant_id"], False
+
+            # Fallback 1.1: listing has exactly one variation with a blank/default name
+            all_vars_res = supabase_client.table("listing_variations")\
+                .select("variant_id, platform_variation_name")\
+                .eq("listing_id", listing_id).execute()
+            if all_vars_res.data and len(all_vars_res.data) == 1:
+                db_var = all_vars_res.data[0]["platform_variation_name"].strip()
+                if db_var == "" or db_var.lower() == "default" or norm_var == "":
+                    logger.info(f"[Matching] Fallback 1.1: single blank variation → {all_vars_res.data[0]['variant_id']}")
+                    return all_vars_res.data[0]["variant_id"], True
+
+    except Exception as e:
+        logger.error(f"[Matching] Stage 1 database error: {e}")
+
+    # Stage 2: intent-based set number + indexed variant lookup
+    intent = extract_variant_intent(norm_var, listing_title)
+    set_num = (
+        extract_set_number_from_text(listing_title) or
+        intent.get("set_number_override") or
+        extract_set_number_from_text(norm_var)
+    )
+    logger.info(f"[Matching] Stage 2: set_num={set_num} intent={intent}")
+
+    if set_num:
+        try:
+            q = supabase_client.table("variants")\
+                .select("id, variant_sku, variant_type, plaque_count")\
+                .eq("set_number", set_num)
+
+            vtype = intent["variant_type"]
+            pc    = intent.get("plaque_count")
+
+            if vtype == "DS" and pc is not None:
+                q = q.eq("variant_type", "DS").eq("plaque_count", pc)
+            elif vtype == "DS-NP":
+                q = q.eq("variant_type", "DS-NP")
+            elif vtype == "FWM":
+                q = q.in_("variant_type", ["FWM", "WM"])
+            elif vtype == "WM":
+                q = q.in_("variant_type", ["WM", "FWM"])
+            else:
+                q = q.in_("variant_type", ["DS", "BASE"])
+
+            result = q.limit(1).execute()
+            if result.data:
+                variant = result.data[0]
+                logger.info(f"[Matching] Stage 2 Success: set {set_num} {intent} → '{variant['variant_sku']}'")
+                _self_heal_listing_variation(supabase_client, exact_listing_id, listing_title,
+                                             variant["id"], norm_var, variation_name)
+                return variant["id"], True
+        except Exception as e:
+            logger.error(f"[Matching] Stage 2 database error: {e}")
+
+    # Stage 2.5: F1 Speed Champions special matching
+    is_f1 = any(k in listing_title.lower() for k in ["f1", "formula 1", "formula one"])
+    is_sc  = any(k in listing_title.lower() for k in ["speed champions", "sc"])
+    is_vertical = not any(k in listing_title.lower() for k in ["foldable", "skadis", "wall", "flush", "lift"])
+
+    if is_f1 and is_sc and norm_var:
+        tier_suffix = get_f1_multi_tier_suffix(norm_var, listing_title)
+        if tier_suffix:
+            target_sku = f"BLO-SC-DS-F1-{tier_suffix}"
+            logger.info(f"[Matching] Stage 2.5 F1 multi-tier: '{target_sku}'")
+            try:
+                res = supabase_client.table("variants").select("id, variant_sku").eq("variant_sku", target_sku).execute()
+                if res.data:
+                    _self_heal_listing_variation(supabase_client, exact_listing_id, listing_title,
+                                                 res.data[0]["id"], norm_var, variation_name)
+                    return res.data[0]["id"], True
+            except Exception as e:
+                logger.error(f"[Matching] Stage 2.5 F1 multi-tier database error: {e}")
+
+    if is_f1 and is_sc and is_vertical and norm_var:
+        suffix = get_f1_sku_suffix(norm_var)
+        if suffix:
+            target_sku = f"BLO-SC-VDS-F1-{suffix}"
+            logger.info(f"[Matching] Stage 2.5 F1 team: '{target_sku}'")
+            try:
+                res = supabase_client.table("variants").select("id, variant_sku").eq("variant_sku", target_sku).execute()
+                if res.data:
+                    _self_heal_listing_variation(supabase_client, exact_listing_id, listing_title,
+                                                 res.data[0]["id"], norm_var, variation_name)
+                    return res.data[0]["id"], True
+            except Exception as e:
+                logger.error(f"[Matching] Stage 2.5 F1 team database error: {e}")
+
+    # Stage 3: fuzzy listing title match
+    logger.info(f"[Matching] Stage 3: Fuzzy similarity matching for '{listing_title}'")
+    clean_title = re.sub(r'Display Stand for Lego|Display Stand for|Wall Mount for Lego|Wall Mount for|Lego', '',
+                         listing_title, flags=re.IGNORECASE).strip()
+    words = [w for w in clean_title.split() if len(w) > 2]
+    if len(words) >= 2:
+        search_pattern = f"%{words[0]}%{words[1]}%"
+        try:
+            fuzzy_listings = supabase_client.table("listings")\
+                .select("id, platform_listing_name")\
+                .ilike("platform_listing_name", search_pattern).limit(5).execute()
+            if fuzzy_listings.data:
+                best_fuzzy = fuzzy_listings.data[0]
+                variations = supabase_client.table("listing_variations")\
+                    .select("variant_id, platform_variation_name, normalized_variation_name")\
+                    .eq("listing_id", best_fuzzy["id"]).execute()
+                if variations.data:
+                    best_var = next((v for v in variations.data if v["normalized_variation_name"] == norm_var), None)
+                    if not best_var:
+                        best_var = next((v for v in variations.data
+                                         if v["platform_variation_name"].lower() == (variation_name or "").strip().lower()), None)
+                    if not best_var:
+                        best_var = next((v for v in variations.data
+                                         if norm_var and (norm_var in v["normalized_variation_name"] or
+                                                          v["normalized_variation_name"] in norm_var)), None)
+                    if not best_var:
+                        is_wm = any(k in norm_var for k in ["wall", "mount", "wm", "fwm"])
+                        if is_wm:
+                            best_var = next((v for v in variations.data
+                                             if any(k in v["platform_variation_name"].lower()
+                                                    for k in ["wall", "mount", "wm", "fwm"])), None)
+                    if not best_var:
+                        logger.warning(f"[Matching] Stage 3: found '{best_fuzzy['platform_listing_name']}' "
+                                        f"but no variation matched '{norm_var}'. Not guessing.")
+                        return None, False
+                    return best_var["variant_id"], True
+        except Exception as e:
+            logger.error(f"[Matching] Stage 3 database error: {e}")
+
+    return None, False
+
+
 def process_catalog(file_path: str):
     """Processes catalog sheet and upserts it into Supabase."""
     try:
@@ -510,12 +717,17 @@ def process_catalog(file_path: str):
                     
                 item["reference_name"] = v_ref_name
                 
+                _sku = item["sku"]
+                _pc_m = re.search(r'-DS-(\d+)$', _sku)
+                _plaque_count = int(_pc_m.group(1)) if _pc_m and v_type == "DS" else None
                 variant_data = clean_dict({
                     "product_id": product_id,
-                    "variant_sku": item["sku"],
+                    "variant_sku": _sku,
                     "variant_name": v_ref_name,
                     "reference_name": v_ref_name,
                     "variant_type": v_type,
+                    "set_number": item["set_number"] if item.get("set_number") and item["set_number"] != "UNKNOWN" else None,
+                    "plaque_count": _plaque_count,
                     "seal_sticker_gdrive_url": item["original_row"].get("Seal Sticker"),
                     "print_files_gdrive_url": item["original_row"].get("Files"),
                     "pictures_gdrive_url": item["original_row"].get("Pictures"),
@@ -1137,9 +1349,12 @@ class ScoutAgent:
                 return None
 
     def resolve_variant_id(self, listing_title: str, variation_name: Optional[str]) -> tuple[Optional[str], bool]:
+        return resolve_variant(self.supabase, listing_title, variation_name)
+
+    def _resolve_variant_id_DEPRECATED(self, listing_title: str, variation_name: Optional[str]) -> tuple[Optional[str], bool]:
         norm_var = (variation_name or "").strip()
         exact_listing_id = None
-        
+
         logger.info(f"[Matching] Stage 1: Exact match for listing '{listing_title}' and variation '{norm_var}'")
         try:
             listing_res = self.supabase.table("listings").select("id, product_id").eq("platform_listing_name", listing_title).execute()
@@ -1444,31 +1659,31 @@ class ScoutAgent:
                     has_fuzzy_match = True
                     fuzzy_item_details += f"Listing: '{listing_title}' (Var: '{variation_name}'); "
 
-                var_info = self.supabase.table("variants").select("variant_sku, variant_name").eq("id", variant_id).execute()
-                v_sku = var_info.data[0]["variant_sku"] if var_info.data else None
-                v_name = var_info.data[0]["variant_name"] if var_info.data else None
+                var_info = self.supabase.table("variants").select("variant_sku, variant_name, plaque_count").eq("id", variant_id).execute()
+                v_sku         = var_info.data[0]["variant_sku"]    if var_info.data else None
+                v_name        = var_info.data[0]["variant_name"]   if var_info.data else None
+                v_plaque_count = var_info.data[0].get("plaque_count") if var_info.data else None
 
-                # Sanity-check: if the variation name ends with a number (e.g. "Plaque,1"),
-                # the matched SKU must end with that same number (e.g. DS-1). A mismatch
-                # means bad listing_variations data — hold the order rather than print wrong.
-                # DS-NP variants have no plaque count so any trailing ",N" is irrelevant — skip.
-                if variation_name and v_sku and not v_sku.endswith('-NP'):
-                    num_m = re.search(r',\s*(\d+)\s*$', variation_name)
-                    if num_m and not re.search(r'-' + num_m.group(1) + r'$', v_sku):
-                        has_matching_failure = True
-                        msg = (f"Numeric mismatch: variation '{variation_name}' mapped to SKU '{v_sku}' "
-                               f"for '{listing_title}' in order {order_details.platform_order_id}. "
-                               f"Check listing_variations data.")
-                        logger.error(msg)
-                        self.log_to_db("error", msg, {"platform_order_id": order_details.platform_order_id,
-                                                       "variation_name": variation_name, "matched_sku": v_sku})
-                        missing_item_details += f"Numeric mismatch: '{variation_name}' → '{v_sku}'; "
-                        fake_key = f"non_existent_{item_index}"
-                        item_index += 1
-                        resolved_items[fake_key] = {"variant_sku": v_sku, "variant_name": v_name,
-                                                     "quantity": quantity, "variation_names": {variation_name},
-                                                     "is_fake": True}
-                        continue
+                # Sanity-check: if the variation expects a specific plaque count, the matched
+                # variant must have the same plaque_count. Mismatches mean bad DB data —
+                # hold the order rather than print the wrong item.
+                intent = extract_variant_intent(normalize_variation(variation_name or ""))
+                expected_pc = intent.get("plaque_count")
+                if expected_pc is not None and v_plaque_count != expected_pc:
+                    has_matching_failure = True
+                    msg = (f"Plaque count mismatch: variation '{variation_name}' expects {expected_pc} plaques "
+                           f"but matched SKU '{v_sku}' has plaque_count={v_plaque_count} "
+                           f"for '{listing_title}' in order {order_details.platform_order_id}.")
+                    logger.error(msg)
+                    self.log_to_db("error", msg, {"platform_order_id": order_details.platform_order_id,
+                                                   "variation_name": variation_name, "matched_sku": v_sku})
+                    missing_item_details += f"Plaque mismatch: '{variation_name}' → '{v_sku}'; "
+                    fake_key = f"non_existent_{item_index}"
+                    item_index += 1
+                    resolved_items[fake_key] = {"variant_sku": v_sku, "variant_name": v_name,
+                                                 "quantity": quantity, "variation_names": {variation_name},
+                                                 "is_fake": True}
+                    continue
                 
                 if variant_id not in resolved_items:
                     resolved_items[variant_id] = {
@@ -1735,129 +1950,16 @@ class ScoutAgent:
 # ----------------- SECTION 4: Waybill Agent Ingest & SimplyPrint Telemetry -----------------
 
 def resolve_variant_id_to_sku(supabase_client, listing_title: str, variation_name: Optional[str]) -> Optional[str]:
-    """Resolves listing title and variation name to the database variant SKU."""
-    norm_var = (variation_name or "").strip()
+    """Resolves listing title and variation name to the database variant SKU. Thin wrapper over resolve_variant()."""
+    variant_id, _ = resolve_variant(supabase_client, listing_title, variation_name)
+    if not variant_id:
+        return None
     try:
-        listing_res = supabase_client.table("listings").select("id").eq("platform_listing_name", listing_title).execute()
-        if listing_res.data:
-            listing_id = listing_res.data[0]["id"]
-            var_res = supabase_client.table("listing_variations").select("variant_id").eq("listing_id", listing_id).eq("platform_variation_name", norm_var).execute()
-            if var_res.data:
-                var_id = var_res.data[0]["variant_id"]
-                if var_id:
-                    v_res = supabase_client.table("variants").select("variant_sku").eq("id", var_id).execute()
-                    if v_res.data:
-                        return v_res.data[0]["variant_sku"]
-                        
-            all_vars_res = supabase_client.table("listing_variations").select("variant_id, platform_variation_name").eq("listing_id", listing_id).execute()
-            if all_vars_res.data and len(all_vars_res.data) == 1:
-                db_var_name = all_vars_res.data[0]["platform_variation_name"].strip()
-                if db_var_name == "" or db_var_name.lower() == "default" or norm_var == "":
-                    var_id = all_vars_res.data[0]["variant_id"]
-                    if var_id:
-                        v_res = supabase_client.table("variants").select("variant_sku").eq("id", var_id).execute()
-                        if v_res.data:
-                            return v_res.data[0]["variant_sku"]
-                            
-            if all_vars_res.data:
-                var_lower = norm_var.lower()
-                if any(k in var_lower for k in ["wall", "mount", "wm", "fwm"]):
-                    matched_var = next((v for v in all_vars_res.data if any(k in v["platform_variation_name"].lower() for k in ["wall", "mount", "wm", "fwm"])), None)
-                    if matched_var:
-                        v_res = supabase_client.table("variants").select("variant_sku").eq("id", matched_var["variant_id"]).execute()
-                        if v_res.data:
-                            return v_res.data[0]["variant_sku"]
+        res = supabase_client.table("variants").select("variant_sku").eq("id", variant_id).limit(1).execute()
+        return res.data[0]["variant_sku"] if res.data else None
     except Exception as e:
-        print(f"[-] Stage 1 resolution error: {e}")
-
-    matches = re.findall(r'\b\d{4,6}\b', listing_title)
-    set_num = None
-    if matches:
-        non_years = [num for num in matches if not re.match(r'^(19\d{2}|20\d{2})$', num)]
-        set_num = non_years[0] if non_years else matches[0]
-        
-    if set_num:
-        try:
-            matched_variants_res = supabase_client.table("variants").select("id, variant_sku, variant_type").like("variant_sku", f"%{set_num}%").execute()
-            if matched_variants_res.data:
-                is_wall_mount = any(k in listing_title.lower() or k in norm_var.lower() for k in ["wall", "mount", "wm", "fwm"])
-                is_no_plate = any(k in listing_title.lower() or k in norm_var.lower() for k in ["no plate", "np", "blank", "without plate"])
-                
-                best_variant = None
-                if is_wall_mount:
-                    is_flush = any(k in listing_title.lower() or k in norm_var.lower() for k in ["flush", "fush", "fwm"])
-                    if is_flush:
-                        best_variant = next((v for v in matched_variants_res.data if v["variant_type"] == "FWM"), None)
-                    if not best_variant:
-                        best_variant = next((v for v in matched_variants_res.data if v["variant_type"] in ["WM", "FWM"]), None)
-                elif is_no_plate:
-                    best_variant = next((v for v in matched_variants_res.data if v["variant_type"] == "DS-NP"), None)
-                else:
-                    plaque_m2 = re.search(r'(?i)plaque\s*,\s*(\d+)', norm_var)
-                    if plaque_m2:
-                        target_suffix = f"-DS-{plaque_m2.group(1)}"
-                        best_variant = next((v for v in matched_variants_res.data if v["variant_sku"].endswith(target_suffix)), None)
-                    if not best_variant:
-                        best_variant = next((v for v in matched_variants_res.data if v["variant_type"] in ["DS", "BASE"]), None)
-                    
-                if best_variant:
-                    return best_variant["variant_sku"]
-        except Exception as e:
-            print(f"[-] Stage 2 resolution error: {e}")
-
-    is_f1 = any(k in listing_title.lower() for k in ["f1", "formula 1", "formula one"])
-    is_sc = any(k in listing_title.lower() for k in ["speed champions", "sc"])
-    is_vertical = not any(k in listing_title.lower() for k in ["foldable", "skadis", "wall", "flush", "lift"])
-    
-    if is_f1 and is_sc and norm_var:
-        tier_suffix = get_f1_multi_tier_suffix(norm_var, listing_title)
-        if tier_suffix:
-            target_sku = f"BO-SC-DS-F1-{tier_suffix}"
-            try:
-                res = supabase_client.table("variants").select("variant_sku").eq("variant_sku", target_sku).execute()
-                if res.data:
-                    return res.data[0]["variant_sku"]
-            except Exception as e:
-                print(f"[-] F1 multi-tier resolution error: {e}")
-                
-    if is_f1 and is_sc and is_vertical and norm_var:
-        suffix = get_f1_sku_suffix(var_name=norm_var)
-        if suffix:
-            target_sku = f"BO-SC-VDS-F1-{suffix}"
-            try:
-                res = supabase_client.table("variants").select("variant_sku").eq("variant_sku", target_sku).execute()
-                if res.data:
-                    return res.data[0]["variant_sku"]
-            except Exception as e:
-                print(f"[-] F1 team resolution error: {e}")
-
-    clean_title = re.sub(r'Display Stand for Lego|Display Stand for|Wall Mount for Lego|Wall Mount for|Lego', '', listing_title, flags=re.IGNORECASE).strip()
-    words = [w for w in clean_title.split() if len(w) > 2]
-    if len(words) >= 2:
-        search_pattern = f"%{words[0]}%{words[1]}%"
-        try:
-            fuzzy_listings = supabase_client.table("listings").select("id").ilike("platform_listing_name", search_pattern).limit(5).execute()
-            if fuzzy_listings.data:
-                best_fuzzy = fuzzy_listings.data[0]
-                variations = supabase_client.table("listing_variations").select("variant_id, platform_variation_name").eq("listing_id", best_fuzzy["id"]).execute()
-                if variations.data:
-                    best_var = next((v for v in variations.data if v["platform_variation_name"].lower() == norm_var.lower()), None)
-                    if not best_var:
-                        best_var = next((v for v in variations.data if norm_var.lower() in v["platform_variation_name"].lower() or v["platform_variation_name"].lower() in norm_var.lower()), None)
-                    if not best_var:
-                        is_wall_mount = any(k in listing_title.lower() or k in norm_var.lower() for k in ["wall", "mount", "wm", "fwm"])
-                        if is_wall_mount:
-                            wm_var = next((v for v in variations.data if any(k in v["platform_variation_name"].lower() for k in ["wall", "mount", "wm", "fwm"])), None)
-                            if wm_var:
-                                best_var = wm_var
-                    if not best_var:
-                        best_var = variations.data[0]
-                    v_res = supabase_client.table("variants").select("variant_sku").eq("id", best_var["variant_id"]).execute()
-                    if v_res.data:
-                        return v_res.data[0]["variant_sku"]
-        except Exception as e:
-            print(f"[-] Stage 3 resolution error: {e}")
-    return None
+        logger.error(f"[Matching] resolve_variant_id_to_sku SKU fetch error: {e}")
+        return None
 
 def get_drive_service():
     """Initializes and returns the Google Drive API service client."""
@@ -3553,12 +3655,16 @@ async def catalog_launch_product(request: Request):
     # ── variants upsert ────────────────────────────────────────────────────
     for v in variants:
         vd = vd_by_sku.get(v["sku"], {})
+        _pc_m = re.search(r'-DS-(\d+)$', v["sku"])
+        _var_plaque_count = int(_pc_m.group(1)) if _pc_m and v["type"] == "DS" else None
         var_data = {
             "product_id":    product_id,
             "variant_sku":   v["sku"],
             "variant_name":  f"{product_base_name} - {v['type']}",
             "reference_name": f"{product_base_name} - {v['type']}",
             "variant_type":  v["type"],
+            "set_number":    set_number,
+            "plaque_count":  _var_plaque_count,
         }
         if vd.get("stock_quantity") is not None:
             var_data["stock_quantity"] = int(vd["stock_quantity"])
@@ -3599,10 +3705,12 @@ async def catalog_launch_product(request: Request):
     for v in variants:
         var_name = _launch_variation_name(set_number, v)
         supabase.table("listing_variations").upsert({
-            "listing_id":              listing_id,
-            "variant_id":              v["variant_id"],
-            "platform_variation_name": var_name,
-            "reference_name":          f"{listing_title} [{var_name}]",
+            "listing_id":                  listing_id,
+            "variant_id":                  v["variant_id"],
+            "platform_variation_name":     var_name,
+            "normalized_variation_name":   normalize_variation(var_name),
+            "reference_name":              f"{listing_title} [{var_name}]",
+            "match_source":                "catalog",
         }, on_conflict="listing_id, platform_variation_name").execute()
 
     log_system("info",

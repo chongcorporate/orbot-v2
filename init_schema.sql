@@ -33,20 +33,24 @@ CREATE TABLE IF NOT EXISTS variants (
     product_id UUID REFERENCES products(id) ON DELETE CASCADE,
     variant_sku TEXT UNIQUE NOT NULL,
     variant_name TEXT NOT NULL,
-    variant_type TEXT NOT NULL CHECK (variant_type IN ('BASE', 'DS', 'WM', 'DS-NP', 'FWM', 'Skadis', 'Lift', 'SKADIS', 'VDS', 'Keychain')), 
-    seal_sticker_gdrive_url TEXT, 
-    print_files_gdrive_url TEXT, 
-    pictures_gdrive_url TEXT, 
-    new_print_files_gdrive_url TEXT, 
-    new_pictures_gdrive_url TEXT, 
-    file_checklist TEXT, 
-    adobe_express_url TEXT, 
+    variant_type TEXT NOT NULL CHECK (variant_type IN ('BASE', 'DS', 'WM', 'DS-NP', 'FWM', 'Skadis', 'Lift', 'SKADIS', 'VDS', 'Keychain')),
+    set_number TEXT,       -- LEGO set number (e.g. "75389"); NULL for F1/generic SKUs
+    plaque_count INTEGER,  -- N for DS-N variants; NULL for DS-NP/WM/FWM/BASE
+    seal_sticker_gdrive_url TEXT,
+    print_files_gdrive_url TEXT,
+    pictures_gdrive_url TEXT,
+    new_print_files_gdrive_url TEXT,
+    new_pictures_gdrive_url TEXT,
+    file_checklist TEXT,
+    adobe_express_url TEXT,
     reference_name TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_variants_product_id ON variants(product_id);
+CREATE INDEX IF NOT EXISTS idx_variants_set_number ON variants(set_number);
+CREATE INDEX IF NOT EXISTS idx_variants_set_type_plaque ON variants(set_number, variant_type, plaque_count);
 
 -- Trigger for variants
 DROP TRIGGER IF EXISTS update_variants_updated_at ON variants;
@@ -107,7 +111,9 @@ CREATE TABLE IF NOT EXISTS listing_variations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     listing_id UUID REFERENCES listings(id) ON DELETE CASCADE,
     variant_id UUID REFERENCES variants(id) ON DELETE CASCADE,
-    platform_variation_name TEXT DEFAULT '' NOT NULL, -- Name on platform (e.g. "Stand + Plate")
+    platform_variation_name TEXT DEFAULT '' NOT NULL,       -- Raw name from platform
+    normalized_variation_name TEXT NOT NULL DEFAULT '',     -- Canonical form for matching
+    match_source TEXT NOT NULL DEFAULT 'catalog',           -- 'catalog' | 'self_heal' | 'manual'
     reference_name TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -116,6 +122,7 @@ CREATE TABLE IF NOT EXISTS listing_variations (
 
 CREATE INDEX IF NOT EXISTS idx_listing_variations_variant_id ON listing_variations(variant_id);
 CREATE INDEX IF NOT EXISTS idx_listing_variations_listing_id ON listing_variations(listing_id);
+CREATE INDEX IF NOT EXISTS idx_lv_listing_norm ON listing_variations(listing_id, normalized_variation_name);
 
 -- Trigger for listing_variations
 DROP TRIGGER IF EXISTS update_listing_variations_updated_at ON listing_variations;
