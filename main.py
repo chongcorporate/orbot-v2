@@ -24,7 +24,7 @@ import numpy as np
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from google import genai
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # FastAPI imports
 from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException, Request
@@ -233,6 +233,20 @@ class OrderDetails(BaseModel):
     customer_name: str = Field(description="Customer/buyer name or username, e.g. 'duoble8402' from 'Kindly ship order to duoble8402.'.")
     order_subtotal: float = Field(description="Order subtotal amount.")
     order_currency: str = Field(default="MYR", description="Currency of the order, e.g., 'MYR', 'SGD'.")
+
+    @field_validator('order_subtotal', mode='before')
+    @classmethod
+    def clean_subtotal(cls, v):
+        if isinstance(v, str):
+            v = re.sub(r'[^\d,.]', '', v.strip())
+            if '.' in v and ',' in v:
+                v = v.replace(',', '')          # "1,234.50" → "1234.50"
+            elif ',' in v:
+                v = v.replace(',', '.')         # "1234,50" → "1234.50"
+        try:
+            return float(v) if v else 0.0
+        except (ValueError, TypeError):
+            return 0.0
     items: List[OrderItem] = Field(description="Items purchased.")
 
 class PLItem(BaseModel):
