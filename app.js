@@ -1615,6 +1615,9 @@ function setupTabs() {
         fetchAndRenderPrintersAndQueue();
         fetchAndRenderPrintJobs();
       }
+      if (tabId === "launch") {
+        initLaunchTab();
+      }
     });
   });
 }
@@ -4413,5 +4416,203 @@ async function fetchAndRenderMasterPDFs() {
         Error loading compiled master PDFs: ${err.message}
       </div>
     `;
+  }
+}
+
+// ─── Product Launch Tab ───────────────────────────────────────────────────────
+
+let _launchImages = [];
+let _launchTabReady = false;
+
+function initLaunchTab() {
+  if (_launchTabReady) return;
+  _launchTabReady = true;
+
+  renderLaunchImageGrid();
+
+  // DS checkbox toggles plaque count row
+  document.getElementById('launch-type-ds')?.addEventListener('change', (e) => {
+    const row = document.getElementById('launch-plaque-row');
+    if (row) row.classList.toggle('hidden', !e.target.checked);
+    if (!e.target.checked) row?.classList.remove('flex');
+    else row?.classList.add('flex');
+  });
+
+  // Image grid: click empty slot → open picker
+  document.getElementById('launch-image-grid')?.addEventListener('click', (e) => {
+    if (e.target.closest('[data-empty]')) document.getElementById('launch-image-input')?.click();
+  });
+
+  // Image grid: drag & drop on the panel
+  const panel = document.getElementById('launch-image-panel');
+  panel?.addEventListener('dragover', (e) => { e.preventDefault(); panel.style.boxShadow = '0 0 0 1px #a4e844'; });
+  panel?.addEventListener('dragleave', () => { panel.style.boxShadow = ''; });
+  panel?.addEventListener('drop', (e) => {
+    e.preventDefault(); panel.style.boxShadow = '';
+    addLaunchImages([...e.dataTransfer.files]);
+  });
+
+  document.getElementById('launch-image-input')?.addEventListener('change', (e) => {
+    addLaunchImages([...e.target.files]);
+    e.target.value = '';
+  });
+
+  document.getElementById('launch-preview-btn')?.addEventListener('click', doLaunchPreview);
+  document.getElementById('launch-download-btn')?.addEventListener('click', doLaunchDownload);
+}
+
+function renderLaunchImageGrid() {
+  const grid = document.getElementById('launch-image-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  const MAX = 9;
+  _launchImages.forEach((file, i) => {
+    const url = URL.createObjectURL(file);
+    const slot = document.createElement('div');
+    slot.className = 'relative aspect-square rounded-lg overflow-hidden border border-white/10 group cursor-pointer';
+    slot.innerHTML = `
+      <img src="${url}" class="w-full h-full object-cover" />
+      <button class="launch-img-rm absolute top-1 right-1 bg-black/70 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" data-idx="${i}">
+        <span class="material-symbols-outlined text-white" style="font-size:13px">close</span>
+      </button>
+      <span class="absolute bottom-1 left-1 text-[10px] text-white/50 font-mono bg-black/40 px-1 rounded">${i + 1}</span>`;
+    slot.querySelector('.launch-img-rm').addEventListener('click', (e) => {
+      e.stopPropagation();
+      _launchImages.splice(parseInt(e.currentTarget.dataset.idx), 1);
+      renderLaunchImageGrid();
+    });
+    grid.appendChild(slot);
+  });
+  for (let i = _launchImages.length; i < MAX; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'aspect-square rounded-lg border border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#a4e844]/60 transition-colors';
+    slot.setAttribute('data-empty', '');
+    slot.innerHTML = `<span class="material-symbols-outlined text-[#4b5563]" style="font-size:20px">add_photo_alternate</span>`;
+    grid.appendChild(slot);
+  }
+}
+
+function addLaunchImages(files) {
+  const slots = 9 - _launchImages.length;
+  _launchImages = [..._launchImages, ...files.filter(f => f.type.startsWith('image/')).slice(0, slots)];
+  renderLaunchImageGrid();
+}
+
+function getLaunchFormData() {
+  const types = [];
+  if (document.getElementById('launch-type-ds')?.checked)   types.push('DS');
+  if (document.getElementById('launch-type-dsnp')?.checked) types.push('DS-NP');
+  if (document.getElementById('launch-type-wm')?.checked)   types.push('WM');
+  if (document.getElementById('launch-type-fwm')?.checked)  types.push('FWM');
+  const platforms = [];
+  if (document.getElementById('launch-plat-shopee')?.checked) platforms.push('shopee');
+  if (document.getElementById('launch-plat-lazada')?.checked) platforms.push('lazada');
+  return {
+    set_name:     document.getElementById('launch-set-name')?.value.trim(),
+    set_number:   document.getElementById('launch-set-number')?.value.trim(),
+    theme:        document.getElementById('launch-theme')?.value,
+    product_types: types,
+    plaque_count: parseInt(document.getElementById('launch-plaque-count')?.value) || 1,
+    price_myr:    parseFloat(document.getElementById('launch-price')?.value) || null,
+    platforms,
+  };
+}
+
+function setLaunchStatus(type, msg) {
+  const el = document.getElementById('launch-status');
+  if (!el) return;
+  el.className = `glass-panel px-5 py-3 text-sm ${type === 'error' ? 'text-red-400 border border-red-500/20' : 'text-[#a4e844]'}`;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+async function doLaunchPreview() {
+  const { set_name, set_number, theme, product_types, plaque_count, price_myr, platforms } = getLaunchFormData();
+  if (!set_name || !set_number || !theme || product_types.length === 0) {
+    setLaunchStatus('error', 'Fill in set name, set number, theme, and select at least one product type.');
+    return;
+  }
+  if (platforms.length === 0) { setLaunchStatus('error', 'Select at least one platform.'); return; }
+
+  const btn = document.getElementById('launch-preview-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined text-base" style="animation:spin 1s linear infinite">sync</span> Generating...';
+  document.getElementById('launch-status')?.classList.add('hidden');
+
+  try {
+    const backendUrl = localStorage.getItem('orbot_backend_url') || '';
+    const res = await fetch(`${backendUrl}/catalog/preview-product`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ set_name, set_number, theme, product_types, plaque_count, price_myr, platforms }),
+    });
+    const data = JSON.parse(await res.text());
+    if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+
+    document.getElementById('launch-listing-title').value = data.listing_title;
+    document.getElementById('launch-description').value   = data.description;
+
+    const tbody = document.getElementById('launch-variants-body');
+    tbody.innerHTML = data.variants.map(v => `
+      <tr>
+        <td class="py-2 pr-6 text-[#a4e844]">${v.sku}</td>
+        <td class="py-2 pr-6 text-[#9ca3af]">${v.platform_variation_name}</td>
+        <td class="py-2 text-right text-white">${v.price_myr ? 'MYR ' + Number(v.price_myr).toFixed(2) : '—'}</td>
+      </tr>`).join('');
+
+    document.getElementById('launch-preview-section')?.classList.remove('hidden');
+    document.getElementById('launch-preview-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    setLaunchStatus('error', `Preview failed: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined text-base">auto_awesome</span> Preview Listing';
+  }
+}
+
+async function doLaunchDownload() {
+  const { set_name, set_number, theme, product_types, plaque_count, price_myr, platforms } = getLaunchFormData();
+  const listing_title = document.getElementById('launch-listing-title')?.value.trim();
+  const description   = document.getElementById('launch-description')?.value.trim();
+  if (!listing_title || !description) { setLaunchStatus('error', 'Run Preview first to generate listing copy.'); return; }
+
+  const btn = document.getElementById('launch-download-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined text-base" style="animation:spin 1s linear infinite">sync</span> Building package...';
+  document.getElementById('launch-status')?.classList.add('hidden');
+
+  try {
+    const backendUrl = localStorage.getItem('orbot_backend_url') || '';
+    const fd = new FormData();
+    fd.append('set_name', set_name);
+    fd.append('set_number', set_number);
+    fd.append('theme', theme);
+    fd.append('product_types', JSON.stringify(product_types));
+    fd.append('plaque_count', plaque_count);
+    if (price_myr) fd.append('price_myr', price_myr);
+    fd.append('platforms', JSON.stringify(platforms));
+    fd.append('listing_title', listing_title);
+    fd.append('description', description);
+    _launchImages.forEach(f => fd.append('images', f));
+
+    const res = await fetch(`${backendUrl}/catalog/launch-product`, { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(await res.text());
+
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    const cd = res.headers.get('content-disposition') || '';
+    a.download = cd.match(/filename=([^\s;]+)/)?.[1] || `launch_${set_number}.zip`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setLaunchStatus('success', `Done. ${product_types.length} variant type(s) inserted into DB. Package downloaded.`);
+    logAction('launch_product', { master_sku: `BLO-${theme}-${set_number}`, product_types, platforms });
+  } catch (e) {
+    setLaunchStatus('error', `Launch failed: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined text-base">download</span> Download Launch Package';
   }
 }
