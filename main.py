@@ -1105,26 +1105,32 @@ class ScoutAgent:
             f"{cleaned_body}"
         )
 
-        try:
-            response = self.ai_client.models.generate_content(
-                model='gemini-2.5-flash-lite',
-                contents=prompt,
-                config={
-                    'response_mime_type': 'application/json',
-                    'response_schema': OrderDetails,
-                    'temperature': 0.1
-                }
-            )
-            self._log_gemini_usage('gemini-2.5-flash-lite', response)
-            order_data = json.loads(response.text)
-            # Override with regex-extracted fields (more reliable)
-            order_data.update({k: v for k, v in prefilled.items() if v})
-            return OrderDetails(**order_data)
-        except Exception as e:
-            msg = f"LLM Parsing failed: {e}"
-            logger.error(msg)
-            self.log_to_db("error", msg, {"email_body_preview": email_body[:200]})
-            return None
+        for model in ('gemini-2.5-flash-lite', 'gemini-2.5-flash'):
+            try:
+                response = self.ai_client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config={
+                        'response_mime_type': 'application/json',
+                        'response_schema': OrderDetails,
+                        'temperature': 0.1
+                    }
+                )
+                self._log_gemini_usage(model, response)
+                order_data = json.loads(response.text)
+                order_data.update({k: v for k, v in prefilled.items() if v})
+                return OrderDetails(**order_data)
+            except Exception as e:
+                err_str = str(e)
+                is_transient = '503' in err_str or 'UNAVAILABLE' in err_str or '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str
+                if is_transient and model == 'gemini-2.5-flash-lite':
+                    logger.warning(f"[Scout] {model} transient error ({e}), retrying with fallback model.")
+                    continue
+                msg = f"LLM Parsing failed: {e}"
+                logger.error(msg)
+                self.log_to_db("error", msg, {"email_body_preview": email_body[:200]})
+                # Return a sentinel so the caller knows whether to mark-as-read
+                return None if not is_transient else "TRANSIENT_ERROR"
 
     def resolve_variant_id(self, listing_title: str, variation_name: Optional[str]) -> tuple[Optional[str], bool]:
         norm_var = (variation_name or "").strip()
@@ -1653,15 +1659,16 @@ class ScoutAgent:
                         sender=email.get('sender', ''),
                         date_header=email.get('date', ''),
                     )
-                    if order_details:
+                    if order_details == "TRANSIENT_ERROR":
+                        logger.warning(f"Transient Gemini error for email {email['id']} — leaving unread for next cycle.")
+                    elif order_details:
                         try:
                             self.process_order(order_details)
                         except Exception as e:
                             logger.error(f"Error processing order {order_details.platform_order_id}: {e}")
                         self.mark_email_as_read(email['id'])
                     else:
-                        # parse_email_with_llm logs the error; mark read to avoid retry-looping on quota errors
-                        logger.error(f"Failed to parse order details from email {email['id']}. Marking read to prevent retry loop.")
+                        logger.error(f"Permanent parse failure for email {email['id']}. Marking read to skip.")
                         self.mark_email_as_read(email['id'])
             else:
                 logger.info("No new order emails found.")
