@@ -3254,6 +3254,252 @@ def foreman_dispatch(request: Request):
         logger.error(f"foreman/dispatch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ─── Product Launch Pipeline ──────────────────────────────────────────────────
+
+from PIL import Image as PILImage
+from fastapi.responses import StreamingResponse
+
+_THEME_CODES: dict = {
+    "SC":  "Speed Champions",
+    "SWR": "Star Wars",
+    "MVL": "Marvel",
+    "TCH": "Technic",
+    "ICN": "Icons",
+    "IDS": "Ideas",
+    "DNY": "Disney",
+    "HPR": "Harry Potter",
+    "CTY": "City",
+    "CRE": "Creator",
+    "NTD": "Nintendo",
+    "DC":  "DC",
+    "FNT": "Fortnite",
+    "OTH": "Other",
+}
+
+_PRODUCT_TYPE_LABELS: dict = {
+    "DS":    "Display Stand",
+    "DS-NP": "Display Stand (No Nameplate)",
+    "WM":    "Wall Mount",
+    "FWM":   "Full Wall Mount",
+    "BASE":  "Base",
+}
+
+
+def _launch_build_sku_tree(theme: str, set_number: str, product_types: list, plaque_count: int) -> list:
+    master = f"BLO-{theme}-{set_number}"
+    out = []
+    for ptype in product_types:
+        if ptype == "DS":
+            for n in range(1, plaque_count + 1):
+                out.append({"master_sku": master, "sku": f"{master}-DS-{n}", "type": "DS",
+                             "plaque_num": n, "label": f"{n} Plaque{'s' if n > 1 else ''}"})
+        else:
+            suffix = {"DS-NP": "DS-NP", "WM": "WM", "FWM": "FWM", "BASE": "BASE"}.get(ptype, ptype)
+            out.append({"master_sku": master, "sku": f"{master}-{suffix}", "type": ptype,
+                        "plaque_num": None, "label": _PRODUCT_TYPE_LABELS.get(ptype, ptype)})
+    return out
+
+
+def _launch_variation_name(set_number: str, v: dict) -> str:
+    ptype, n = v["type"], v.get("plaque_num")
+    if ptype == "DS":     return f"({set_number})Base - Plaque,{n}"
+    if ptype == "DS-NP":  return f"({set_number})Base - Blank"
+    if ptype == "WM":     return f"({set_number})Wall Mount"
+    if ptype == "FWM":    return f"({set_number})Full Wall Mount"
+    if ptype == "BASE":   return f"({set_number})Base"
+    return f"({set_number}){ptype}"
+
+
+def _launch_generate_copy(set_name: str, set_number: str, theme: str, product_types: list) -> dict:
+    theme_full = _THEME_CODES.get(theme, theme)
+    types_str  = ", ".join(_PRODUCT_TYPE_LABELS.get(pt, pt) for pt in product_types)
+    prompt = (
+        f"You are writing a product listing for a Shopee/Lazada seller in Malaysia selling custom "
+        f"3D-printed LEGO display accessories.\n"
+        f"Brand: Blocked Off\n"
+        f"LEGO set: {set_name} ({set_number})\n"
+        f"LEGO theme: {theme_full}\n"
+        f"Product types: {types_str}\n\n"
+        f"Return ONLY a JSON object with exactly these two keys:\n"
+        f'{{"listing_title": "...", "description": "..."}}\n\n'
+        f"Rules:\n"
+        f"- listing_title: max 120 chars. Format: '[Product type] for Lego [Theme] [Set Name] ([Set Number])'. SEO-friendly.\n"
+        f"- description: 150-250 words. Plain text, no markdown. Mention: custom-fit, high-quality 3D printing, "
+        f"available variants, Blocked Off brand. Malaysian English is fine.\n"
+        f"Return ONLY the JSON. No extra text."
+    )
+    response = ai_client.models.generate_content(model='gemini-2.0-flash-lite', contents=prompt)
+    log_gemini_usage("Product Launch", "gemini-2.0-flash-lite", response)
+    text = re.sub(r'^```(?:json)?\s*|\s*```$', '', response.text.strip(), flags=re.MULTILINE).strip()
+    try:
+        return json.loads(text)
+    except Exception:
+        return {
+            "listing_title": f"Display Stand for Lego {theme_full} {set_name} ({set_number})",
+            "description": (f"Custom display stand for the Lego {set_name} ({set_number}). "
+                            f"Available in {types_str}. High quality 3D printed by Blocked Off Malaysia."),
+        }
+
+
+def _launch_process_image(raw: bytes, size: int = 2000) -> bytes:
+    img = PILImage.open(BytesIO(raw)).convert("RGB")
+    w, h = img.size
+    s = min(w, h)
+    img = img.crop(((w - s) // 2, (h - s) // 2, (w + s) // 2, (h + s) // 2))
+    img = img.resize((size, size), PILImage.LANCZOS)
+    quality = 85
+    while True:
+        out = BytesIO()
+        img.save(out, format="JPEG", quality=quality, optimize=True)
+        if out.tell() <= 2 * 1024 * 1024 or quality <= 50:
+            return out.getvalue()
+        quality -= 10
+
+
+@app.post("/catalog/preview-product")
+async def catalog_preview_product(request: Request):
+    """Generate listing copy via Gemini — no DB writes, no images needed."""
+    body = await request.json()
+    set_name     = str(body.get("set_name", "")).strip()
+    set_number   = str(body.get("set_number", "")).strip()
+    theme        = str(body.get("theme", "")).strip().upper()
+    product_types = body.get("product_types", [])
+    plaque_count  = int(body.get("plaque_count", 1))
+    price_myr     = body.get("price_myr")
+    platforms     = body.get("platforms", ["shopee", "lazada"])
+
+    if not set_name or not set_number or not theme or not product_types:
+        raise HTTPException(status_code=400, detail="set_name, set_number, theme, product_types required.")
+
+    variants = _launch_build_sku_tree(theme, set_number, product_types, plaque_count)
+    copy     = _launch_generate_copy(set_name, set_number, theme, product_types)
+
+    return {
+        "listing_title": copy["listing_title"],
+        "description":   copy["description"],
+        "master_sku":    f"BLO-{theme}-{set_number}",
+        "platforms":     platforms,
+        "variants": [
+            {"sku": v["sku"], "type": v["type"], "label": v["label"],
+             "platform_variation_name": _launch_variation_name(set_number, v),
+             "price_myr": price_myr}
+            for v in variants
+        ],
+    }
+
+
+@app.post("/catalog/launch-product")
+async def catalog_launch_product(request: Request):
+    """Full pipeline: insert DB rows, process images, return downloadable ZIP."""
+    import zipfile
+
+    form          = await request.form()
+    set_name      = str(form.get("set_name", "")).strip()
+    set_number    = str(form.get("set_number", "")).strip()
+    theme         = str(form.get("theme", "")).strip().upper()
+    product_types = json.loads(form.get("product_types", "[]"))
+    plaque_count  = int(form.get("plaque_count", 1))
+    price_myr     = float(form.get("price_myr", 0) or 0) or None
+    platforms     = json.loads(form.get("platforms", '["shopee","lazada"]'))
+    listing_title = str(form.get("listing_title", "")).strip()
+    description   = str(form.get("description", "")).strip()
+
+    if not set_name or not set_number or not theme or not product_types or not listing_title:
+        raise HTTPException(status_code=400, detail="Missing required fields.")
+
+    variants         = _launch_build_sku_tree(theme, set_number, product_types, plaque_count)
+    master_sku       = f"BLO-{theme}-{set_number}"
+    product_base_name = f"{set_name} ({set_number})"
+
+    # ── products upsert ────────────────────────────────────────────────────
+    prod_res   = supabase.table("products").upsert({
+        "brand_name":        "Blocked Off",
+        "product_category":  _PRODUCT_TYPE_LABELS.get(product_types[0], product_types[0]),
+        "master_sku":        master_sku,
+        "product_base_name": product_base_name,
+    }, on_conflict="master_sku").execute()
+    product_id = prod_res.data[0]["id"]
+
+    # ── variants upsert ────────────────────────────────────────────────────
+    for v in variants:
+        var_res = supabase.table("variants").upsert({
+            "product_id":    product_id,
+            "variant_sku":   v["sku"],
+            "variant_name":  f"{product_base_name} - {v['type']}",
+            "reference_name": f"{product_base_name} - {v['type']}",
+            "variant_type":  v["type"],
+        }, on_conflict="variant_sku").execute()
+        v["variant_id"] = var_res.data[0]["id"]
+
+    # ── listings + listing_variations upsert ──────────────────────────────
+    for platform in platforms:
+        list_res   = supabase.table("listings").upsert({
+            "product_id":                 product_id,
+            "platform_listing_name":      listing_title,
+            "platform_listing_description": description,
+            "price_myr":                  price_myr,
+        }, on_conflict="platform_listing_name").execute()
+        listing_id = list_res.data[0]["id"]
+
+        for v in variants:
+            var_name = _launch_variation_name(set_number, v)
+            supabase.table("listing_variations").upsert({
+                "listing_id":              listing_id,
+                "variant_id":              v["variant_id"],
+                "platform_variation_name": var_name,
+                "reference_name":          f"{listing_title} [{var_name}]",
+            }, on_conflict="listing_id, platform_variation_name").execute()
+
+    log_system("info",
+               f"Product launch: {master_sku} — {len(variants)} variant(s), {len(platforms)} platform(s).",
+               agent_name="Product Launch")
+
+    # ── image processing ───────────────────────────────────────────────────
+    processed_imgs = []
+    for i, img_file in enumerate(form.getlist("images")):
+        if hasattr(img_file, "read"):
+            try:
+                raw  = await img_file.read()
+                data = _launch_process_image(raw)
+                processed_imgs.append((i + 1, data))
+            except Exception as ie:
+                log_system("warning", f"Image {i+1} processing failed: {ie}", agent_name="Product Launch")
+
+    # ── build ZIP ──────────────────────────────────────────────────────────
+    zip_buf = BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for platform in platforms:
+            var_rows = "\n".join(
+                f"  {v['sku']}  |  {_launch_variation_name(set_number, v)}  |  MYR {price_myr or 'TBC'}"
+                for v in variants
+            )
+            zf.writestr(f"{platform}/listing.txt",
+                        f"LISTING — {platform.upper()}\n{'='*50}\n"
+                        f"Title: {listing_title}\n\nDescription:\n{description}\n\n"
+                        f"Variants:\n{var_rows}\n\nPrice (MYR): {price_myr or 'TBC'}\n")
+            for idx, data in processed_imgs:
+                zf.writestr(f"{platform}/images/{idx:02d}.jpg", data)
+
+        zf.writestr("variants.csv",
+                    "SKU,Variant Type,Variation Name (Platform),Price MYR\n" +
+                    "\n".join(f"{v['sku']},{v['type']},{_launch_variation_name(set_number, v)},{price_myr or ''}"
+                              for v in variants))
+
+        zf.writestr("db_summary.txt",
+                    f"DB INSERTS\n{'='*40}\n"
+                    f"Product: {product_base_name}  (master_sku: {master_sku}  id: {product_id})\n\n"
+                    "Variants:\n" +
+                    "\n".join(f"  {v['sku']}  (id: {v['variant_id']})" for v in variants) +
+                    f"\n\nNOTE: print_files rows not created — add after uploading gcode to SimplyPrint.\n")
+
+    zip_buf.seek(0)
+    fname = f"launch_{master_sku}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    return StreamingResponse(zip_buf, media_type="application/zip",
+                             headers={"Content-Disposition": f"attachment; filename={fname}"})
+
+
+# ─── End Product Launch Pipeline ──────────────────────────────────────────────
+
 class QueueFileRequest(BaseModel):
     simplyprint_file_id: str
     print_file_name: str = ""
