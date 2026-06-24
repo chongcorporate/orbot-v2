@@ -1105,7 +1105,8 @@ class ScoutAgent:
             f"{cleaned_body}"
         )
 
-        for model in ('gemini-2.5-flash-lite', 'gemini-2.5-flash'):
+        _scout_models = ('gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro')
+        for i, model in enumerate(_scout_models):
             try:
                 response = self.ai_client.models.generate_content(
                     model=model,
@@ -1123,14 +1124,17 @@ class ScoutAgent:
             except Exception as e:
                 err_str = str(e)
                 is_transient = '503' in err_str or 'UNAVAILABLE' in err_str or '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str
-                if is_transient and model == 'gemini-2.5-flash-lite':
-                    logger.warning(f"[Scout] {model} transient error ({e}), retrying with fallback model.")
+                is_last = i == len(_scout_models) - 1
+                if is_transient and not is_last:
+                    logger.warning(f"[Scout] {model} transient error, trying next model.")
                     continue
+                if is_transient:
+                    logger.warning(f"[Scout] All models temporarily unavailable — email will retry next cycle.")
+                    return "TRANSIENT_ERROR"
                 msg = f"LLM Parsing failed: {e}"
                 logger.error(msg)
                 self.log_to_db("error", msg, {"email_body_preview": email_body[:200]})
-                # Return a sentinel so the caller knows whether to mark-as-read
-                return None if not is_transient else "TRANSIENT_ERROR"
+                return None
 
     def resolve_variant_id(self, listing_title: str, variation_name: Optional[str]) -> tuple[Optional[str], bool]:
         norm_var = (variation_name or "").strip()
