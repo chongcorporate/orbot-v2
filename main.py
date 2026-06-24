@@ -1269,11 +1269,19 @@ class ScoutAgent:
                     elif is_no_plate:
                         best_variant = next((v for v in matched_variants_res.data if v["variant_type"] == "DS-NP"), None)
                     else:
-                        best_variant = next((v for v in matched_variants_res.data if v["variant_type"] in ["DS", "BASE"]), None)
-                        
+                        # If variation name has "Plaque,N" use plaque count to pick DS-N directly
+                        plaque_m2 = re.search(r'(?i)plaque\s*,\s*(\d+)', norm_var)
+                        if plaque_m2:
+                            target_suffix = f"-DS-{plaque_m2.group(1)}"
+                            best_variant = next((v for v in matched_variants_res.data if v["variant_sku"].endswith(target_suffix)), None)
+                            if best_variant:
+                                logger.info(f"[Matching] Stage 2 plaque-count selection: '{norm_var}' → '{best_variant['variant_sku']}'")
+                        if not best_variant:
+                            best_variant = next((v for v in matched_variants_res.data if v["variant_type"] in ["DS", "BASE"]), None)
+
                     if not best_variant:
                         best_variant = matched_variants_res.data[0]
-                        
+
                     logger.info(f"[Matching] Stage 2 Success: mapped set {set_num} to variant '{best_variant['variant_sku']}'")
                     
                     listing_check = self.supabase.table("listings").select("id").eq("platform_listing_name", listing_title).execute()
@@ -1785,7 +1793,12 @@ def resolve_variant_id_to_sku(supabase_client, listing_title: str, variation_nam
                 elif is_no_plate:
                     best_variant = next((v for v in matched_variants_res.data if v["variant_type"] == "DS-NP"), None)
                 else:
-                    best_variant = next((v for v in matched_variants_res.data if v["variant_type"] in ["DS", "BASE"]), None)
+                    plaque_m2 = re.search(r'(?i)plaque\s*,\s*(\d+)', norm_var)
+                    if plaque_m2:
+                        target_suffix = f"-DS-{plaque_m2.group(1)}"
+                        best_variant = next((v for v in matched_variants_res.data if v["variant_sku"].endswith(target_suffix)), None)
+                    if not best_variant:
+                        best_variant = next((v for v in matched_variants_res.data if v["variant_type"] in ["DS", "BASE"]), None)
                     
                 if best_variant:
                     return best_variant["variant_sku"]
