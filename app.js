@@ -4498,6 +4498,8 @@ function addLaunchImages(files) {
   renderLaunchImageGrid();
 }
 
+let _launchVariants = [];
+
 function getLaunchFormData() {
   const types = [];
   if (document.getElementById('launch-type-ds')?.checked)   types.push('DS');
@@ -4508,12 +4510,15 @@ function getLaunchFormData() {
   if (document.getElementById('launch-plat-shopee')?.checked) platforms.push('shopee');
   if (document.getElementById('launch-plat-lazada')?.checked) platforms.push('lazada');
   return {
-    set_name:     document.getElementById('launch-set-name')?.value.trim(),
-    set_number:   document.getElementById('launch-set-number')?.value.trim(),
-    theme:        document.getElementById('launch-theme')?.value,
+    set_name:         document.getElementById('launch-set-name')?.value.trim(),
+    set_number:       document.getElementById('launch-set-number')?.value.trim(),
+    theme:            document.getElementById('launch-theme')?.value,
+    brand_name:       document.getElementById('launch-brand-name')?.value.trim() || 'Blocked Off',
+    product_category: document.getElementById('launch-product-category')?.value.trim() || '',
     product_types: types,
     plaque_count: parseInt(document.getElementById('launch-plaque-count')?.value) || 1,
     price_myr:    parseFloat(document.getElementById('launch-price')?.value) || null,
+    price_sgd:    parseFloat(document.getElementById('launch-price-sgd')?.value) || null,
     platforms,
   };
 }
@@ -4552,12 +4557,25 @@ async function doLaunchPreview() {
     document.getElementById('launch-listing-title').value = data.listing_title;
     document.getElementById('launch-description').value   = data.description;
 
+    _launchVariants = data.variants;
+
     const tbody = document.getElementById('launch-variants-body');
     tbody.innerHTML = data.variants.map(v => `
       <tr>
         <td class="py-2 pr-6 text-[#a4e844]">${v.sku}</td>
         <td class="py-2 pr-6 text-[#9ca3af]">${v.platform_variation_name}</td>
         <td class="py-2 text-right text-white">${v.price_myr ? 'MYR ' + Number(v.price_myr).toFixed(2) : '—'}</td>
+      </tr>`).join('');
+
+    const detailsTbody = document.getElementById('launch-variant-details-body');
+    detailsTbody.innerHTML = data.variants.map((v, i) => `
+      <tr>
+        <td class="py-2 pr-4 text-[#a4e844] font-mono text-xs">${v.sku}</td>
+        <td class="py-2 pr-3"><input id="lv-${i}-stock" type="number" value="0" min="0" class="w-16 text-center" style="padding:0.25rem 0.375rem !important" /></td>
+        <td class="py-2 pr-3"><input id="lv-${i}-seal" type="text" placeholder="https://drive.google.com/…" class="w-full" style="padding:0.25rem 0.5rem !important; font-size:0.7rem" /></td>
+        <td class="py-2 pr-3"><input id="lv-${i}-files" type="text" placeholder="https://drive.google.com/…" class="w-full" style="padding:0.25rem 0.5rem !important; font-size:0.7rem" /></td>
+        <td class="py-2 pr-3"><input id="lv-${i}-pics" type="text" placeholder="https://drive.google.com/…" class="w-full" style="padding:0.25rem 0.5rem !important; font-size:0.7rem" /></td>
+        <td class="py-2"><input id="lv-${i}-adobe" type="text" placeholder="https://express.adobe.com/…" class="w-full" style="padding:0.25rem 0.5rem !important; font-size:0.7rem" /></td>
       </tr>`).join('');
 
     document.getElementById('launch-preview-section')?.classList.remove('hidden');
@@ -4571,10 +4589,19 @@ async function doLaunchPreview() {
 }
 
 async function doLaunchDownload() {
-  const { set_name, set_number, theme, product_types, plaque_count, price_myr, platforms } = getLaunchFormData();
+  const { set_name, set_number, theme, brand_name, product_category, product_types, plaque_count, price_myr, price_sgd, platforms } = getLaunchFormData();
   const listing_title = document.getElementById('launch-listing-title')?.value.trim();
   const description   = document.getElementById('launch-description')?.value.trim();
   if (!listing_title || !description) { setLaunchStatus('error', 'Run Preview first to generate listing copy.'); return; }
+
+  const variantDetails = _launchVariants.map((v, i) => ({
+    sku:                    v.sku,
+    stock_quantity:         parseInt(document.getElementById(`lv-${i}-stock`)?.value) || 0,
+    seal_sticker_gdrive_url: document.getElementById(`lv-${i}-seal`)?.value.trim() || null,
+    print_files_gdrive_url:  document.getElementById(`lv-${i}-files`)?.value.trim() || null,
+    pictures_gdrive_url:     document.getElementById(`lv-${i}-pics`)?.value.trim() || null,
+    adobe_express_url:       document.getElementById(`lv-${i}-adobe`)?.value.trim() || null,
+  }));
 
   const btn = document.getElementById('launch-download-btn');
   btn.disabled = true;
@@ -4587,12 +4614,21 @@ async function doLaunchDownload() {
     fd.append('set_name', set_name);
     fd.append('set_number', set_number);
     fd.append('theme', theme);
+    fd.append('brand_name', brand_name);
+    fd.append('product_category', product_category);
     fd.append('product_types', JSON.stringify(product_types));
     fd.append('plaque_count', plaque_count);
     if (price_myr) fd.append('price_myr', price_myr);
+    if (price_sgd) fd.append('price_sgd', price_sgd);
     fd.append('platforms', JSON.stringify(platforms));
     fd.append('listing_title', listing_title);
     fd.append('description', description);
+    fd.append('variant_details', JSON.stringify(variantDetails));
+    fd.append('shopee_my', document.getElementById('launch-shopee-my')?.value.trim() || '');
+    fd.append('shopee_sg', document.getElementById('launch-shopee-sg')?.value.trim() || '');
+    fd.append('shopee_ph', document.getElementById('launch-shopee-ph')?.value.trim() || '');
+    fd.append('shopee_th', document.getElementById('launch-shopee-th')?.value.trim() || '');
+    fd.append('lazada_my', document.getElementById('launch-lazada-my')?.value.trim() || '');
     _launchImages.forEach(f => fd.append('images', f));
 
     const res = await fetch(`${backendUrl}/catalog/launch-product`, { method: 'POST', body: fd });

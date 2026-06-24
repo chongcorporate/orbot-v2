@@ -1384,9 +1384,15 @@
             <div class="glass-panel p-5">
               <p class="text-xs text-[#6b7280] uppercase tracking-widest mb-4">Product Details</p>
               <div class="space-y-3">
-                <div>
-                  <label class="text-xs text-[#9ca3af] block mb-1">Set Name</label>
-                  <input id="launch-set-name" type="text" placeholder="e.g. Millennium Falcon" class="w-full" />
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="text-xs text-[#9ca3af] block mb-1">Set Name</label>
+                    <input id="launch-set-name" type="text" placeholder="e.g. Millennium Falcon" class="w-full" />
+                  </div>
+                  <div>
+                    <label class="text-xs text-[#9ca3af] block mb-1">Brand Name</label>
+                    <input id="launch-brand-name" type="text" value="Blocked Off" class="w-full" />
+                  </div>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
@@ -1414,23 +1420,31 @@
                     </select>
                   </div>
                 </div>
+                <div>
+                  <label class="text-xs text-[#9ca3af] block mb-1">Product Category</label>
+                  <input id="launch-product-category" type="text" placeholder="e.g. Display Stand" class="w-full" />
+                </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="text-xs text-[#9ca3af] block mb-1">Price (MYR)</label>
                     <input id="launch-price" type="text" placeholder="45.00" class="w-full" />
                   </div>
                   <div>
-                    <label class="text-xs text-[#9ca3af] block mb-1">Platforms</label>
-                    <div class="flex gap-4 pt-2">
-                      <label class="flex items-center gap-2 cursor-pointer select-none">
-                        <input type="checkbox" id="launch-plat-shopee" checked style="accent-color:#a4e844" />
-                        <span class="text-sm text-white">Shopee</span>
-                      </label>
-                      <label class="flex items-center gap-2 cursor-pointer select-none">
-                        <input type="checkbox" id="launch-plat-lazada" checked style="accent-color:#a4e844" />
-                        <span class="text-sm text-white">Lazada</span>
-                      </label>
-                    </div>
+                    <label class="text-xs text-[#9ca3af] block mb-1">Price (SGD)</label>
+                    <input id="launch-price-sgd" type="text" placeholder="14.00" class="w-full" />
+                  </div>
+                </div>
+                <div>
+                  <label class="text-xs text-[#9ca3af] block mb-1">Platforms</label>
+                  <div class="flex gap-4 pt-1">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                      <input type="checkbox" id="launch-plat-shopee" checked style="accent-color:#a4e844" />
+                      <span class="text-sm text-white">Shopee</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                      <input type="checkbox" id="launch-plat-lazada" checked style="accent-color:#a4e844" />
+                      <span class="text-sm text-white">Lazada</span>
+                    </label>
                   </div>
                 </div>
               </div>
@@ -1516,6 +1530,56 @@
               </thead>
               <tbody id="launch-variants-body" class="divide-y divide-white/5 text-xs font-mono"></tbody>
             </table>
+          </div>
+
+          <!-- Per-variant details -->
+          <div class="glass-panel p-5">
+            <p class="text-xs text-[#6b7280] uppercase tracking-widest mb-4">Variant Details</p>
+            <div class="overflow-x-auto">
+              <table class="w-full" style="min-width:860px">
+                <thead class="text-xs text-[#6b7280] uppercase border-b border-white/10">
+                  <tr>
+                    <th class="text-left pb-2 font-medium pr-4" style="min-width:180px">SKU</th>
+                    <th class="text-left pb-2 font-medium pr-3" style="min-width:64px">Stock</th>
+                    <th class="text-left pb-2 font-medium pr-3" style="min-width:160px">Seal Sticker GDrive</th>
+                    <th class="text-left pb-2 font-medium pr-3" style="min-width:160px">Print Files GDrive</th>
+                    <th class="text-left pb-2 font-medium pr-3" style="min-width:160px">Pictures GDrive</th>
+                    <th class="text-left pb-2 font-medium" style="min-width:160px">Adobe Express URL</th>
+                  </tr>
+                </thead>
+                <tbody id="launch-variant-details-body" class="divide-y divide-white/5 text-xs"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Platform listing IDs -->
+          <div class="glass-panel p-5">
+            <div class="flex items-center gap-3 mb-4">
+              <p class="text-xs text-[#6b7280] uppercase tracking-widest">Platform Listing IDs</p>
+              <span class="text-xs text-[#4b5563]">— fill in after creating listings on each platform</span>
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label class="text-xs text-[#9ca3af] block mb-1">Shopee MY</label>
+                <input id="launch-shopee-my" type="text" placeholder="listing ID or URL" class="w-full" />
+              </div>
+              <div>
+                <label class="text-xs text-[#9ca3af] block mb-1">Shopee SG</label>
+                <input id="launch-shopee-sg" type="text" placeholder="listing ID or URL" class="w-full" />
+              </div>
+              <div>
+                <label class="text-xs text-[#9ca3af] block mb-1">Shopee PH</label>
+                <input id="launch-shopee-ph" type="text" placeholder="listing ID or URL" class="w-full" />
+              </div>
+              <div>
+                <label class="text-xs text-[#9ca3af] block mb-1">Shopee TH</label>
+                <input id="launch-shopee-th" type="text" placeholder="listing ID or URL" class="w-full" />
+              </div>
+              <div>
+                <label class="text-xs text-[#9ca3af] block mb-1">Lazada MY</label>
+                <input id="launch-lazada-my" type="text" placeholder="listing ID or URL" class="w-full" />
+              </div>
+            </div>
           </div>
 
           <!-- Status + download -->
@@ -1907,6 +1971,6 @@
       await import("https://unpkg.com/@oddbird/css-anchor-positioning");
     }
   </script>
-  <script src="app.js?v=1.6.2"></script>
+  <script src="app.js?v=1.6.3"></script>
 </body>
 </html>
