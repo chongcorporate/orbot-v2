@@ -962,13 +962,17 @@ class ScoutAgent:
             email_contents = []
             for message in messages:
                 msg = self.gmail_service.users().messages().get(userId='me', id=message['id'], format='full').execute()
-                headers = msg['payload']['headers']
-                subject = next((header['value'] for header in headers if header['name'].lower() == 'subject'), "No Subject")
+                headers = {h['name'].lower(): h['value'] for h in msg['payload']['headers']}
+                subject = headers.get('subject', 'No Subject')
+                sender  = headers.get('from', '')
+                date    = headers.get('date', '')
                 body_content = self._extract_email_body(msg['payload'])
-                
+
                 email_contents.append({
                     'id': message['id'],
                     'subject': subject,
+                    'sender': sender,
+                    'date': date,
                     'body': body_content
                 })
             return email_contents
@@ -1024,27 +1028,86 @@ class ScoutAgent:
             logger.error(f"An error occurred marking email as read: {error}")
 
     def _clean_text_for_llm(self, text: str) -> str:
-        # Replace URLs to save tokens
         text = re.sub(r'http[s]?://\S+', '[URL]', text)
-        
-        # Remove common email footer boilerplates to save tokens
-        text = re.split(r'(?i)this is an (?:auto-generated|automatically generated) email', text)[0]
-        text = re.split(r'(?i)download (?:shopee|lazada)?\s*app', text)[0]
-        text = re.split(r'(?i)need help\??', text)[0]
-        text = re.split(r'(?i)copyright\s*©', text)[0]
-        text = re.split(r'(?i)privacy policy|terms of service', text)[0]
-        text = re.split(r'(?i)you are receiving this email', text)[0]
-        
-        # Clean up consecutive newlines and truncate
+        # Cut at common footer markers
+        for marker in [
+            r'(?i)this is an (?:auto-generated|automatically generated) email',
+            r'(?i)download (?:shopee|lazada)?\s*app',
+            r'(?i)need help\??',
+            r'(?i)copyright\s*©',
+            r'(?i)privacy policy|terms of service',
+            r'(?i)you are receiving this email',
+            r'(?i)unsubscribe',
+            r'(?i)follow us on',
+            r'(?i)customer service hotline',
+        ]:
+            text = re.split(marker, text)[0]
         text = re.sub(r'\n{3,}', '\n\n', text)
-        return text.strip()[:4000]
+        return text.strip()[:1500]
 
-    def parse_email_with_llm(self, email_body: str) -> Optional[OrderDetails]:
+    def _regex_preparse(self, subject: str, sender: str, date_header: str, body: str) -> dict:
+        """Extract fields that don't need LLM — platform, order ID, timestamp."""
+        result = {}
+
+        # Platform from sender address
+        s = sender.lower()
+        if 'shopee' in s:
+            result['sales_platform'] = 'Shopee'
+        elif 'lazada' in s:
+            result['sales_platform'] = 'Lazada'
+
+        # Order ID: 14-20 digit numeric string common to both platforms
+        for text in [subject, body[:600]]:
+            m = re.search(r'#?(\d{14,20})', text)
+            if m:
+                result['platform_order_id'] = m.group(1)
+                break
+        # Lazada shorter alphanumeric format e.g. 102xxxxxxx
+        if 'platform_order_id' not in result:
+            m = re.search(r'(?:order\s*(?:id|no|number|#)\s*[:\-]?\s*)([A-Z0-9]{8,20})', subject, re.I)
+            if m:
+                result['platform_order_id'] = m.group(1).lstrip('#')
+
+        # Timestamp from email Date header (avoids asking Gemini to guess it)
+        if date_header:
+            try:
+                from email.utils import parsedate_to_datetime
+                dt = parsedate_to_datetime(date_header)
+                result['order_timestamp'] = dt.isoformat()
+            except Exception:
+                pass
+
+        # Currency hint
+        if 'sgd' in body[:800].lower():
+            result['order_currency'] = 'SGD'
+        else:
+            result['order_currency'] = 'MYR'
+
+        return result
+
+    def parse_email_with_llm(self, email_body: str, subject: str = '', sender: str = '', date_header: str = '') -> Optional[OrderDetails]:
+        prefilled = self._regex_preparse(subject, sender, date_header, email_body)
         cleaned_body = self._clean_text_for_llm(email_body)
-        prompt = f"Extract structured order details from this email:\n\n{cleaned_body}"
+
+        # Build a tighter prompt that skips fields we already know
+        known = []
+        if prefilled.get('platform_order_id'):
+            known.append(f"Order ID: {prefilled['platform_order_id']}")
+        if prefilled.get('sales_platform'):
+            known.append(f"Platform: {prefilled['sales_platform']}")
+        if prefilled.get('order_timestamp'):
+            known.append(f"Timestamp: {prefilled['order_timestamp']}")
+        known_str = ('Known fields (use these, do not re-extract):\n' + '\n'.join(known) + '\n\n') if known else ''
+        prompt = (
+            f"{known_str}"
+            f"Extract structured order details from this email. "
+            f"Focus on: customer name, subtotal, and the full items list with variation names.\n\n"
+            f"{cleaned_body}"
+        )
+
         try:
             response = self.ai_client.models.generate_content(
-                model='gemini-2.0-flash',
+                model='gemini-2.0-flash-lite',
                 contents=prompt,
                 config={
                     'response_mime_type': 'application/json',
@@ -1052,8 +1115,10 @@ class ScoutAgent:
                     'temperature': 0.1
                 }
             )
-            self._log_gemini_usage('gemini-2.0-flash', response)
+            self._log_gemini_usage('gemini-2.0-flash-lite', response)
             order_data = json.loads(response.text)
+            # Override with regex-extracted fields (more reliable)
+            order_data.update({k: v for k, v in prefilled.items() if v})
             return OrderDetails(**order_data)
         except Exception as e:
             msg = f"LLM Parsing failed: {e}"
@@ -1578,10 +1643,16 @@ class ScoutAgent:
                 for email in emails:
                     logger.info(f"Processing order email: {email['subject']}")
                     if not email['body']:
-                        logger.warning(f"Email {email['id']} has no readable body text. Leaving unread.")
+                        logger.warning(f"Email {email['id']} has no readable body text. Marking read to skip.")
+                        self.mark_email_as_read(email['id'])
                         continue
 
-                    order_details = self.parse_email_with_llm(email['body'])
+                    order_details = self.parse_email_with_llm(
+                        email['body'],
+                        subject=email.get('subject', ''),
+                        sender=email.get('sender', ''),
+                        date_header=email.get('date', ''),
+                    )
                     if order_details:
                         try:
                             self.process_order(order_details)
@@ -1589,7 +1660,9 @@ class ScoutAgent:
                             logger.error(f"Error processing order {order_details.platform_order_id}: {e}")
                         self.mark_email_as_read(email['id'])
                     else:
-                        logger.error(f"Failed to parse order details from email {email['id']}. Leaving as unread.")
+                        # parse_email_with_llm logs the error; mark read to avoid retry-looping on quota errors
+                        logger.error(f"Failed to parse order details from email {email['id']}. Marking read to prevent retry loop.")
+                        self.mark_email_as_read(email['id'])
             else:
                 logger.info("No new order emails found.")
 
