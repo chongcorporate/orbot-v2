@@ -330,7 +330,7 @@ async function fetchAndRenderOrders(forceFetch = true) {
     if (forceFetch || cachedOrders.length === 0) {
       let query = supabaseClient
         .from("orders")
-        .select("*, order_items(id, variant_sku, variant_name, purchased_quantity, item_print_status, sent_to_print_timestamp, print_jobs(id, print_file_name, simplyprint_job_id, job_execution_status, printer_name, queue_position, estimated_finish_time, percent_complete))")
+        .select("*, order_items(id, variant_sku, variant_name, purchased_quantity, item_print_status, sent_to_print_timestamp, variants(seal_sticker_gdrive_url), print_jobs(id, print_file_name, simplyprint_job_id, job_execution_status, printer_name, queue_position, estimated_finish_time, percent_complete, print_files(print_time_m, simplyprint_file_id)))")
         .order("created_at", { ascending: false })
         .limit(200);
 
@@ -563,10 +563,31 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
     if (itemsList.length === 0) {
       detailsHtml = `<div class="font-data-mono text-xs text-outline py-2 text-center">No items found in this order.</div>`;
     } else {
-      detailsHtml = `<div class="flex flex-col gap-3">`;
+      // Total print time across all items
+      let totalPrintMin = 0;
+      for (const item of itemsList) {
+        for (const j of (item.print_jobs || [])) {
+          totalPrintMin += ((j.print_files?.print_time_m || 0) * (item.purchased_quantity || 1));
+        }
+      }
+      const totalTimeHtml = totalPrintMin > 0
+        ? `<div class="flex items-center gap-1.5 text-[11px] text-on-surface-variant/60 font-data-mono mb-1">
+             <span class="material-symbols-outlined text-xs select-none">schedule</span>
+             <span>Total print time: <span class="text-on-surface-variant">${totalPrintMin}m</span></span>
+           </div>`
+        : "";
+
+      detailsHtml = `<div class="flex flex-col gap-3">${totalTimeHtml}`;
       for (const item of itemsList) {
         const dateStr = item.sent_to_print_timestamp ? new Date(item.sent_to_print_timestamp).toLocaleString() : "Not Dispatched";
-        
+        const stickerUrl = item.variants?.seal_sticker_gdrive_url || "";
+        const stickerBtn = stickerUrl
+          ? `<a href="${stickerUrl}" target="_blank" rel="noopener"
+               class="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors font-semibold whitespace-nowrap">
+               <span class="material-symbols-outlined text-xs">label</span> Print Sticker
+             </a>`
+          : "";
+
         const jobs = item.print_jobs || [];
         let jobsHtml = "";
         if (jobs.length > 0) {
@@ -576,7 +597,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
                 let badgeClass = "pending";
                 let extraStatus = "";
                 let progressHtml = "";
-                
+
                 if (j.job_execution_status === "printing") {
                   badgeClass = "printing";
                   extraStatus = `
@@ -603,22 +624,34 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
                     </span>
                   `;
                 }
-                
+
                 const etaText = j.job_execution_status !== "completed" && j.estimated_finish_time ? formatEta(j.estimated_finish_time) : "";
                 const etaHtml = etaText ? `<span class="text-on-surface-variant/60 font-data-mono text-[10px] ml-auto">${etaText}</span>` : "";
+                const spFileId = j.print_files?.simplyprint_file_id || "";
+                const safeFileName = (j.print_file_name || "").replace(/'/g, "\\'");
+                const redispatchBtn = spFileId
+                  ? `<button onclick="redispatchPrintFile('${spFileId}','${safeFileName}',this)"
+                       class="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors font-semibold whitespace-nowrap">
+                       <span class="material-symbols-outlined text-xs">refresh</span> Re-dispatch
+                     </button>`
+                  : "";
+                const printTimeHtml = j.print_files?.print_time_m
+                  ? `<span class="text-on-surface-variant/40 font-data-mono text-[10px]">${j.print_files.print_time_m}m</span>`
+                  : "";
 
                 return `
                   <div class="flex flex-col p-2.5 rounded bg-black/30 border border-outline-variant/10 text-xs w-full">
                     <div class="flex flex-wrap items-center justify-between gap-2">
-                      <div class="flex items-center gap-1.5 min-w-0">
+                      <div class="flex items-center gap-1.5 min-w-0 flex-1">
                         <span class="material-symbols-outlined text-surface-tint text-base flex-shrink-0">code</span>
-                        <div class="font-data-mono text-on-surface-variant overflow-x-auto whitespace-nowrap scrollbar-thin max-w-[280px]" title="${j.print_file_name}">${j.print_file_name}</div>
-                        <span class="text-on-surface-variant/40 font-data-mono text-[10px]">(${j.simplyprint_job_id})</span>
+                        <div class="font-data-mono text-on-surface-variant break-all" title="${j.print_file_name}">${j.print_file_name}</div>
+                        ${printTimeHtml}
                       </div>
-                      <div class="flex items-center gap-1.5 ml-auto">
+                      <div class="flex items-center gap-1.5 flex-wrap">
                         ${extraStatus}
                         ${etaHtml}
                         <span class="badge ${badgeClass} text-[10px] py-0.5 px-2.5">${j.job_execution_status}</span>
+                        ${redispatchBtn}
                       </div>
                     </div>
                     ${progressHtml}
@@ -652,6 +685,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
             <div class="flex flex-row md:flex-col items-center md:items-end justify-between w-full md:w-auto border-t md:border-t-0 border-outline-variant/5 pt-2 md:pt-0 mt-1 md:mt-0 gap-3">
               <span class="text-sm font-bold text-on-surface font-data-mono">Qty: ${item.purchased_quantity}</span>
               <span class="badge ${item.item_print_status.toLowerCase() === 'printing' ? 'printing' : (item.item_print_status.toLowerCase() === 'pending' ? 'pending' : 'completed')}">${item.item_print_status}</span>
+              ${stickerBtn}
             </div>
           </div>
         `;
@@ -1033,6 +1067,29 @@ function toggleOrderDetails(orderId, cardElement, prefix = "") {
 }
 
 // Fetch and Render System Logs
+window.redispatchPrintFile = async function(simplyPrintFileId, printFileName, btn) {
+  const backendUrl = (localStorage.getItem("orbot_backend_url") || "").replace(/\/$/, "");
+  if (!backendUrl) { showToast("Backend URL not set in Settings.", "warning"); return; }
+  const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
+  if (btn) { btn.disabled = true; btn.querySelector(".material-symbols-outlined").textContent = "sync"; }
+  try {
+    const res = await fetch(`${backendUrl}/print-files/queue`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
+      body: JSON.stringify({ simplyprint_file_id: simplyPrintFileId, print_file_name: printFileName })
+    });
+    const text = await res.text();
+    const data = JSON.parse(text);
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    showToast(`Re-dispatched: ${printFileName}`, "success");
+    logAction(`File re-dispatched to print queue: ${printFileName}`, "info", { simplyprint_file_id: simplyPrintFileId, job_id: data.simplyprint_job_id });
+  } catch (err) {
+    showToast(`Re-dispatch failed: ${err.message}`, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.querySelector(".material-symbols-outlined").textContent = "refresh"; }
+  }
+};
+
 window.toggleLogDetails = function(logId, event) {
   if (event) {
     if (event.target.closest("pre") || event.target.closest(".log-details-pane")) {
@@ -2389,6 +2446,7 @@ function setupWaybillProcessing() {
           if (currentTab === "waybills") {
             fetchAndRenderWaybillsArchive();
             fetchAndRenderMasterPDFs();
+            setWaybillTab("pdfs");
           }
           if (currentTab === "overview") {
             fetchAndRenderOverviewJobs();
