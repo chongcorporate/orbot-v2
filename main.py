@@ -2300,14 +2300,21 @@ def process_ingestion(service, waybill_pdf_path, packing_list_pdf_path=None, way
             
         print(f"[*] Uploading processed waybill for {order_id}...")
         processed_gdrive_url = upload_to_drive(service, processed_pdf_path, f"Processed_Waybill_{order_id}.pdf", processed_folder_id)
-        
-        supabase.table('orders').update({
-            'raw_waybill_gdrive_url': raw_gdrive_url,
-            'processed_waybill_gdrive_url': processed_gdrive_url,
-            'waybill_processing_status': 'ready'
-        }).eq('id', db_order_id).execute()
-        
-        print(f"[+] Successfully matched and processed waybill for order {order_id}.")
+
+        if processed_gdrive_url:
+            supabase.table('orders').update({
+                'raw_waybill_gdrive_url': raw_gdrive_url,
+                'processed_waybill_gdrive_url': processed_gdrive_url,
+                'waybill_processing_status': 'ready'
+            }).eq('id', db_order_id).execute()
+            print(f"[+] Successfully matched and processed waybill for order {order_id}.")
+        else:
+            supabase.table('orders').update({
+                'raw_waybill_gdrive_url': raw_gdrive_url,
+                'waybill_processing_status': 'failed'
+            }).eq('id', db_order_id).execute()
+            log_system_waybill("error", f"Processed waybill upload failed for order {order_id} — Drive upload returned no URL. Order marked as failed.")
+            print(f"[-] Processed waybill upload failed for order {order_id}.")
         try:
             os.remove(raw_pdf_path)
             os.remove(processed_pdf_path)
@@ -2339,11 +2346,15 @@ def run_batch_print(service):
 
     print(f"[+] Found {len(orders)} orders ready.")
     orders_with_url = [o for o in orders if o.get('processed_waybill_gdrive_url')]
-    orders_missing_url = [o.get('platform_order_id') for o in orders if not o.get('processed_waybill_gdrive_url')]
+    orders_missing_url = [o for o in orders if not o.get('processed_waybill_gdrive_url')]
     if orders_missing_url:
-        print(f"[!] Skipping {len(orders_missing_url)} orders with no processed waybill URL: {orders_missing_url}")
+        missing_ids = [o.get('platform_order_id') for o in orders_missing_url]
+        print(f"[!] {len(orders_missing_url)} order(s) are 'ready' but have no processed waybill URL — resetting to 'failed': {missing_ids}")
+        for bad in orders_missing_url:
+            supabase.table('orders').update({'waybill_processing_status': 'failed'}).eq('id', bad['id']).execute()
+        log_system_waybill("warning", f"Batch compile: reset {len(orders_missing_url)} 'ready' order(s) with no waybill PDF to 'failed': {missing_ids}")
     if not orders_with_url:
-        raise RuntimeError(f"Found {len(orders)} ready order(s) but none have a processed waybill PDF URL yet.")
+        raise RuntimeError(f"Found {len(orders)} ready order(s) but none have a processed waybill PDF — all reset to 'failed'. Re-upload waybills to reprocess.")
 
     batch_writer = PdfWriter()
     successful_order_ids = []
