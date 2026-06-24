@@ -2333,20 +2333,26 @@ def run_batch_print(service):
     print("[*] Querying orders ready...")
     res = supabase.table('orders').select('id, platform_order_id, processed_waybill_gdrive_url').in_('waybill_processing_status', ['ready', 'ready to print']).execute()
     orders = res.data if res.data else []
-    
+
     if not orders:
-        print("[*] No waybills are currently marked as 'ready'.")
-        return None
-        
+        raise RuntimeError("No orders currently marked as 'ready' or 'ready to print'.")
+
     print(f"[+] Found {len(orders)} orders ready.")
+    orders_with_url = [o for o in orders if o.get('processed_waybill_gdrive_url')]
+    orders_missing_url = [o.get('platform_order_id') for o in orders if not o.get('processed_waybill_gdrive_url')]
+    if orders_missing_url:
+        print(f"[!] Skipping {len(orders_missing_url)} orders with no processed waybill URL: {orders_missing_url}")
+    if not orders_with_url:
+        raise RuntimeError(f"Found {len(orders)} ready order(s) but none have a processed waybill PDF URL yet.")
+
     batch_writer = PdfWriter()
     successful_order_ids = []
-    
-    for o in orders:
+    failed_order_ids = []
+
+    for o in orders_with_url:
         p_id = o.get('platform_order_id')
         url = o.get('processed_waybill_gdrive_url')
-        if not url: continue
-            
+
         print(f"[*] Downloading processed PDF for order {p_id}...")
         temp_path = f"/tmp/Processed_Temp_{p_id}.pdf"
         if download_file_from_url(service, url, temp_path):
@@ -2358,33 +2364,40 @@ def run_batch_print(service):
                 print(f"[+] Appended order {p_id} to batch.")
             except Exception as e:
                 print(f"[-] Error parsing processed PDF for order {p_id}: {e}")
+                failed_order_ids.append(p_id)
             finally:
                 try: os.remove(temp_path)
                 except OSError: pass
         else:
             print(f"[-] Skipped order {p_id} due to download failure.")
-            
+            failed_order_ids.append(p_id)
+
     if len(successful_order_ids) == 0:
-        print("[!] No pages compiled. Batch print aborted.")
-        return None
-        
+        detail = f"Failed orders: {failed_order_ids}" if failed_order_ids else "No downloadable PDFs."
+        raise RuntimeError(f"No pages compiled — all waybill downloads failed. {detail}")
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     batch_filename = f"Master_Waybill_Batch_{timestamp}.pdf"
     batch_pdf_path = f"/tmp/{batch_filename}"
-    
+
     with open(batch_pdf_path, 'wb') as f:
         batch_writer.write(f)
-        
+
     batch_folder_id = get_or_create_folder(service, "Orbot_Stitched_Batches", parent_id=WAYBILL_MAIN_FOLDER_ID)
+    if not batch_folder_id:
+        try: os.remove(batch_pdf_path)
+        except OSError: pass
+        raise RuntimeError("Could not get or create 'Orbot_Stitched_Batches' folder in Google Drive.")
+
     print(f"[*] Uploading compiled batch PDF to Google Drive...")
     batch_url = upload_to_drive(service, batch_pdf_path, batch_filename, batch_folder_id)
-    
+
     if batch_url:
         print(f"\n==========================================")
-        print(f"SUCCESS! Master batch PDF created.")
+        print(f"SUCCESS! Master batch PDF created ({len(successful_order_ids)} orders).")
         print(f"Download Link: {batch_url}")
         print(f"==========================================\n")
-        
+
         for order_id in successful_order_ids:
             supabase.table('orders').update({
                 'waybill_processing_status': 'printed',
@@ -2395,10 +2408,9 @@ def run_batch_print(service):
         except OSError: pass
         return batch_url
     else:
-        print("[-] Failed to upload batch PDF.")
         try: os.remove(batch_pdf_path)
         except OSError: pass
-        return None
+        raise RuntimeError("Google Drive upload failed — check Drive API credentials and folder permissions.")
 
 def run_incoming_scan(service):
     print(f"[*] Scanning incoming folder ({INCOMING_FOLDER_ID}) for PDFs...")
@@ -2883,10 +2895,7 @@ async def run_waybill_daemon_async():
                             
                     elif job_type == 'waybill_batch_print':
                         batch_url = await asyncio.to_thread(run_batch_print, drive_service)
-                        if batch_url:
-                            result_data['url'] = batch_url
-                        else:
-                            raise Exception("Batch printing failed to return a valid URL.")
+                        result_data['url'] = batch_url
                             
                     elif job_type == 'scout_gmail_scan':
                         print("[*] Executing Scout Gmail scan...")
