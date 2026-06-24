@@ -1593,23 +1593,8 @@ class ScoutAgent:
             else:
                 logger.info("No new order emails found.")
 
-            logger.info("Scout Agent polling for cancellation emails...")
-            cancel_emails = self.fetch_unread_cancellation_emails()
-            if cancel_emails:
-                for email in cancel_emails:
-                    logger.info(f"Processing cancellation email: {email['subject']}")
-                    if not email['body']:
-                        logger.warning(f"Email {email['id']} has no readable body text. Skipping.")
-                        self.mark_email_as_read(email['id'])
-                        continue
-                        
-                    success = self.process_cancellation(email['body'])
-                    if success:
-                        self.mark_email_as_read(email['id'])
-                    else:
-                        logger.error(f"Failed to process cancellation from email {email['id']}. Leaving as unread.")
-            else:
-                logger.info("No new cancellation emails found.")
+            # Cancellation detection disabled
+            pass
             logger.info("Scout Agent finished polling cycle.")
         finally:
             if self._held_thread_lock:
