@@ -3408,28 +3408,41 @@ async def catalog_launch_product(request: Request):
     """Full pipeline: insert DB rows, process images, return downloadable ZIP."""
     import zipfile
 
-    form          = await request.form()
-    set_name      = str(form.get("set_name", "")).strip()
-    set_number    = str(form.get("set_number", "")).strip()
-    theme         = str(form.get("theme", "")).strip().upper()
-    product_types = json.loads(form.get("product_types", "[]"))
-    plaque_count  = int(form.get("plaque_count", 1))
-    price_myr     = float(form.get("price_myr", 0) or 0) or None
-    platforms     = json.loads(form.get("platforms", '["shopee","lazada"]'))
-    listing_title = str(form.get("listing_title", "")).strip()
-    description   = str(form.get("description", "")).strip()
+    form             = await request.form()
+    set_name         = str(form.get("set_name", "")).strip()
+    set_number       = str(form.get("set_number", "")).strip()
+    theme            = str(form.get("theme", "")).strip().upper()
+    product_types    = json.loads(form.get("product_types", "[]"))
+    plaque_count     = int(form.get("plaque_count", 1))
+    price_myr        = float(form.get("price_myr", 0) or 0) or None
+    price_sgd        = float(form.get("price_sgd", 0) or 0) or None
+    platforms        = json.loads(form.get("platforms", '["shopee","lazada"]'))
+    listing_title    = str(form.get("listing_title", "")).strip()
+    description      = str(form.get("description", "")).strip()
+    brand_name       = str(form.get("brand_name", "Blocked Off")).strip() or "Blocked Off"
+    product_category = str(form.get("product_category", "")).strip()
+    shopee_my        = str(form.get("shopee_my", "")).strip() or None
+    shopee_sg        = str(form.get("shopee_sg", "")).strip() or None
+    shopee_ph        = str(form.get("shopee_ph", "")).strip() or None
+    shopee_th        = str(form.get("shopee_th", "")).strip() or None
+    lazada_my        = str(form.get("lazada_my", "")).strip() or None
+    variant_details  = json.loads(form.get("variant_details", "[]"))
+    # keyed by SKU for O(1) lookup
+    vd_by_sku        = {vd["sku"]: vd for vd in variant_details}
 
     if not set_name or not set_number or not theme or not product_types or not listing_title:
         raise HTTPException(status_code=400, detail="Missing required fields.")
 
-    variants         = _launch_build_sku_tree(theme, set_number, product_types, plaque_count)
-    master_sku       = f"BLO-{theme}-{set_number}"
+    variants          = _launch_build_sku_tree(theme, set_number, product_types, plaque_count)
+    master_sku        = f"BLO-{theme}-{set_number}"
     product_base_name = f"{set_name} ({set_number})"
+    if not product_category:
+        product_category = _PRODUCT_TYPE_LABELS.get(product_types[0], product_types[0])
 
     # ── products upsert ────────────────────────────────────────────────────
-    prod_res   = supabase.table("products").upsert({
-        "brand_name":        "Blocked Off",
-        "product_category":  _PRODUCT_TYPE_LABELS.get(product_types[0], product_types[0]),
+    prod_res = supabase.table("products").upsert({
+        "brand_name":        brand_name,
+        "product_category":  product_category,
         "master_sku":        master_sku,
         "product_base_name": product_base_name,
     }, on_conflict="master_sku").execute()
@@ -3437,33 +3450,58 @@ async def catalog_launch_product(request: Request):
 
     # ── variants upsert ────────────────────────────────────────────────────
     for v in variants:
-        var_res = supabase.table("variants").upsert({
+        vd = vd_by_sku.get(v["sku"], {})
+        var_data = {
             "product_id":    product_id,
             "variant_sku":   v["sku"],
             "variant_name":  f"{product_base_name} - {v['type']}",
             "reference_name": f"{product_base_name} - {v['type']}",
             "variant_type":  v["type"],
-        }, on_conflict="variant_sku").execute()
+        }
+        if vd.get("stock_quantity") is not None:
+            var_data["stock_quantity"] = int(vd["stock_quantity"])
+        if vd.get("seal_sticker_gdrive_url"):
+            var_data["seal_sticker_gdrive_url"] = vd["seal_sticker_gdrive_url"]
+        if vd.get("print_files_gdrive_url"):
+            var_data["print_files_gdrive_url"] = vd["print_files_gdrive_url"]
+        if vd.get("pictures_gdrive_url"):
+            var_data["pictures_gdrive_url"] = vd["pictures_gdrive_url"]
+        if vd.get("adobe_express_url"):
+            var_data["adobe_express_url"] = vd["adobe_express_url"]
+        var_res = supabase.table("variants").upsert(var_data, on_conflict="variant_sku").execute()
         v["variant_id"] = var_res.data[0]["id"]
 
     # ── listings + listing_variations upsert ──────────────────────────────
-    for platform in platforms:
-        list_res   = supabase.table("listings").upsert({
-            "product_id":                 product_id,
-            "platform_listing_name":      listing_title,
-            "platform_listing_description": description,
-            "price_myr":                  price_myr,
-        }, on_conflict="platform_listing_name").execute()
-        listing_id = list_res.data[0]["id"]
+    listing_data = {
+        "product_id":                   product_id,
+        "platform_listing_name":        listing_title,
+        "platform_listing_description": description,
+        "price_myr":                    price_myr,
+    }
+    if price_sgd:
+        listing_data["price_sgd"] = price_sgd
+    if shopee_my:
+        listing_data["shopee_my"] = shopee_my
+    if shopee_sg:
+        listing_data["shopee_sg"] = shopee_sg
+    if shopee_ph:
+        listing_data["shopee_ph"] = shopee_ph
+    if shopee_th:
+        listing_data["shopee_th"] = shopee_th
+    if lazada_my:
+        listing_data["lazada_my"] = lazada_my
 
-        for v in variants:
-            var_name = _launch_variation_name(set_number, v)
-            supabase.table("listing_variations").upsert({
-                "listing_id":              listing_id,
-                "variant_id":              v["variant_id"],
-                "platform_variation_name": var_name,
-                "reference_name":          f"{listing_title} [{var_name}]",
-            }, on_conflict="listing_id, platform_variation_name").execute()
+    list_res   = supabase.table("listings").upsert(listing_data, on_conflict="platform_listing_name").execute()
+    listing_id = list_res.data[0]["id"]
+
+    for v in variants:
+        var_name = _launch_variation_name(set_number, v)
+        supabase.table("listing_variations").upsert({
+            "listing_id":              listing_id,
+            "variant_id":              v["variant_id"],
+            "platform_variation_name": var_name,
+            "reference_name":          f"{listing_title} [{var_name}]",
+        }, on_conflict="listing_id, platform_variation_name").execute()
 
     log_system("info",
                f"Product launch: {master_sku} — {len(variants)} variant(s), {len(platforms)} platform(s).",
@@ -3496,9 +3534,11 @@ async def catalog_launch_product(request: Request):
                 zf.writestr(f"{platform}/images/{idx:02d}.jpg", data)
 
         zf.writestr("variants.csv",
-                    "SKU,Variant Type,Variation Name (Platform),Price MYR\n" +
-                    "\n".join(f"{v['sku']},{v['type']},{_launch_variation_name(set_number, v)},{price_myr or ''}"
-                              for v in variants))
+                    "SKU,Variant Type,Variation Name (Platform),Price MYR,Stock\n" +
+                    "\n".join(
+                        f"{v['sku']},{v['type']},{_launch_variation_name(set_number, v)},{price_myr or ''},"
+                        f"{vd_by_sku.get(v['sku'], {}).get('stock_quantity', 0)}"
+                        for v in variants))
 
         zf.writestr("db_summary.txt",
                     f"DB INSERTS\n{'='*40}\n"
