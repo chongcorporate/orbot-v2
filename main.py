@@ -3801,8 +3801,8 @@ async def catalog_launch_product(request: Request):
 # ─── End Product Launch Pipeline ──────────────────────────────────────────────
 
 class QueueFileRequest(BaseModel):
-    simplyprint_file_id: str
-    print_file_name: str = ""
+    print_file_name: str
+    simplyprint_file_id: Optional[str] = None
 
 @app.post("/print-files/queue")
 def queue_single_file(req: QueueFileRequest, request: Request):
@@ -3810,6 +3810,16 @@ def queue_single_file(req: QueueFileRequest, request: Request):
     api_key = request.headers.get("X-SimplyPrint-Key") or os.getenv("SIMPLYPRINT_API_KEY")
     if not api_key:
         raise HTTPException(status_code=400, detail="SimplyPrint API key not configured.")
+
+    sp_file_id = req.simplyprint_file_id
+    if not sp_file_id:
+        # Look up simplyprint_file_id from the print_files table by name
+        res = supabase.table("print_files").select("simplyprint_file_id").ilike("print_file_name", req.print_file_name).limit(1).execute()
+        if res.data and res.data[0].get("simplyprint_file_id"):
+            sp_file_id = res.data[0]["simplyprint_file_id"]
+        else:
+            raise HTTPException(status_code=404, detail=f"No SimplyPrint file ID found for '{req.print_file_name}'. Sync the file first.")
+
     sp_headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
     base_url = f"https://api.simplyprint.io/{SIMPLYPRINT_COMPANY_ID}"
     name_lower = req.print_file_name.lower()
@@ -3817,7 +3827,7 @@ def queue_single_file(req: QueueFileRequest, request: Request):
     for_printers = [38959, 38960] if is_a1_mini else [38961, 39538]
     try:
         sp_res = http_session.post(f"{base_url}/queue/AddItem", headers=sp_headers, json={
-            "filesystem": req.simplyprint_file_id,
+            "filesystem": sp_file_id,
             "amount": 1,
             "for_printers": for_printers,
             "position": "bottom"
