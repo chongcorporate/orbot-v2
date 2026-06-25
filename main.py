@@ -2026,10 +2026,24 @@ def download_drive_file(service, file_id, dest_path):
 def download_file_from_url(service, url, dest_path):
     file_id = extract_gdrive_id(url)
     if file_id:
-        return download_drive_file(service, file_id, dest_path)
+        # Try service-account API first (works for files owned/shared with the SA)
+        if download_drive_file(service, file_id, dest_path):
+            return True
+        # Fall back to public HTTP download for "anyone with the link" shares
+        print(f"[!] Drive API failed for {file_id}, retrying via public download URL...")
+        direct_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        try:
+            r = http_session.get(direct_url, timeout=30, allow_redirects=True)
+            r.raise_for_status()
+            with open(dest_path, 'wb') as f:
+                f.write(r.content)
+            return True
+        except Exception as e:
+            print(f"[-] Public HTTP fallback also failed for file {file_id}: {e}")
+            return False
     else:
         try:
-            r = http_session.get(url, timeout=10)
+            r = http_session.get(url, timeout=30)
             r.raise_for_status()
             with open(dest_path, 'wb') as f:
                 f.write(r.content)
