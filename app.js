@@ -2448,7 +2448,7 @@ function setupWaybillProcessing() {
           if (currentTab === "waybills") {
             fetchAndRenderWaybillsArchive();
             fetchAndRenderMasterPDFs();
-            setWaybillTab("pdfs");
+            document.getElementById("waybill-tab-pdfs")?.click();
           }
           if (currentTab === "overview") {
             fetchAndRenderOverviewJobs();
