@@ -2026,39 +2026,45 @@ def download_drive_file(service, file_id, dest_path):
 def _download_gdrive_public(file_id: str, dest_path: str) -> bool:
     """Download a publicly shared Google Drive file, handling the virus-scan warning redirect."""
     session = requests.Session()
-    url = f"https://drive.google.com/uc?export=download&id={file_id}"
-    try:
-        r = session.get(url, timeout=30, allow_redirects=True)
-        r.raise_for_status()
-        # Drive returns an HTML warning page for files it wants to scan.
-        # Detect by checking the magic bytes — a real PDF starts with %PDF.
-        content = r.content
-        if not content.startswith(b'%PDF'):
-            # Extract the confirmation token from the cookie or response URL
-            confirm = None
-            for k, v in r.cookies.items():
-                if k.startswith('download_warning'):
-                    confirm = v
-                    break
-            if not confirm:
-                # Newer Drive responses embed the token as a query param in a redirect
-                m = re.search(r'confirm=([^&"]+)', r.text)
-                confirm = m.group(1) if m else 't'
-            r = session.get(
-                f"https://drive.google.com/uc?export=download&confirm={confirm}&id={file_id}",
-                timeout=30, allow_redirects=True
-            )
+    # Try the newer usercontent domain first (more reliable since ~2024)
+    candidates = [
+        f"https://drive.usercontent.google.com/download?id={file_id}&export=download&authuser=0",
+        f"https://drive.google.com/uc?export=download&id={file_id}",
+    ]
+    for attempt_url in candidates:
+        try:
+            print(f"[*] Trying public download URL: {attempt_url}")
+            r = session.get(attempt_url, timeout=30, allow_redirects=True)
             r.raise_for_status()
             content = r.content
-        if not content.startswith(b'%PDF'):
-            print(f"[-] Downloaded content for {file_id} is not a PDF (got {len(content)} bytes, starts with {content[:20]})")
-            return False
-        with open(dest_path, 'wb') as f:
-            f.write(content)
-        return True
-    except Exception as e:
-        print(f"[-] _download_gdrive_public failed for {file_id}: {e}")
-        return False
+            print(f"[*] Response: {r.status_code}, {len(content)} bytes, content-type={r.headers.get('content-type','?')}, starts={content[:20]}")
+            if not content.startswith(b'%PDF'):
+                # Drive returned HTML — extract confirmation token and retry
+                confirm = None
+                for k, v in r.cookies.items():
+                    if k.startswith('download_warning'):
+                        confirm = v
+                        break
+                if not confirm:
+                    m = re.search(r'confirm=([^&"\']+)', r.text)
+                    confirm = m.group(1) if m else 't'
+                print(f"[*] Got HTML, retrying with confirm token: {confirm}")
+                r = session.get(
+                    f"https://drive.google.com/uc?export=download&confirm={confirm}&id={file_id}",
+                    timeout=30, allow_redirects=True
+                )
+                r.raise_for_status()
+                content = r.content
+                print(f"[*] Confirmed response: {len(content)} bytes, starts={content[:20]}")
+            if content.startswith(b'%PDF'):
+                with open(dest_path, 'wb') as f:
+                    f.write(content)
+                print(f"[+] Successfully downloaded {file_id} via public URL.")
+                return True
+            print(f"[-] Content for {file_id} still not a PDF after confirm.")
+        except Exception as e:
+            print(f"[-] Public download attempt failed ({attempt_url}): {e}")
+    return False
 
 def download_file_from_url(service, url, dest_path):
     file_id = extract_gdrive_id(url)
