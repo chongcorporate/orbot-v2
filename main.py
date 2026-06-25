@@ -2939,6 +2939,9 @@ async def run_waybill_daemon_async():
                 
                 try:
                     result_data = {}
+                    if job_type in ('waybill_ingest', 'waybill_batch_print'):
+                        # Always get a fresh Drive service so the OAuth token is current
+                        fresh_drive = await asyncio.to_thread(get_drive_service)
                     if job_type == 'waybill_ingest':
                         file_name = payload.get('file_name')
                         if file_name:
@@ -2947,16 +2950,16 @@ async def run_waybill_daemon_async():
                             res_storage = await asyncio.to_thread(supabase.storage.from_('incoming-waybills').download, file_name)
                             with open(local_path, 'wb') as f:
                                 f.write(res_storage)
-                            await asyncio.to_thread(process_ingestion, drive_service, local_path)
+                            await asyncio.to_thread(process_ingestion, fresh_drive, local_path)
                             try:
                                 await asyncio.to_thread(supabase.storage.from_('incoming-waybills').remove, [file_name])
                             except Exception as se:
                                 print(f"[-] Failed to delete file from storage: {se}")
                         else:
-                            await asyncio.to_thread(run_incoming_scan, drive_service)
-                            
+                            await asyncio.to_thread(run_incoming_scan, fresh_drive)
+
                     elif job_type == 'waybill_batch_print':
-                        batch_url = await asyncio.to_thread(run_batch_print, drive_service)
+                        batch_url = await asyncio.to_thread(run_batch_print, fresh_drive)
                         result_data['url'] = batch_url
                             
                     elif job_type == 'scout_gmail_scan':
