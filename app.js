@@ -584,9 +584,11 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         const stickerBtn = stickerUrl
           ? `<a href="${stickerUrl}" target="_blank" rel="noopener"
                class="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors font-semibold whitespace-nowrap">
-               <span class="material-symbols-outlined text-xs">label</span> Print Sticker
+               <span class="material-symbols-outlined text-xs">label</span> Sticker
              </a>`
-          : "";
+          : `<span class="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-outline/40 border border-outline/10 whitespace-nowrap cursor-not-allowed select-none" title="No seal sticker configured for this variant">
+               <span class="material-symbols-outlined text-xs">label_off</span> Sticker
+             </span>`;
 
         const jobs = item.print_jobs || [];
         let jobsHtml = "";
@@ -629,7 +631,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
                 const etaHtml = etaText ? `<span class="text-on-surface-variant/60 font-data-mono text-[10px] ml-auto">${etaText}</span>` : "";
                 const spFileId = j.print_files?.simplyprint_file_id || "";
                 const safeFileName = (j.print_file_name || "").replace(/'/g, "\\'");
-                const redispatchBtn = spFileId
+                const redispatchBtn = j.print_file_name
                   ? `<button onclick="redispatchPrintFile('${spFileId}','${safeFileName}',this)"
                        class="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors font-semibold whitespace-nowrap">
                        <span class="material-symbols-outlined text-xs">refresh</span> Re-dispatch
@@ -1076,7 +1078,7 @@ window.redispatchPrintFile = async function(simplyPrintFileId, printFileName, bt
     const res = await fetch(`${backendUrl}/print-files/queue`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
-      body: JSON.stringify({ simplyprint_file_id: simplyPrintFileId, print_file_name: printFileName })
+      body: JSON.stringify({ print_file_name: printFileName, ...(simplyPrintFileId && { simplyprint_file_id: simplyPrintFileId }) })
     });
     const text = await res.text();
     const data = JSON.parse(text);
