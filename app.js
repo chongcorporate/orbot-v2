@@ -1082,8 +1082,12 @@ window.redispatchPrintFile = async function(simplyPrintFileId, printFileName, bt
       body: JSON.stringify({ print_file_name: printFileName, ...(simplyPrintFileId && { simplyprint_file_id: simplyPrintFileId }) })
     });
     const text = await res.text();
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try { detail = JSON.parse(text).detail || detail; } catch (_) {}
+      throw new Error(detail);
+    }
     const data = JSON.parse(text);
-    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
     showToast(`Re-dispatched: ${printFileName}`, "success");
     logAction(`File re-dispatched to print queue: ${printFileName}`, "info", { simplyprint_file_id: simplyPrintFileId, job_id: data.simplyprint_job_id });
   } catch (err) {
