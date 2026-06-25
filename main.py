@@ -2481,7 +2481,7 @@ def run_batch_print(service):
 
         for order_id in successful_order_ids:
             supabase.table('orders').update({
-                'waybill_processing_status': 'printed',
+                'waybill_processing_status': 'compiled',
                 'overall_order_status': 'completed'
             }).eq('id', order_id).execute()
         print(f"[+] Updated status to 'completed' for {len(successful_order_ids)} orders.")
