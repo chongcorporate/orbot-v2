@@ -3225,10 +3225,10 @@ def check_overall_order_status(order_id: str):
         supabase.table('orders').update({'overall_order_status': 'printing'}).eq('id', order_id).execute()
 
 
-def run_foreman_dispatch(sp_key: Optional[str] = None) -> dict:
+def run_foreman_dispatch(sp_key: Optional[str] = None, dry_run: bool = False) -> dict:
     """Fetches pending order items and dispatches their print files to the SimplyPrint queue."""
     api_key = sp_key or os.getenv("SIMPLYPRINT_API_KEY")
-    if not api_key:
+    if not api_key and not dry_run:
         raise ValueError("SIMPLYPRINT_API_KEY is not set.")
 
     sp_headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
@@ -3330,17 +3330,21 @@ def run_foreman_dispatch(sp_key: Optional[str] = None) -> dict:
 
                     for_printers = [38959, 38960] if is_a1_mini else [38961, 39538]
 
-                    sp_res = http_session.post(f"{base_url}/queue/AddItem", headers=sp_headers, json={
-                        "filesystem": file['simplyprint_file_id'],
-                        "amount": 1,
-                        "for_printers": for_printers,
-                        "position": "bottom"
-                    }, timeout=15)
+                    if dry_run:
+                        sp_job_id = "DRY_RUN"
+                        log_system('info', f"[DRY RUN] Would dispatch {file['print_file_name']} to printers {for_printers}. SP dispatch disabled.", agent_name='Foreman')
+                    else:
+                        sp_res = http_session.post(f"{base_url}/queue/AddItem", headers=sp_headers, json={
+                            "filesystem": file['simplyprint_file_id'],
+                            "amount": 1,
+                            "for_printers": for_printers,
+                            "position": "bottom"
+                        }, timeout=15)
 
-                    if not sp_res.ok:
-                        raise ValueError(f"SimplyPrint AddItem failed for {file['print_file_name']}: HTTP {sp_res.status_code}")
+                        if not sp_res.ok:
+                            raise ValueError(f"SimplyPrint AddItem failed for {file['print_file_name']}: HTTP {sp_res.status_code}")
 
-                    sp_job_id = str(sp_res.json().get('created_id', 'UNKNOWN_JOB_ID'))
+                        sp_job_id = str(sp_res.json().get('created_id', 'UNKNOWN_JOB_ID'))
                     supabase.table('print_jobs').insert({
                         'order_item_id': item['id'],
                         'print_file_id': file['id'],
@@ -3570,12 +3574,15 @@ def scout_ingest_email(req: IngestEmailRequest):
         logger.error(f"scout/ingest-email error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class ForemanDispatchRequest(BaseModel):
+    dry_run: bool = False
+
 @app.post("/foreman/dispatch")
-def foreman_dispatch(request: Request):
+def foreman_dispatch(request: Request, body: ForemanDispatchRequest = ForemanDispatchRequest()):
     """Fetches all pending order items and dispatches their print files to the SimplyPrint queue."""
     try:
         sp_key = request.headers.get("X-SimplyPrint-Key") or None
-        result = run_foreman_dispatch(sp_key=sp_key)
+        result = run_foreman_dispatch(sp_key=sp_key, dry_run=body.dry_run)
         return result
     except Exception as e:
         logger.error(f"foreman/dispatch error: {e}")
