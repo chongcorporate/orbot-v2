@@ -2023,6 +2023,43 @@ def download_drive_file(service, file_id, dest_path):
         print(f"[-] Error downloading Drive file {file_id}: {e}")
         return False
 
+def _download_gdrive_public(file_id: str, dest_path: str) -> bool:
+    """Download a publicly shared Google Drive file, handling the virus-scan warning redirect."""
+    session = requests.Session()
+    url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    try:
+        r = session.get(url, timeout=30, allow_redirects=True)
+        r.raise_for_status()
+        # Drive returns an HTML warning page for files it wants to scan.
+        # Detect by checking the magic bytes — a real PDF starts with %PDF.
+        content = r.content
+        if not content.startswith(b'%PDF'):
+            # Extract the confirmation token from the cookie or response URL
+            confirm = None
+            for k, v in r.cookies.items():
+                if k.startswith('download_warning'):
+                    confirm = v
+                    break
+            if not confirm:
+                # Newer Drive responses embed the token as a query param in a redirect
+                m = re.search(r'confirm=([^&"]+)', r.text)
+                confirm = m.group(1) if m else 't'
+            r = session.get(
+                f"https://drive.google.com/uc?export=download&confirm={confirm}&id={file_id}",
+                timeout=30, allow_redirects=True
+            )
+            r.raise_for_status()
+            content = r.content
+        if not content.startswith(b'%PDF'):
+            print(f"[-] Downloaded content for {file_id} is not a PDF (got {len(content)} bytes, starts with {content[:20]})")
+            return False
+        with open(dest_path, 'wb') as f:
+            f.write(content)
+        return True
+    except Exception as e:
+        print(f"[-] _download_gdrive_public failed for {file_id}: {e}")
+        return False
+
 def download_file_from_url(service, url, dest_path):
     file_id = extract_gdrive_id(url)
     if file_id:
@@ -2031,16 +2068,10 @@ def download_file_from_url(service, url, dest_path):
             return True
         # Fall back to public HTTP download for "anyone with the link" shares
         print(f"[!] Drive API failed for {file_id}, retrying via public download URL...")
-        direct_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        try:
-            r = http_session.get(direct_url, timeout=30, allow_redirects=True)
-            r.raise_for_status()
-            with open(dest_path, 'wb') as f:
-                f.write(r.content)
+        if _download_gdrive_public(file_id, dest_path):
             return True
-        except Exception as e:
-            print(f"[-] Public HTTP fallback also failed for file {file_id}: {e}")
-            return False
+        print(f"[-] Public HTTP fallback also failed for file {file_id}.")
+        return False
     else:
         try:
             r = http_session.get(url, timeout=30)
