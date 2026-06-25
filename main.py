@@ -2412,9 +2412,9 @@ def run_batch_print(service):
         for order_id in successful_order_ids:
             supabase.table('orders').update({
                 'waybill_processing_status': 'printed',
-                'overall_order_status': 'printing'
+                'overall_order_status': 'completed'
             }).eq('id', order_id).execute()
-        print(f"[+] Updated status to 'printed' for {len(successful_order_ids)} orders.")
+        print(f"[+] Updated status to 'completed' for {len(successful_order_ids)} orders.")
         try: os.remove(batch_pdf_path)
         except OSError: pass
         return batch_url
@@ -2514,9 +2514,9 @@ def check_and_update_item_completion(order_item_id):
                     DONE_STATUSES = {'completed', 'not_applicable'}
                     if all_items and all(i.get('item_print_status') in DONE_STATUSES for i in all_items):
                         supabase.table('orders').update({
-                            'overall_order_status': 'completed'
+                            'overall_order_status': 'printed'
                         }).eq('id', order_id).execute()
-                        print(f"[+] All items for order {order_id} completed. Updated order status to completed.")
+                        print(f"[+] All items for order {order_id} completed. Updated order status to printed.")
     except Exception as e:
         log_system("error", f"check_and_update_item_completion failed for item {order_item_id}: {e}", agent_name="Waybill Agent")
 
@@ -3145,9 +3145,10 @@ def check_overall_order_status(order_id: str):
     items = res.data or []
     if not items:
         return
-    if all(i['item_print_status'] == 'completed' for i in items):
-        supabase.table('orders').update({'overall_order_status': 'completed'}).eq('id', order_id).execute()
-    elif all(i['item_print_status'] in ('printing', 'completed') for i in items):
+    DONE_STATUSES = {'completed', 'not_applicable'}
+    if all(i['item_print_status'] in DONE_STATUSES for i in items):
+        supabase.table('orders').update({'overall_order_status': 'printed'}).eq('id', order_id).execute()
+    elif all(i['item_print_status'] in ('printing', 'completed', 'not_applicable') for i in items):
         supabase.table('orders').update({'overall_order_status': 'printing'}).eq('id', order_id).execute()
 
 
