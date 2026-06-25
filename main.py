@@ -2020,7 +2020,26 @@ def download_drive_file(service, file_id, dest_path):
             f.write(fh.getvalue())
         return True
     except Exception as e:
-        print(f"[-] Error downloading Drive file {file_id}: {e}")
+        print(f"[-] Drive API get_media failed for {file_id}: {e}")
+        # Second attempt: direct HTTP with OAuth bearer token (works for
+        # 'anyone with the link' files that get_media rejects)
+        try:
+            creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+            if creds.expired and creds.refresh_token:
+                creds.refresh(GoogleAuthRequest())
+            r = requests.get(
+                f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media",
+                headers={"Authorization": f"Bearer {creds.token}"},
+                timeout=30
+            )
+            if r.ok and r.content.startswith(b'%PDF'):
+                with open(dest_path, 'wb') as f:
+                    f.write(r.content)
+                print(f"[+] OAuth HTTP fallback succeeded for {file_id}.")
+                return True
+            print(f"[-] OAuth HTTP fallback: status={r.status_code}, starts={r.content[:40]}")
+        except Exception as e2:
+            print(f"[-] OAuth HTTP fallback failed for {file_id}: {e2}")
         return False
 
 def _download_gdrive_public(file_id: str, dest_path: str) -> bool:
