@@ -632,8 +632,9 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
                 const etaHtml = etaText ? `<span class="text-on-surface-variant/60 font-data-mono text-[10px] ml-auto">${etaText}</span>` : "";
                 const spFileId = j.print_files?.simplyprint_file_id || "";
                 const safeFileName = (j.print_file_name || "").replace(/'/g, "\\'");
+                const safeJobId = j.id || "";
                 const redispatchBtn = j.print_file_name
-                  ? `<button onclick="redispatchPrintFile('${spFileId}','${safeFileName}',this)"
+                  ? `<button onclick="redispatchPrintFile('${spFileId}','${safeFileName}','${safeJobId}',this)"
                        class="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors font-semibold whitespace-nowrap">
                        <span class="material-symbols-outlined text-xs">refresh</span> Re-dispatch
                      </button>`
@@ -1070,7 +1071,7 @@ function toggleOrderDetails(orderId, cardElement, prefix = "") {
 }
 
 // Fetch and Render System Logs
-window.redispatchPrintFile = async function(simplyPrintFileId, printFileName, btn) {
+window.redispatchPrintFile = async function(simplyPrintFileId, printFileName, printJobId, btn) {
   const backendUrl = (localStorage.getItem("orbot_backend_url") || "").replace(/\/$/, "");
   if (!backendUrl) { showToast("Backend URL not set in Settings.", "warning"); return; }
   const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
@@ -1079,7 +1080,11 @@ window.redispatchPrintFile = async function(simplyPrintFileId, printFileName, bt
     const res = await fetch(`${backendUrl}/print-files/queue`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
-      body: JSON.stringify({ print_file_name: printFileName, ...(simplyPrintFileId && { simplyprint_file_id: simplyPrintFileId }) })
+      body: JSON.stringify({
+        print_file_name: printFileName,
+        ...(simplyPrintFileId && { simplyprint_file_id: simplyPrintFileId }),
+        ...(printJobId && { print_job_id: printJobId })
+      })
     });
     const text = await res.text();
     if (!res.ok) {
