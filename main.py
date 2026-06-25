@@ -3876,6 +3876,7 @@ async def catalog_launch_product(request: Request):
 class QueueFileRequest(BaseModel):
     print_file_name: str
     simplyprint_file_id: Optional[str] = None
+    print_job_id: Optional[str] = None
 
 @app.post("/print-files/queue")
 def queue_single_file(req: QueueFileRequest, request: Request):
@@ -3885,13 +3886,18 @@ def queue_single_file(req: QueueFileRequest, request: Request):
         raise HTTPException(status_code=400, detail="SimplyPrint API key not configured.")
 
     sp_file_id = req.simplyprint_file_id
+    if not sp_file_id and req.print_job_id:
+        # Look up via print_job FK → print_files
+        res = supabase.table("print_jobs").select("print_files(simplyprint_file_id)").eq("id", req.print_job_id).limit(1).execute()
+        if res.data and res.data[0].get("print_files"):
+            sp_file_id = res.data[0]["print_files"].get("simplyprint_file_id")
     if not sp_file_id:
-        # Look up simplyprint_file_id from the print_files table by name
+        # Fallback: search print_files by name
         res = supabase.table("print_files").select("simplyprint_file_id").ilike("print_file_name", req.print_file_name).limit(1).execute()
         if res.data and res.data[0].get("simplyprint_file_id"):
             sp_file_id = res.data[0]["simplyprint_file_id"]
-        else:
-            raise HTTPException(status_code=404, detail=f"No SimplyPrint file ID found for '{req.print_file_name}'. Sync the file first.")
+    if not sp_file_id:
+        raise HTTPException(status_code=404, detail=f"No SimplyPrint file ID found for '{req.print_file_name}'. Re-sync files from the product catalog.")
 
     sp_headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
     base_url = f"https://api.simplyprint.io/{SIMPLYPRINT_COMPANY_ID}"
