@@ -476,6 +476,9 @@
         <span class="text-[9px] uppercase tracking-wider mt-1" id="system-date">Loading...</span>
       </div>
 
+      <span class="sp-dispatch-indicator hidden items-center gap-1 px-2 py-1 rounded-full bg-warning/10 border border-warning/30 text-warning text-xs font-label-caps" title="SimplyPrint dispatch is disabled">
+        <span class="material-symbols-outlined text-sm">wifi_off</span> DRY RUN
+      </span>
       <button class="p-2 rounded-full hover:bg-primary/10 hover:text-primary text-on-surface-variant transition-all duration-300 active:scale-95 flex items-center justify-center" id="settings-open-btn">
         <span class="material-symbols-outlined">settings</span>
       </button>
@@ -1909,6 +1912,16 @@
           <label for="setting-simplyprint-key" class="text-xs font-label-caps text-on-surface-variant uppercase">SimplyPrint API Key</label>
           <input type="password" id="setting-simplyprint-key" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
         </div>
+        <div class="flex items-center justify-between py-1 border-t border-outline-variant/10 mt-1 pt-3">
+          <div class="flex flex-col gap-0.5">
+            <span class="text-xs font-label-caps text-on-surface-variant uppercase">SimplyPrint Dispatch</span>
+            <span class="text-xs text-on-surface-variant/60">When off, files are processed but not sent to SimplyPrint</span>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer shrink-0">
+            <input type="checkbox" id="setting-sp-dispatch" class="sr-only peer" checked>
+            <div class="w-11 h-6 bg-surface-container-highest rounded-full transition-colors peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white/70 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5 peer-checked:after:bg-on-primary"></div>
+          </label>
+        </div>
       </div>
       <div class="flex justify-end gap-3 border-t border-outline-variant/10 pt-4">
         <button class="px-4 py-2 bg-surface-container-highest border border-outline-variant/50 rounded-lg font-label-caps" id="settings-cancel-btn">Cancel</button>
@@ -1982,6 +1995,6 @@
       await import("https://unpkg.com/@oddbird/css-anchor-positioning");
     }
   </script>
-  <script src="app.js?v=1.6.11"></script>
+  <script src="app.js?v=1.6.12"></script>
 </body>
 </html>

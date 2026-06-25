@@ -121,6 +121,29 @@ function updateSystemClock() {
   dateEl.innerText = dateStr;
 }
 
+function isSpDispatchEnabled() {
+  return localStorage.getItem("orbot_sp_dispatch_enabled") !== "false";
+}
+
+function updateDispatchIndicator() {
+  const enabled = isSpDispatchEnabled();
+  document.querySelectorAll(".sp-dispatch-indicator").forEach(el => {
+    el.classList.toggle("hidden", enabled);
+  });
+  // Dim foreman dispatch buttons when dispatch is off
+  ["ctrl-trigger-foreman", "waybill-ctrl-trigger-foreman", "overview-ctrl-trigger-foreman"].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    if (enabled) {
+      btn.classList.remove("opacity-60");
+      btn.title = "";
+    } else {
+      btn.classList.add("opacity-60");
+      btn.title = "SimplyPrint dispatch is disabled — running in dry-run mode";
+    }
+  });
+}
+
 // Initialize configuration
 function initSupabase() {
   const localUrl = localStorage.getItem("orbot_supabase_url");
@@ -135,6 +158,8 @@ function initSupabase() {
   document.getElementById("setting-backend-url").value = backendUrl;
   const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
   document.getElementById("setting-simplyprint-key").value = spKey;
+  const spDispatch = localStorage.getItem("orbot_sp_dispatch_enabled");
+  document.getElementById("setting-sp-dispatch").checked = spDispatch !== "false";
 
   const statusDot = document.getElementById("db-status-dot");
   const statusText = document.getElementById("db-status-text");
@@ -1072,6 +1097,10 @@ function toggleOrderDetails(orderId, cardElement, prefix = "") {
 
 // Fetch and Render System Logs
 window.redispatchPrintFile = async function(simplyPrintFileId, printFileName, printJobId, btn) {
+  if (!isSpDispatchEnabled()) {
+    showToast("SimplyPrint dispatch is disabled in Settings.", "warning");
+    return;
+  }
   const backendUrl = (localStorage.getItem("orbot_backend_url") || "").replace(/\/$/, "");
   if (!backendUrl) { showToast("Backend URL not set in Settings.", "warning"); return; }
   const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
@@ -1745,10 +1774,13 @@ function setupSettings() {
     }
     const spKey = document.getElementById("setting-simplyprint-key").value.trim();
 
+    const spDispatchEnabled = document.getElementById("setting-sp-dispatch").checked;
     localStorage.setItem("orbot_supabase_url", url);
     localStorage.setItem("orbot_supabase_key", key);
     localStorage.setItem("orbot_backend_url", backendUrl);
     localStorage.setItem("orbot_simplyprint_key", spKey);
+    localStorage.setItem("orbot_sp_dispatch_enabled", spDispatchEnabled ? "true" : "false");
+    updateDispatchIndicator();
 
     closeModal();
     
@@ -2392,10 +2424,12 @@ function setupWaybillProcessing() {
     try {
       if (!backendUrl) throw new Error("Backend URL not set. Add your Railway URL in Settings.");
       const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
+      const spDispatch = isSpDispatchEnabled();
+      if (!spDispatch) writeWaybillConsole("[DRY RUN] SimplyPrint dispatch is disabled — files will be processed but not sent to printers.", "warning");
       const response = await fetch(`${backendUrl}/foreman/dispatch`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
-        body: JSON.stringify({})
+        body: JSON.stringify({ dry_run: !spDispatch })
       });
       const rawText2 = await response.text();
       let resData;
@@ -3032,6 +3066,8 @@ window.addEventListener("DOMContentLoaded", () => {
   // Start system clock
   updateSystemClock();
   setInterval(updateSystemClock, 1000);
+
+  updateDispatchIndicator();
 
   if (initSupabase()) {
     fetchSummaryStats();
