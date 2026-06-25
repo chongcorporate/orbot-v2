@@ -475,6 +475,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
     let waybillStatusClass = "pending";
     const waybillStatusLower = (order.waybill_processing_status || "pending").toLowerCase();
     if (waybillStatusLower === "ready" || waybillStatusLower === "ready to print") waybillStatusClass = "completed";
+    else if (waybillStatusLower === "compiled") waybillStatusClass = "completed";
     else if (waybillStatusLower === "printed") waybillStatusClass = "printing";
     else if (waybillStatusLower === "pending") waybillStatusClass = "pending";
     else if (waybillStatusLower === "on hold" || waybillStatusLower === "hold" || waybillStatusLower === "failed") waybillStatusClass = "hold";
@@ -2829,6 +2830,7 @@ async function fetchAndRenderWaybillsArchive() {
           <option value="on hold" ${statusLower === 'on hold' || statusLower === 'hold' ? 'selected' : ''}>On Hold</option>
           <option value="failed" ${statusLower === 'failed' ? 'selected' : ''}>Failed</option>
           <option value="printed" ${statusLower === 'printed' ? 'selected' : ''}>Printed</option>
+          <option value="compiled" ${statusLower === 'compiled' ? 'selected' : ''}>Compiled</option>
         </select>
       `;
 
