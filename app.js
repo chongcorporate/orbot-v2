@@ -16,6 +16,9 @@ let catalogSortOrder = "asc"; // "asc" or "desc"
 let cachedOrders = [];
 let cachedVariants = [];
 let cachedFilteredWaybills = [];
+let cachedListings = [];
+let listingsActiveFilter = "all";
+let listingsPlatformFilter = "all";
 let ganttTimeWindow = 24;
 
 function debounce(fn, delay) {
@@ -1675,6 +1678,9 @@ function setupTabs() {
         } else if (tabId === "catalog") {
           const catalogSearch = document.getElementById("catalog-search");
           globalSearch.value = catalogSearch ? catalogSearch.value : "";
+        } else if (tabId === "listings") {
+          const listingsSearch = document.getElementById("listings-search");
+          globalSearch.value = listingsSearch ? listingsSearch.value : "";
         } else if (tabId === "waybills") {
           globalSearch.value = waybillSearchQuery;
           const waybillSearch = document.getElementById("waybill-search-input");
@@ -1699,6 +1705,7 @@ function setupTabs() {
       if (tabId === "orders") fetchAndRenderOrders();
       if (tabId === "logs") { fetchAndRenderLogs(); }
       if (tabId === "catalog") fetchAndRenderCatalog();
+      if (tabId === "listings") fetchAndRenderListings();
       if (tabId === "waybills") {
         fetchAgentHeartbeats();
         fetchAndRenderWaybillsArchive();
@@ -1736,6 +1743,10 @@ function setupGlobalSearch() {
       const catalogSearch = document.getElementById("catalog-search");
       if (catalogSearch) catalogSearch.value = query;
       fetchAndRenderCatalog(); // Filter from cache
+    } else if (currentTab === "listings") {
+      const listingsSearch = document.getElementById("listings-search");
+      if (listingsSearch) listingsSearch.value = query;
+      renderListingsFromCache();
     } else if (currentTab === "waybills") {
       const waybillSearch = document.getElementById("waybill-search-input");
       if (waybillSearch) waybillSearch.value = query;
@@ -3720,6 +3731,7 @@ function setupPrinterControls() {
   setupCatalogDetailModal();
   setupCatalogEditModal();
   setupSystemErrorReset();
+  setupListingsTab();
 
   // Waybill panel toggle (Orders ↔ Compiled PDFs)
   const waybillTabOrders = document.getElementById("waybill-tab-orders");
@@ -4808,5 +4820,370 @@ async function doLaunchDownload() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<span class="material-symbols-outlined text-base">download</span> Download Launch Package';
+  }
+}
+
+// ─── LISTINGS PAGE ────────────────────────────────────────────────────────────
+
+const LISTING_PLATFORMS = [
+  { key: "shopee_my", label: "Shopee MY", color: "#ee4d2d" },
+  { key: "shopee_sg", label: "Shopee SG", color: "#ee4d2d" },
+  { key: "shopee_ph", label: "Shopee PH", color: "#ee4d2d" },
+  { key: "shopee_th", label: "Shopee TH", color: "#ff6f00" },
+  { key: "lazada_my", label: "Lazada MY", color: "#00a1e4" },
+];
+
+async function fetchAndRenderListings(useCache = false) {
+  if (!supabaseClient) return;
+  const tbody = document.getElementById("listings-tbody");
+  if (!tbody) return;
+
+  if (!useCache || cachedListings.length === 0) {
+    tbody.innerHTML = loadingDiv();
+    try {
+      let allListings = [];
+      let start = 0;
+      while (true) {
+        const { data, error } = await supabaseClient
+          .from("listings")
+          .select("*, products(id, master_sku, product_base_name, brand_name), listing_variations(*, variants(id, variant_sku, variant_type))")
+          .order("platform_listing_name", { ascending: true })
+          .range(start, start + 999);
+        if (error) throw error;
+        allListings = allListings.concat(data || []);
+        if ((data || []).length < 1000) break;
+        start += 1000;
+      }
+      cachedListings = allListings;
+    } catch (err) {
+      tbody.innerHTML = emptyDiv(`Error loading listings: ${err.message}`, "error");
+      return;
+    }
+  }
+
+  renderListingsFromCache();
+}
+
+function renderListingsFromCache() {
+  const tbody = document.getElementById("listings-tbody");
+  if (!tbody) return;
+  const searchVal = (document.getElementById("listings-search")?.value || "").toLowerCase().trim();
+  const countEl = document.getElementById("listings-count-display");
+
+  let filtered = cachedListings;
+
+  if (listingsActiveFilter === "active")   filtered = filtered.filter(l => l.is_active);
+  if (listingsActiveFilter === "inactive") filtered = filtered.filter(l => !l.is_active);
+
+  if (listingsPlatformFilter !== "all") {
+    filtered = filtered.filter(l => !!l[listingsPlatformFilter]);
+  }
+
+  if (searchVal) {
+    filtered = filtered.filter(l =>
+      (l.platform_listing_name || "").toLowerCase().includes(searchVal) ||
+      (l.products?.master_sku || "").toLowerCase().includes(searchVal) ||
+      (l.products?.product_base_name || "").toLowerCase().includes(searchVal)
+    );
+  }
+
+  if (countEl) countEl.textContent = `${filtered.length} listing${filtered.length !== 1 ? "s" : ""}`;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = emptyDiv("No listings found.", "storefront");
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(l => {
+    const vars = l.listing_variations || [];
+
+    const platformDots = LISTING_PLATFORMS.map(p => {
+      const hasId = !!l[p.key];
+      return `<div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${hasId ? p.color : "rgba(100,116,139,0.2)"}" title="${p.label}: ${escapeHtml(l[p.key] || "not listed")}"></div>`;
+    }).join("");
+
+    const platformDetails = LISTING_PLATFORMS.map(p => {
+      const id = l[p.key];
+      return `<div class="flex items-center gap-1.5 bg-black/25 px-2.5 py-1 rounded-lg border border-outline-variant/15">
+        <span class="font-data-mono text-[9px] font-semibold" style="color:${id ? p.color : "#475569"}">${p.label}</span>
+        <span class="font-data-mono text-[10px] ${id ? "text-on-surface-variant" : "text-outline/40"}">${id ? escapeHtml(id) : "—"}</span>
+      </div>`;
+    }).join("");
+
+    const varRows = vars.length > 0
+      ? vars.map(v => {
+          const sku = v.variants?.variant_sku || "—";
+          const vtype = v.variants?.variant_type || "";
+          let typePill = "";
+          if (vtype === "DS")  typePill = `<span class="font-data-mono text-[9px] px-1.5 py-0.5 rounded bg-[#7ea6e8]/10 text-[#7ea6e8] border border-[#7ea6e8]/20">DS</span>`;
+          else if (vtype === "WM")  typePill = `<span class="font-data-mono text-[9px] px-1.5 py-0.5 rounded bg-[#ffaa6b]/10 text-[#ffaa6b] border border-[#ffaa6b]/20">WM</span>`;
+          else if (vtype === "FWM") typePill = `<span class="font-data-mono text-[9px] px-1.5 py-0.5 rounded bg-[#ff8c00]/10 text-[#ff8c00] border border-[#ff8c00]/20">FWM</span>`;
+          else if (vtype)           typePill = `<span class="font-data-mono text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-outline border border-outline-variant/20">${escapeHtml(vtype)}</span>`;
+          return `<tr class="hover:bg-primary/[0.025] transition-colors border-b border-outline-variant/[0.06] last:border-0">
+            <td class="py-2 px-3 font-data-mono text-[11px] text-on-surface-variant">${escapeHtml(v.platform_variation_name || "—")}</td>
+            <td class="py-2 px-3 font-data-mono text-[10px] text-outline/80">${escapeHtml(v.normalized_variation_name || "—")}</td>
+            <td class="py-2 px-3 font-data-mono text-[10px] text-[#ebb2ff]">${escapeHtml(sku)}</td>
+            <td class="py-2 px-3">${typePill}</td>
+            <td class="py-2 px-3 text-right">
+              <button class="btn-edit-variation p-1 rounded hover:bg-primary/10 text-outline/50 hover:text-primary transition-all active:scale-90"
+                data-variation-id="${v.id}"
+                data-platform-name="${escapeHtml(v.platform_variation_name || "")}"
+                data-normalized="${escapeHtml(v.normalized_variation_name || "")}"
+                data-variant-id="${v.variant_id || ""}"
+                data-variant-sku="${escapeHtml(sku)}"
+                type="button" title="Edit variation">
+                <span class="material-symbols-outlined text-sm pointer-events-none">edit</span>
+              </button>
+            </td>
+          </tr>`;
+        }).join("")
+      : `<tr><td colspan="5" class="py-3 px-3 text-center font-data-mono text-[10px] text-outline/40 italic">No variations mapped</td></tr>`;
+
+    return `<div class="glass-panel rounded-xl overflow-hidden transition-all duration-300 listing-card" data-listing-id="${l.id}">
+      <div class="listing-card-header flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-colors" data-listing-id="${l.id}">
+        <span class="flex-shrink-0 font-data-mono text-[9px] font-bold py-0.5 px-2 rounded-full border ${l.is_active ? "bg-primary/10 text-primary border-primary/30" : "bg-white/5 text-outline/50 border-outline-variant/20"}">${l.is_active ? "ACTIVE" : "OFF"}</span>
+        <div class="flex-1 min-w-0">
+          <div class="font-data-mono text-[10px] text-outline/60 mb-0.5">${escapeHtml(l.products?.master_sku || "")}</div>
+          <div class="text-sm font-medium text-on-surface truncate" title="${escapeHtml(l.platform_listing_name)}">${escapeHtml(l.platform_listing_name)}</div>
+        </div>
+        <div class="hidden sm:flex items-center gap-1.5 flex-shrink-0">${platformDots}</div>
+        <div class="hidden md:flex flex-col items-end flex-shrink-0 min-w-[80px]">
+          <span class="font-data-mono text-xs text-on-surface">MYR ${l.price_myr ?? "—"}</span>
+          <span class="font-data-mono text-[10px] text-outline">SGD ${l.price_sgd ?? "—"}</span>
+        </div>
+        <span class="font-data-mono text-[10px] text-outline/50 flex-shrink-0 hidden sm:block">${vars.length} var${vars.length !== 1 ? "s" : ""}</span>
+        <button class="btn-edit-listing flex-shrink-0 p-1.5 rounded-lg hover:bg-primary/10 text-outline/50 hover:text-primary transition-all active:scale-90" data-listing-id="${l.id}" type="button" title="Edit listing">
+          <span class="material-symbols-outlined text-sm pointer-events-none">edit</span>
+        </button>
+        <span class="material-symbols-outlined text-outline/50 text-lg transition-transform duration-200 toggle-arrow flex-shrink-0">expand_more</span>
+      </div>
+      <div class="listing-card-body hidden border-t border-outline-variant/10 px-4 py-3 flex flex-col gap-3">
+        <div class="flex flex-wrap gap-2">${platformDetails}</div>
+        <div>
+          <div class="font-data-mono text-[9px] text-outline/60 uppercase tracking-wider mb-1.5">Variations (${vars.length})</div>
+          <div class="bg-black/15 rounded-lg border border-outline-variant/10 overflow-hidden">
+            <table class="w-full text-left">
+              <thead>
+                <tr class="border-b border-outline-variant/10">
+                  <th class="font-data-mono text-[9px] text-outline/60 uppercase tracking-wider py-2 px-3">Platform Name</th>
+                  <th class="font-data-mono text-[9px] text-outline/60 uppercase tracking-wider py-2 px-3">Normalized</th>
+                  <th class="font-data-mono text-[9px] text-outline/60 uppercase tracking-wider py-2 px-3">Variant SKU</th>
+                  <th class="font-data-mono text-[9px] text-outline/60 uppercase tracking-wider py-2 px-3">Type</th>
+                  <th class="py-2 px-3"></th>
+                </tr>
+              </thead>
+              <tbody>${varRows}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function setupListingsTab() {
+  // Search input
+  document.getElementById("listings-search")?.addEventListener("input", debounce(() => renderListingsFromCache(), 200));
+
+  // Active filter buttons
+  document.querySelectorAll(".listings-filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".listings-filter-btn").forEach(b => {
+        b.classList.remove("bg-primary/15", "text-primary");
+        b.classList.add("text-outline");
+      });
+      btn.classList.add("bg-primary/15", "text-primary");
+      btn.classList.remove("text-outline");
+      listingsActiveFilter = btn.dataset.filter;
+      renderListingsFromCache();
+    });
+  });
+
+  // Platform filter buttons
+  document.querySelectorAll(".listings-platform-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".listings-platform-btn").forEach(b => {
+        b.classList.remove("bg-primary/15", "text-primary");
+        b.classList.add("text-outline");
+      });
+      btn.classList.add("bg-primary/15", "text-primary");
+      btn.classList.remove("text-outline");
+      listingsPlatformFilter = btn.dataset.platform;
+      renderListingsFromCache();
+    });
+  });
+
+  // Event delegation on listings tbody
+  const tbody = document.getElementById("listings-tbody");
+  if (tbody) {
+    tbody.addEventListener("click", e => {
+      const editListingBtn = e.target.closest(".btn-edit-listing");
+      if (editListingBtn) {
+        e.stopPropagation();
+        const listing = cachedListings.find(l => l.id === editListingBtn.dataset.listingId);
+        if (listing) openEditListingModal(listing);
+        return;
+      }
+      const editVarBtn = e.target.closest(".btn-edit-variation");
+      if (editVarBtn) {
+        e.stopPropagation();
+        openEditVariationModal(editVarBtn.dataset);
+        return;
+      }
+      const header = e.target.closest(".listing-card-header");
+      if (header) {
+        const card = header.closest(".listing-card");
+        const body = card?.querySelector(".listing-card-body");
+        const arrow = card?.querySelector(".toggle-arrow");
+        if (body) {
+          body.classList.toggle("hidden");
+          if (arrow) arrow.style.transform = body.classList.contains("hidden") ? "" : "rotate(180deg)";
+        }
+      }
+    });
+  }
+
+  // Edit listing modal wiring
+  document.getElementById("edit-listing-close-btn")?.addEventListener("click", closeEditListingModal);
+  document.getElementById("edit-listing-cancel-btn")?.addEventListener("click", closeEditListingModal);
+  document.getElementById("edit-listing-save-btn")?.addEventListener("click", saveEditListing);
+  document.getElementById("edit-listing-modal")?.addEventListener("click", e => { if (e.target === e.currentTarget) closeEditListingModal(); });
+
+  // Edit variation modal wiring
+  document.getElementById("edit-variation-close-btn")?.addEventListener("click", closeEditVariationModal);
+  document.getElementById("edit-variation-cancel-btn")?.addEventListener("click", closeEditVariationModal);
+  document.getElementById("edit-variation-save-btn")?.addEventListener("click", saveEditVariation);
+  document.getElementById("edit-variation-modal")?.addEventListener("click", e => { if (e.target === e.currentTarget) closeEditVariationModal(); });
+}
+
+function openEditListingModal(listing) {
+  document.getElementById("edit-listing-id").value          = listing.id;
+  document.getElementById("edit-listing-name").value        = listing.platform_listing_name || "";
+  document.getElementById("edit-listing-description").value = listing.platform_listing_description || "";
+  document.getElementById("edit-listing-price-myr").value   = listing.price_myr ?? "";
+  document.getElementById("edit-listing-price-sgd").value   = listing.price_sgd ?? "";
+  document.getElementById("edit-listing-shopee-my").value   = listing.shopee_my || "";
+  document.getElementById("edit-listing-shopee-sg").value   = listing.shopee_sg || "";
+  document.getElementById("edit-listing-shopee-ph").value   = listing.shopee_ph || "";
+  document.getElementById("edit-listing-shopee-th").value   = listing.shopee_th || "";
+  document.getElementById("edit-listing-lazada-my").value   = listing.lazada_my || "";
+  document.getElementById("edit-listing-is-active").checked = !!listing.is_active;
+  document.getElementById("edit-listing-modal").classList.add("active");
+}
+
+function closeEditListingModal() {
+  document.getElementById("edit-listing-modal").classList.remove("active");
+}
+
+async function saveEditListing() {
+  if (!supabaseClient) return;
+  const id = document.getElementById("edit-listing-id").value;
+  const saveBtn = document.getElementById("edit-listing-save-btn");
+  saveBtn.disabled = true;
+  saveBtn.innerHTML = `<span class="material-symbols-outlined text-sm animate-spin">sync</span> Saving…`;
+
+  const updates = {
+    platform_listing_name:        document.getElementById("edit-listing-name").value.trim(),
+    platform_listing_description: document.getElementById("edit-listing-description").value,
+    price_myr:   parseFloat(document.getElementById("edit-listing-price-myr").value) || null,
+    price_sgd:   parseFloat(document.getElementById("edit-listing-price-sgd").value) || null,
+    shopee_my:   document.getElementById("edit-listing-shopee-my").value.trim() || null,
+    shopee_sg:   document.getElementById("edit-listing-shopee-sg").value.trim() || null,
+    shopee_ph:   document.getElementById("edit-listing-shopee-ph").value.trim() || null,
+    shopee_th:   document.getElementById("edit-listing-shopee-th").value.trim() || null,
+    lazada_my:   document.getElementById("edit-listing-lazada-my").value.trim() || null,
+    is_active:   document.getElementById("edit-listing-is-active").checked,
+    updated_at:  new Date().toISOString(),
+  };
+
+  try {
+    const { error } = await supabaseClient.from("listings").update(updates).eq("id", id);
+    if (error) throw error;
+    const idx = cachedListings.findIndex(l => l.id === id);
+    if (idx !== -1) cachedListings[idx] = { ...cachedListings[idx], ...updates };
+    closeEditListingModal();
+    renderListingsFromCache();
+    showToast("Listing saved.", "success");
+  } catch (err) {
+    showToast(`Save failed: ${err.message}`, "error");
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.innerHTML = `<span class="material-symbols-outlined text-sm">save</span> Save Changes`;
+  }
+}
+
+async function openEditVariationModal(dataset) {
+  document.getElementById("edit-variation-id").value             = dataset.variationId;
+  document.getElementById("edit-variation-platform-name").value  = dataset.platformName || "";
+  document.getElementById("edit-variation-normalized-name").value = dataset.normalized || "";
+
+  const variantSelect = document.getElementById("edit-variation-variant-id");
+  if (variantSelect.options.length <= 1) {
+    let variants = cachedVariants;
+    if (variants.length === 0 && supabaseClient) {
+      const { data } = await supabaseClient
+        .from("variants")
+        .select("id, variant_sku, variant_type")
+        .order("variant_sku", { ascending: true });
+      variants = data || [];
+    }
+    variants.forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = `${v.variant_sku} (${v.variant_type})`;
+      variantSelect.appendChild(opt);
+    });
+  }
+  variantSelect.value = dataset.variantId || "";
+
+  document.getElementById("edit-variation-modal").classList.add("active");
+}
+
+function closeEditVariationModal() {
+  document.getElementById("edit-variation-modal").classList.remove("active");
+}
+
+async function saveEditVariation() {
+  if (!supabaseClient) return;
+  const id = document.getElementById("edit-variation-id").value;
+  const saveBtn = document.getElementById("edit-variation-save-btn");
+  saveBtn.disabled = true;
+  saveBtn.innerHTML = `<span class="material-symbols-outlined text-sm animate-spin">sync</span> Saving…`;
+
+  const variantId = document.getElementById("edit-variation-variant-id").value || null;
+  const updates = {
+    platform_variation_name:   document.getElementById("edit-variation-platform-name").value.trim(),
+    normalized_variation_name: document.getElementById("edit-variation-normalized-name").value.trim(),
+    variant_id:  variantId,
+    updated_at:  new Date().toISOString(),
+  };
+
+  try {
+    const { error } = await supabaseClient.from("listing_variations").update(updates).eq("id", id);
+    if (error) throw error;
+
+    // Patch cache
+    for (const l of cachedListings) {
+      if (!l.listing_variations) continue;
+      const vidx = l.listing_variations.findIndex(v => v.id === id);
+      if (vidx === -1) continue;
+      l.listing_variations[vidx] = { ...l.listing_variations[vidx], ...updates };
+      if (variantId) {
+        const src = cachedVariants.find(v => v.id === variantId);
+        if (src) l.listing_variations[vidx].variants = { id: src.id, variant_sku: src.variant_sku, variant_type: src.variant_type };
+      } else {
+        l.listing_variations[vidx].variants = null;
+      }
+      break;
+    }
+
+    closeEditVariationModal();
+    renderListingsFromCache();
+    showToast("Variation saved.", "success");
+  } catch (err) {
+    showToast(`Save failed: ${err.message}`, "error");
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.innerHTML = `<span class="material-symbols-outlined text-sm">save</span> Save`;
   }
 }

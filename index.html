@@ -520,6 +520,10 @@
           <span class="material-symbols-outlined">inventory_2</span>
           <span class="font-headline-sm text-headline-sm">Catalog</span>
         </button>
+        <button class="tab-btn" data-tab="listings">
+          <span class="material-symbols-outlined">storefront</span>
+          <span class="font-headline-sm text-headline-sm">Listings</span>
+        </button>
         <button class="tab-btn" data-tab="launch">
           <span class="material-symbols-outlined">rocket_launch</span>
           <span class="font-headline-sm text-headline-sm">Launch</span>
@@ -1367,6 +1371,47 @@
         </div>
       </section>
 
+      <!-- 7. Listings Pane -->
+      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-4" id="pane-listings">
+        <div class="glass-panel rounded-xl p-5 flex flex-col gap-5">
+          <!-- Header -->
+          <div class="flex justify-between items-center flex-wrap gap-4 border-b border-outline-variant/10 pb-4">
+            <h2 class="font-headline-md text-headline-md text-on-surface">Platform Listings</h2>
+            <div class="flex items-center gap-3 w-full md:w-auto justify-end">
+              <div class="relative w-full md:w-64">
+                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm select-none">search</span>
+                <input class="w-full bg-surface-container/30 border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/40 rounded-lg pl-9 pr-4 py-2 focus:border-primary/50 transition-all font-body-md text-sm" placeholder="Search listing name, SKU..." id="listings-search" type="text">
+              </div>
+            </div>
+          </div>
+
+          <!-- Filter bar -->
+          <div class="flex flex-wrap gap-3 bg-surface-container-low/20 p-3.5 rounded-xl border border-outline-variant/10 items-center">
+            <div class="flex gap-1 p-0.5 bg-black/20 rounded-lg border border-outline-variant/15 flex-shrink-0">
+              <button class="listings-filter-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all bg-primary/15 text-primary" data-filter="all">All</button>
+              <button class="listings-filter-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-filter="active">Active</button>
+              <button class="listings-filter-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-filter="inactive">Inactive</button>
+            </div>
+            <div class="flex gap-1 p-0.5 bg-black/20 rounded-lg border border-outline-variant/15 overflow-x-auto flex-shrink-0">
+              <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all bg-primary/15 text-primary" data-platform="all">All Platforms</button>
+              <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="shopee_my">Shopee MY</button>
+              <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="shopee_sg">Shopee SG</button>
+              <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="shopee_ph">Shopee PH</button>
+              <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="shopee_th">Shopee TH</button>
+              <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="lazada_my">Lazada MY</button>
+            </div>
+            <span class="ml-auto font-data-mono text-xs text-outline" id="listings-count-display">— listings</span>
+          </div>
+
+          <!-- Listings scrollable container -->
+          <div class="h-[calc(100vh-340px)] min-h-[400px] overflow-y-auto pr-1 bg-black/10 rounded-xl border border-outline-variant/10 p-4" id="listings-container">
+            <div class="flex flex-col gap-3" id="listings-tbody">
+              <div class="text-center text-outline py-12 font-data-mono text-xs">Loading listings...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- 8. Launch Pane -->
       <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-4" id="pane-launch">
 
@@ -1995,6 +2040,115 @@
       await import("https://unpkg.com/@oddbird/css-anchor-positioning");
     }
   </script>
-  <script src="app.js?v=1.6.12"></script>
+  <!-- Edit Listing Modal -->
+  <div class="modal-overlay" id="edit-listing-modal">
+    <div class="glass-panel rounded-2xl w-full max-w-2xl mx-4 flex flex-col" style="max-height:90vh;">
+      <div class="flex items-center justify-between p-5 border-b border-outline-variant/10 flex-shrink-0">
+        <h3 class="font-headline-sm text-on-surface uppercase tracking-widest text-sm">Edit Listing</h3>
+        <button id="edit-listing-close-btn" class="p-1.5 rounded-full hover:bg-white/10 text-outline hover:text-on-surface transition-all">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </div>
+      <div class="p-5 flex flex-col gap-4 overflow-y-auto flex-1">
+        <input type="hidden" id="edit-listing-id">
+        <div class="flex flex-col gap-1.5">
+          <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Listing Name</label>
+          <input type="text" id="edit-listing-name" placeholder="Platform listing name">
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Description</label>
+          <textarea id="edit-listing-description" rows="7" style="resize:vertical;font-family:'JetBrains Mono',monospace;font-size:0.75rem;"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1.5">
+            <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Price MYR</label>
+            <input type="number" id="edit-listing-price-myr" step="0.5" min="0">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Price SGD</label>
+            <input type="number" id="edit-listing-price-sgd" step="0.5" min="0">
+          </div>
+        </div>
+        <div class="flex flex-col gap-2">
+          <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Platform IDs</label>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex flex-col gap-1">
+              <span class="font-data-mono text-[10px] text-outline">Shopee MY</span>
+              <input type="text" id="edit-listing-shopee-my" placeholder="e.g. 23990077572">
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="font-data-mono text-[10px] text-outline">Shopee SG</span>
+              <input type="text" id="edit-listing-shopee-sg" placeholder="e.g. 29204289939">
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="font-data-mono text-[10px] text-outline">Shopee PH</span>
+              <input type="text" id="edit-listing-shopee-ph" placeholder="e.g. 43876081378">
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="font-data-mono text-[10px] text-outline">Shopee TH</span>
+              <input type="text" id="edit-listing-shopee-th" placeholder="e.g. 47100737065">
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="font-data-mono text-[10px] text-outline">Lazada MY</span>
+              <input type="text" id="edit-listing-lazada-my" placeholder="e.g. 4109889670">
+            </div>
+            <div class="flex items-end pb-1">
+              <label class="flex items-center gap-2.5 cursor-pointer select-none">
+                <span class="font-data-mono text-[10px] text-outline">Active listing</span>
+                <div class="relative inline-block w-9 h-5 flex-shrink-0">
+                  <input type="checkbox" id="edit-listing-is-active" class="opacity-0 w-0 h-0 absolute peer">
+                  <div class="absolute inset-0 rounded-full bg-surface-container peer-checked:bg-primary transition-colors cursor-pointer"></div>
+                  <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4 pointer-events-none"></div>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 p-5 border-t border-outline-variant/10 flex-shrink-0">
+        <button id="edit-listing-cancel-btn" class="px-4 py-2 bg-white/5 hover:bg-white/10 border border-outline-variant/30 rounded-lg text-sm text-on-surface-variant transition-all">Cancel</button>
+        <button id="edit-listing-save-btn" class="px-4 py-2 bg-primary text-[#020617] rounded-lg text-sm font-bold font-display-lg flex items-center gap-2 transition-all active:scale-95 hover:brightness-110">
+          <span class="material-symbols-outlined text-sm">save</span> Save Changes
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Variation Modal -->
+  <div class="modal-overlay" id="edit-variation-modal">
+    <div class="glass-panel rounded-2xl w-full max-w-lg mx-4 flex flex-col">
+      <div class="flex items-center justify-between p-5 border-b border-outline-variant/10">
+        <h3 class="font-headline-sm text-on-surface uppercase tracking-widest text-sm">Edit Variation</h3>
+        <button id="edit-variation-close-btn" class="p-1.5 rounded-full hover:bg-white/10 text-outline hover:text-on-surface transition-all">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </div>
+      <div class="p-5 flex flex-col gap-4">
+        <input type="hidden" id="edit-variation-id">
+        <div class="flex flex-col gap-1.5">
+          <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Platform Variation Name</label>
+          <input type="text" id="edit-variation-platform-name" placeholder="As shown on Shopee / Lazada">
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Normalized Name</label>
+          <input type="text" id="edit-variation-normalized-name" placeholder="lowercase, used for order matching">
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Linked Variant SKU</label>
+          <select id="edit-variation-variant-id">
+            <option value="">— unlinked —</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 p-5 border-t border-outline-variant/10">
+        <button id="edit-variation-cancel-btn" class="px-4 py-2 bg-white/5 hover:bg-white/10 border border-outline-variant/30 rounded-lg text-sm text-on-surface-variant transition-all">Cancel</button>
+        <button id="edit-variation-save-btn" class="px-4 py-2 bg-primary text-[#020617] rounded-lg text-sm font-bold font-display-lg flex items-center gap-2 transition-all active:scale-95 hover:brightness-110">
+          <span class="material-symbols-outlined text-sm">save</span> Save
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=1.6.13"></script>
 </body>
 </html>
