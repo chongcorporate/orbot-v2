@@ -15,6 +15,7 @@ let waybillsDateSortDirection = "desc"; // "desc" or "asc"
 let catalogSortOrder = "asc"; // "asc" or "desc"
 let cachedOrders = [];
 let cachedVariants = [];
+let cachedProducts = [];
 let cachedFilteredWaybills = [];
 let cachedListings = [];
 let listingsActiveFilter = "all";
@@ -5181,6 +5182,13 @@ function setupListingsTab() {
   document.getElementById("edit-variation-cancel-btn")?.addEventListener("click", closeEditVariationModal);
   document.getElementById("edit-variation-save-btn")?.addEventListener("click", saveEditVariation);
   document.getElementById("edit-variation-modal")?.addEventListener("click", e => { if (e.target === e.currentTarget) closeEditVariationModal(); });
+
+  document.getElementById("btn-add-listing")?.addEventListener("click", openAddListingModal);
+  document.getElementById("add-listing-close-btn")?.addEventListener("click", closeAddListingModal);
+  document.getElementById("add-listing-cancel-btn")?.addEventListener("click", closeAddListingModal);
+  document.getElementById("add-listing-save-btn")?.addEventListener("click", saveAddListing);
+  document.getElementById("add-listing-modal")?.addEventListener("click", e => { if (e.target === e.currentTarget) closeAddListingModal(); });
+  document.getElementById("add-listing-product-filter")?.addEventListener("input", e => filterAddListingProducts(e.target.value));
 }
 
 function openEditListingModal(listing) {
@@ -5312,5 +5320,101 @@ async function saveEditVariation() {
   } finally {
     saveBtn.disabled = false;
     saveBtn.innerHTML = `<span class="material-symbols-outlined text-sm">save</span> Save`;
+  }
+}
+
+async function openAddListingModal() {
+  const sel = document.getElementById("add-listing-product-id");
+  // Load products once
+  if (sel && sel.options.length === 0) {
+    if (cachedProducts.length === 0 && supabaseClient) {
+      const { data } = await supabaseClient
+        .from("products")
+        .select("id, master_sku, product_base_name, brand_name")
+        .order("master_sku", { ascending: true });
+      cachedProducts = data || [];
+    }
+    cachedProducts.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = `${p.master_sku} — ${p.product_base_name}`;
+      opt.dataset.search = `${p.master_sku} ${p.product_base_name} ${p.brand_name || ""}`.toLowerCase();
+      sel.appendChild(opt);
+    });
+  }
+  // Reset all fields
+  ["add-listing-name", "add-listing-description", "add-listing-price-myr", "add-listing-price-sgd",
+   "add-listing-shopee-my", "add-listing-shopee-sg", "add-listing-shopee-ph", "add-listing-shopee-th",
+   "add-listing-lazada-my"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  document.getElementById("add-listing-is-active").checked = true;
+  const filterEl = document.getElementById("add-listing-product-filter");
+  if (filterEl) filterEl.value = "";
+  filterAddListingProducts("");
+  if (sel) sel.selectedIndex = -1;
+  document.getElementById("add-listing-modal").classList.add("active");
+}
+
+function filterAddListingProducts(query) {
+  const sel = document.getElementById("add-listing-product-id");
+  if (!sel) return;
+  const q = query.toLowerCase().trim();
+  Array.from(sel.options).forEach(opt => {
+    opt.style.display = !q || (opt.dataset.search || "").includes(q) ? "" : "none";
+  });
+}
+
+function closeAddListingModal() {
+  document.getElementById("add-listing-modal").classList.remove("active");
+}
+
+async function saveAddListing() {
+  if (!supabaseClient) return;
+  const sel = document.getElementById("add-listing-product-id");
+  const productId = sel?.value || "";
+  const name = document.getElementById("add-listing-name").value.trim();
+  if (!productId) { showToast("Select a product first.", "error"); return; }
+  if (!name)      { showToast("Listing name is required.", "error"); return; }
+
+  const saveBtn = document.getElementById("add-listing-save-btn");
+  saveBtn.disabled = true;
+  saveBtn.innerHTML = `<span class="material-symbols-outlined text-sm animate-spin">sync</span> Saving…`;
+
+  const now = new Date().toISOString();
+  const payload = {
+    product_id:                   productId,
+    platform_listing_name:        name,
+    platform_listing_description: document.getElementById("add-listing-description").value || null,
+    price_myr:  parseFloat(document.getElementById("add-listing-price-myr").value) || null,
+    price_sgd:  parseFloat(document.getElementById("add-listing-price-sgd").value) || null,
+    shopee_my:  document.getElementById("add-listing-shopee-my").value.trim() || null,
+    shopee_sg:  document.getElementById("add-listing-shopee-sg").value.trim() || null,
+    shopee_ph:  document.getElementById("add-listing-shopee-ph").value.trim() || null,
+    shopee_th:  document.getElementById("add-listing-shopee-th").value.trim() || null,
+    lazada_my:  document.getElementById("add-listing-lazada-my").value.trim() || null,
+    is_active:  document.getElementById("add-listing-is-active").checked,
+    created_at: now,
+    updated_at: now,
+  };
+
+  try {
+    const { data, error } = await supabaseClient
+      .from("listings")
+      .insert(payload)
+      .select("*, products(id, master_sku, product_base_name, brand_name)");
+    if (error) throw error;
+    const inserted = data[0];
+    inserted.listing_variations = [];
+    cachedListings.unshift(inserted);
+    closeAddListingModal();
+    renderListingsFromCache();
+    showToast("Listing created.", "success");
+  } catch (err) {
+    showToast(`Failed to create listing: ${err.message}`, "error");
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.innerHTML = `<span class="material-symbols-outlined text-sm">add</span> Create Listing`;
   }
 }

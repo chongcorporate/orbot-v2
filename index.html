@@ -1378,6 +1378,10 @@
           <div class="flex justify-between items-center flex-wrap gap-4 border-b border-outline-variant/10 pb-4">
             <h2 class="font-headline-md text-headline-md text-on-surface">Platform Listings</h2>
             <div class="flex items-center gap-3 w-full md:w-auto justify-end">
+              <button id="btn-add-listing" type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 transition-all active:scale-95 flex-shrink-0 font-medium text-sm">
+                <span class="material-symbols-outlined text-[18px]">add</span>
+                <span class="hidden sm:inline">Add Listing</span>
+              </button>
               <div class="relative w-full md:w-64">
                 <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm select-none">search</span>
                 <input class="w-full bg-surface-container/30 border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/40 rounded-lg pl-9 pr-4 py-2 focus:border-primary/50 transition-all font-body-md text-sm" placeholder="Search listing name, SKU..." id="listings-search" type="text">
@@ -2173,6 +2177,108 @@
     </div>
   </div>
 
-  <script src="app.js?v=1.6.14"></script>
+  <!-- Add Listing Modal -->
+  <div class="modal-overlay" id="add-listing-modal">
+    <div class="glass-panel rounded-2xl w-full max-w-2xl mx-4 flex flex-col" style="max-height:90vh;">
+      <div class="flex items-center justify-between p-5 border-b border-outline-variant/10 flex-shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary" style="font-size:20px">add_circle</span>
+          <h3 class="font-headline-sm text-on-surface uppercase tracking-widest text-sm">New Listing</h3>
+        </div>
+        <button id="add-listing-close-btn" class="p-1.5 rounded-full hover:bg-white/10 text-outline hover:text-on-surface transition-all" type="button">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </div>
+
+      <div class="p-5 flex flex-col gap-4 overflow-y-auto flex-1">
+
+        <!-- Product selector -->
+        <div class="flex flex-col gap-1.5">
+          <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Product <span class="text-error">*</span></label>
+          <input type="text" id="add-listing-product-filter" placeholder="Filter by SKU or name…"
+            class="bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg px-3 py-2 text-sm font-data-mono focus:border-primary/50 focus:outline-none transition-all">
+          <select id="add-listing-product-id" size="5"
+            class="bg-black/20 border border-outline-variant/30 text-on-surface rounded-lg px-2 py-1 text-[11px] font-data-mono focus:border-primary/50 focus:outline-none transition-all [&>option]:py-1 [&>option:checked]:bg-primary/20 [&>option:checked]:text-primary">
+          </select>
+        </div>
+
+        <!-- Listing name + active status -->
+        <div class="flex gap-3 items-start">
+          <div class="flex-1 flex flex-col gap-1.5">
+            <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Listing Name <span class="text-error">*</span></label>
+            <input type="text" id="add-listing-name" placeholder="e.g. Display Stand for Lego Star Wars Millennium Falcon (75192)"
+              class="bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg px-3 py-2 text-sm focus:border-primary/50 focus:outline-none transition-all">
+          </div>
+          <div class="flex flex-col items-center gap-1.5 flex-shrink-0 pt-1">
+            <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Active</label>
+            <input type="checkbox" id="add-listing-is-active" checked class="w-4 h-4 mt-1.5 accent-[#a4e844] cursor-pointer">
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div class="flex flex-col gap-1.5">
+          <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Description</label>
+          <textarea id="add-listing-description" rows="6" placeholder="Full listing description…"
+            class="bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg px-3 py-2 text-[11px] font-data-mono leading-relaxed focus:border-primary/50 focus:outline-none transition-all resize-y"></textarea>
+        </div>
+
+        <!-- Prices -->
+        <div class="flex gap-3">
+          <div class="flex-1 flex flex-col gap-1.5">
+            <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Price MYR</label>
+            <input type="number" id="add-listing-price-myr" step="0.01" min="0" placeholder="0.00"
+              class="bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg px-3 py-2 text-sm font-data-mono focus:border-primary/50 focus:outline-none transition-all">
+          </div>
+          <div class="flex-1 flex flex-col gap-1.5">
+            <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Price SGD</label>
+            <input type="number" id="add-listing-price-sgd" step="0.01" min="0" placeholder="0.00"
+              class="bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg px-3 py-2 text-sm font-data-mono focus:border-primary/50 focus:outline-none transition-all">
+          </div>
+        </div>
+
+        <!-- Platform IDs -->
+        <div class="flex flex-col gap-2">
+          <div class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Platform IDs</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="flex flex-col gap-1">
+              <label class="font-data-mono text-[10px] font-semibold" style="color:#ee4d2d">Shopee MY</label>
+              <input type="text" id="add-listing-shopee-my" placeholder="Item ID"
+                class="bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg px-3 py-1.5 text-[11px] font-data-mono focus:border-primary/50 focus:outline-none transition-all">
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="font-data-mono text-[10px] font-semibold" style="color:#ee4d2d">Shopee SG</label>
+              <input type="text" id="add-listing-shopee-sg" placeholder="Item ID"
+                class="bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg px-3 py-1.5 text-[11px] font-data-mono focus:border-primary/50 focus:outline-none transition-all">
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="font-data-mono text-[10px] font-semibold" style="color:#ee4d2d">Shopee PH</label>
+              <input type="text" id="add-listing-shopee-ph" placeholder="Item ID"
+                class="bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg px-3 py-1.5 text-[11px] font-data-mono focus:border-primary/50 focus:outline-none transition-all">
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="font-data-mono text-[10px] font-semibold" style="color:#ee4d2d">Shopee TH</label>
+              <input type="text" id="add-listing-shopee-th" placeholder="Item ID"
+                class="bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg px-3 py-1.5 text-[11px] font-data-mono focus:border-primary/50 focus:outline-none transition-all">
+            </div>
+            <div class="flex flex-col gap-1 sm:col-span-2">
+              <label class="font-data-mono text-[10px] font-semibold" style="color:#1a56f0">Lazada MY</label>
+              <input type="text" id="add-listing-lazada-my" placeholder="Item ID"
+                class="bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg px-3 py-1.5 text-[11px] font-data-mono focus:border-primary/50 focus:outline-none transition-all">
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="flex justify-end gap-3 p-5 border-t border-outline-variant/10 flex-shrink-0">
+        <button id="add-listing-cancel-btn" type="button" class="px-4 py-2 bg-white/5 hover:bg-white/10 border border-outline-variant/30 rounded-lg text-sm text-on-surface-variant transition-all">Cancel</button>
+        <button id="add-listing-save-btn" type="button" class="px-4 py-2 bg-primary text-[#020617] rounded-lg text-sm font-bold font-display-lg flex items-center gap-2 transition-all active:scale-95 hover:brightness-110">
+          <span class="material-symbols-outlined text-sm">add</span> Create Listing
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=1.6.15"></script>
 </body>
 </html>
