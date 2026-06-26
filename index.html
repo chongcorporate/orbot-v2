@@ -1386,21 +1386,45 @@
           </div>
 
           <!-- Filter bar -->
-          <div class="flex flex-wrap gap-3 bg-surface-container-low/20 p-3.5 rounded-xl border border-outline-variant/10 items-center">
-            <div class="flex gap-1 p-0.5 bg-black/20 rounded-lg border border-outline-variant/15 flex-shrink-0">
-              <button class="listings-filter-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all bg-primary/15 text-primary" data-filter="all">All</button>
-              <button class="listings-filter-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-filter="active">Active</button>
-              <button class="listings-filter-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-filter="inactive">Inactive</button>
+          <div class="flex flex-col gap-2">
+            <div class="flex flex-wrap gap-2 bg-surface-container-low/20 p-3 rounded-xl border border-outline-variant/10 items-center">
+              <!-- Active status filter -->
+              <div class="flex gap-1 p-0.5 bg-black/20 rounded-lg border border-outline-variant/15 flex-shrink-0">
+                <button class="listings-filter-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all bg-primary/15 text-primary" data-filter="all">All</button>
+                <button class="listings-filter-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-filter="active">Active</button>
+                <button class="listings-filter-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-filter="inactive">Inactive</button>
+              </div>
+              <!-- Platform "has" filter -->
+              <div class="flex gap-1 p-0.5 bg-black/20 rounded-lg border border-outline-variant/15 flex-shrink-0">
+                <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all bg-primary/15 text-primary" data-platform="all">All</button>
+                <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="shopee_my">S.MY</button>
+                <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="shopee_sg">S.SG</button>
+                <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="shopee_ph">S.PH</button>
+                <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="shopee_th">S.TH</button>
+                <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="lazada_my">L.MY</button>
+              </div>
+              <!-- Missing platform filter -->
+              <select id="listings-missing-filter" class="bg-black/20 border border-outline-variant/15 text-on-surface-variant text-[10px] font-data-mono rounded-lg px-2 py-1.5 focus:border-primary/40 outline-none cursor-pointer flex-shrink-0 transition-all">
+                <option value="all">Missing: any</option>
+                <option value="shopee_my">Missing S.MY</option>
+                <option value="shopee_sg">Missing S.SG</option>
+                <option value="shopee_ph">Missing S.PH</option>
+                <option value="shopee_th">Missing S.TH</option>
+                <option value="lazada_my">Missing L.MY</option>
+              </select>
+              <!-- Sort -->
+              <select id="listings-sort" class="bg-black/20 border border-outline-variant/15 text-on-surface-variant text-[10px] font-data-mono rounded-lg px-2 py-1.5 focus:border-primary/40 outline-none cursor-pointer flex-shrink-0 transition-all">
+                <option value="name_asc">Name A → Z</option>
+                <option value="name_desc">Name Z → A</option>
+                <option value="price_myr_asc">Price MYR ↑</option>
+                <option value="price_myr_desc">Price MYR ↓</option>
+                <option value="vars_desc">Most Variations</option>
+                <option value="updated_desc">Recently Updated</option>
+              </select>
+              <span class="ml-auto font-data-mono text-xs text-outline" id="listings-count-display">— listings</span>
             </div>
-            <div class="flex gap-1 p-0.5 bg-black/20 rounded-lg border border-outline-variant/15 overflow-x-auto flex-shrink-0">
-              <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all bg-primary/15 text-primary" data-platform="all">All Platforms</button>
-              <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="shopee_my">Shopee MY</button>
-              <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="shopee_sg">Shopee SG</button>
-              <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="shopee_ph">Shopee PH</button>
-              <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="shopee_th">Shopee TH</button>
-              <button class="listings-platform-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-platform="lazada_my">Lazada MY</button>
-            </div>
-            <span class="ml-auto font-data-mono text-xs text-outline" id="listings-count-display">— listings</span>
+            <!-- Stats bar -->
+            <div class="flex flex-wrap gap-2 items-center px-1 min-h-[18px]" id="listings-stats-bar"></div>
           </div>
 
           <!-- Listings scrollable container -->
@@ -2149,6 +2173,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=1.6.13"></script>
+  <script src="app.js?v=1.6.14"></script>
 </body>
 </html>

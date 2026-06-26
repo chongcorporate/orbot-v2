@@ -19,6 +19,8 @@ let cachedFilteredWaybills = [];
 let cachedListings = [];
 let listingsActiveFilter = "all";
 let listingsPlatformFilter = "all";
+let listingsSortOrder = "name_asc";
+let listingsMissingFilter = "all";
 let ganttTimeWindow = 24;
 
 function debounce(fn, delay) {
@@ -4826,12 +4828,25 @@ async function doLaunchDownload() {
 // ─── LISTINGS PAGE ────────────────────────────────────────────────────────────
 
 const LISTING_PLATFORMS = [
-  { key: "shopee_my", label: "Shopee MY", color: "#ee4d2d" },
-  { key: "shopee_sg", label: "Shopee SG", color: "#ee4d2d" },
-  { key: "shopee_ph", label: "Shopee PH", color: "#ee4d2d" },
-  { key: "shopee_th", label: "Shopee TH", color: "#ff6f00" },
-  { key: "lazada_my", label: "Lazada MY", color: "#00a1e4" },
+  { key: "shopee_my", label: "Shopee MY", color: "#ee4d2d", url: "https://shopee.com.my" },
+  { key: "shopee_sg", label: "Shopee SG", color: "#ee4d2d", url: "https://shopee.sg" },
+  { key: "shopee_ph", label: "Shopee PH", color: "#ee4d2d", url: "https://shopee.ph" },
+  { key: "shopee_th", label: "Shopee TH", color: "#ee4d2d", url: "https://shopee.co.th" },
+  { key: "lazada_my", label: "Lazada MY", color: "#1a56f0", url: "https://www.lazada.com.my" },
 ];
+
+function relativeTime(isoStr) {
+  if (!isoStr) return "—";
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(isoStr).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
+}
 
 async function fetchAndRenderListings(useCache = false) {
   if (!supabaseClient) return;
@@ -4869,15 +4884,14 @@ function renderListingsFromCache() {
   if (!tbody) return;
   const searchVal = (document.getElementById("listings-search")?.value || "").toLowerCase().trim();
   const countEl = document.getElementById("listings-count-display");
+  const statsEl = document.getElementById("listings-stats-bar");
 
-  let filtered = cachedListings;
+  let filtered = [...cachedListings];
 
   if (listingsActiveFilter === "active")   filtered = filtered.filter(l => l.is_active);
   if (listingsActiveFilter === "inactive") filtered = filtered.filter(l => !l.is_active);
-
-  if (listingsPlatformFilter !== "all") {
-    filtered = filtered.filter(l => !!l[listingsPlatformFilter]);
-  }
+  if (listingsPlatformFilter !== "all")    filtered = filtered.filter(l => !!l[listingsPlatformFilter]);
+  if (listingsMissingFilter !== "all")     filtered = filtered.filter(l => !l[listingsMissingFilter]);
 
   if (searchVal) {
     filtered = filtered.filter(l =>
@@ -4887,7 +4901,32 @@ function renderListingsFromCache() {
     );
   }
 
+  filtered.sort((a, b) => {
+    switch (listingsSortOrder) {
+      case "name_desc":      return (b.platform_listing_name || "").localeCompare(a.platform_listing_name || "");
+      case "price_myr_asc":  return (a.price_myr || 0) - (b.price_myr || 0);
+      case "price_myr_desc": return (b.price_myr || 0) - (a.price_myr || 0);
+      case "vars_desc":      return (b.listing_variations?.length || 0) - (a.listing_variations?.length || 0);
+      case "updated_desc":   return new Date(b.updated_at || 0) - new Date(a.updated_at || 0);
+      default:               return (a.platform_listing_name || "").localeCompare(b.platform_listing_name || "");
+    }
+  });
+
   if (countEl) countEl.textContent = `${filtered.length} listing${filtered.length !== 1 ? "s" : ""}`;
+
+  if (statsEl && cachedListings.length > 0) {
+    const total = cachedListings.length;
+    const active = cachedListings.filter(l => l.is_active).length;
+    const fullCoverage = cachedListings.filter(l => LISTING_PLATFORMS.every(p => !!l[p.key])).length;
+    const unmappedVars = cachedListings.reduce((s, l) => s + (l.listing_variations || []).filter(v => !v.variant_id).length, 0);
+    statsEl.innerHTML =
+      `<span class="font-data-mono text-[10px] text-outline/60">${total} total</span>` +
+      `<span class="text-outline/20 mx-1">·</span>` +
+      `<span class="font-data-mono text-[10px] text-primary">${active} active</span>` +
+      `<span class="text-outline/20 mx-1">·</span>` +
+      `<span class="font-data-mono text-[10px] text-on-surface-variant">${fullCoverage} on all 5 platforms</span>` +
+      (unmappedVars > 0 ? `<span class="text-outline/20 mx-1">·</span><span class="font-data-mono text-[10px] text-error">⚠ ${unmappedVars} unmapped variation${unmappedVars !== 1 ? "s" : ""}</span>` : "");
+  }
 
   if (filtered.length === 0) {
     tbody.innerHTML = emptyDiv("No listings found.", "storefront");
@@ -4896,30 +4935,68 @@ function renderListingsFromCache() {
 
   tbody.innerHTML = filtered.map(l => {
     const vars = l.listing_variations || [];
+    const unmappedVars = vars.filter(v => !v.variant_id).length;
 
-    const platformDots = LISTING_PLATFORMS.map(p => {
-      const hasId = !!l[p.key];
-      return `<div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${hasId ? p.color : "rgba(100,116,139,0.2)"}" title="${p.label}: ${escapeHtml(l[p.key] || "not listed")}"></div>`;
-    }).join("");
+    const platformCount = LISTING_PLATFORMS.filter(p => !!l[p.key]).length;
+    const coverageColor = platformCount === 5 ? "#a4e844" : platformCount >= 3 ? "#eab308" : "#ef4444";
 
-    const platformDetails = LISTING_PLATFORMS.map(p => {
+    const platformDots = LISTING_PLATFORMS.map(p =>
+      `<div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${l[p.key] ? p.color : "rgba(100,116,139,0.2)"}" title="${p.label}: ${l[p.key] ? escapeHtml(l[p.key]) : "not listed"}"></div>`
+    ).join("");
+
+    let varBadge;
+    if (vars.length === 0) {
+      varBadge = `<span class="font-data-mono text-[9px] px-1.5 py-0.5 rounded bg-outline/10 text-outline/50 border border-outline/20">0 vars</span>`;
+    } else if (unmappedVars === 0) {
+      varBadge = `<span class="font-data-mono text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">✓ ${vars.length} var${vars.length !== 1 ? "s" : ""}</span>`;
+    } else {
+      varBadge = `<span class="font-data-mono text-[9px] px-1.5 py-0.5 rounded bg-error/10 text-error border border-error/20">⚠ ${unmappedVars} unlinked</span>`;
+    }
+
+    const platformIdCards = LISTING_PLATFORMS.map(p => {
       const id = l[p.key];
-      return `<div class="flex items-center gap-1.5 bg-black/25 px-2.5 py-1 rounded-lg border border-outline-variant/15">
-        <span class="font-data-mono text-[9px] font-semibold" style="color:${id ? p.color : "#475569"}">${p.label}</span>
-        <span class="font-data-mono text-[10px] ${id ? "text-on-surface-variant" : "text-outline/40"}">${id ? escapeHtml(id) : "—"}</span>
+      if (!id) return `<div class="flex items-center gap-2 bg-black/20 px-3 py-2 rounded-lg border border-outline-variant/10 opacity-40">
+        <span class="font-data-mono text-[10px] flex-shrink-0" style="color:${p.color}">${p.label}</span>
+        <span class="font-data-mono text-[10px] text-outline/40 flex-1">not listed</span>
+      </div>`;
+      return `<div class="flex items-center gap-2 bg-black/20 hover:bg-black/30 px-3 py-2 rounded-lg border border-outline-variant/15 transition-all group">
+        <span class="font-data-mono text-[10px] font-semibold flex-shrink-0" style="color:${p.color}">${p.label}</span>
+        <span class="font-data-mono text-[11px] text-on-surface-variant flex-1 select-all">${escapeHtml(id)}</span>
+        <button class="btn-copy-platform-id opacity-0 group-hover:opacity-100 p-0.5 rounded text-outline/60 hover:text-primary transition-all" data-id="${escapeHtml(id)}" data-label="${escapeHtml(p.label)}" type="button" title="Copy ${p.label} ID">
+          <span class="material-symbols-outlined text-[14px] pointer-events-none">content_copy</span>
+        </button>
+        <a href="${p.url}" target="_blank" rel="noopener noreferrer" class="opacity-0 group-hover:opacity-100 p-0.5 rounded text-outline/60 hover:text-[#a4e844] transition-all" title="Open ${p.label}" onclick="event.stopPropagation()">
+          <span class="material-symbols-outlined text-[14px]">open_in_new</span>
+        </a>
       </div>`;
     }).join("");
+
+    const desc = l.platform_listing_description || "";
+    const descSection = desc ? `
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-data-mono text-[9px] text-outline/60 uppercase tracking-wider">Description</span>
+          <button class="btn-copy-description flex items-center gap-1 font-data-mono text-[10px] text-outline/50 hover:text-primary transition-colors" data-description="${escapeHtml(desc)}" type="button">
+            <span class="material-symbols-outlined text-[13px] pointer-events-none">content_copy</span> Copy
+          </button>
+        </div>
+        <div class="font-data-mono text-[10px] text-on-surface-variant/70 bg-black/20 rounded-lg p-3 border border-outline-variant/10 whitespace-pre-line max-h-28 overflow-y-auto leading-relaxed">${escapeHtml(desc.slice(0, 500))}${desc.length > 500 ? "…" : ""}</div>
+      </div>` : "";
 
     const varRows = vars.length > 0
       ? vars.map(v => {
           const sku = v.variants?.variant_sku || "—";
           const vtype = v.variants?.variant_type || "";
           let typePill = "";
-          if (vtype === "DS")  typePill = `<span class="font-data-mono text-[9px] px-1.5 py-0.5 rounded bg-[#7ea6e8]/10 text-[#7ea6e8] border border-[#7ea6e8]/20">DS</span>`;
+          if (vtype === "DS")       typePill = `<span class="font-data-mono text-[9px] px-1.5 py-0.5 rounded bg-[#7ea6e8]/10 text-[#7ea6e8] border border-[#7ea6e8]/20">DS</span>`;
           else if (vtype === "WM")  typePill = `<span class="font-data-mono text-[9px] px-1.5 py-0.5 rounded bg-[#ffaa6b]/10 text-[#ffaa6b] border border-[#ffaa6b]/20">WM</span>`;
           else if (vtype === "FWM") typePill = `<span class="font-data-mono text-[9px] px-1.5 py-0.5 rounded bg-[#ff8c00]/10 text-[#ff8c00] border border-[#ff8c00]/20">FWM</span>`;
           else if (vtype)           typePill = `<span class="font-data-mono text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-outline border border-outline-variant/20">${escapeHtml(vtype)}</span>`;
+          const mappedIcon = v.variant_id
+            ? `<span class="material-symbols-outlined text-[13px] text-primary" title="Mapped">check_circle</span>`
+            : `<span class="material-symbols-outlined text-[13px] text-error" title="No variant linked">error</span>`;
           return `<tr class="hover:bg-primary/[0.025] transition-colors border-b border-outline-variant/[0.06] last:border-0">
+            <td class="py-2 px-3 w-6">${mappedIcon}</td>
             <td class="py-2 px-3 font-data-mono text-[11px] text-on-surface-variant">${escapeHtml(v.platform_variation_name || "—")}</td>
             <td class="py-2 px-3 font-data-mono text-[10px] text-outline/80">${escapeHtml(v.normalized_variation_name || "—")}</td>
             <td class="py-2 px-3 font-data-mono text-[10px] text-[#ebb2ff]">${escapeHtml(sku)}</td>
@@ -4937,7 +5014,7 @@ function renderListingsFromCache() {
             </td>
           </tr>`;
         }).join("")
-      : `<tr><td colspan="5" class="py-3 px-3 text-center font-data-mono text-[10px] text-outline/40 italic">No variations mapped</td></tr>`;
+      : `<tr><td colspan="6" class="py-3 px-3 text-center font-data-mono text-[10px] text-outline/40 italic">No variations mapped</td></tr>`;
 
     return `<div class="glass-panel rounded-xl overflow-hidden transition-all duration-300 listing-card" data-listing-id="${l.id}">
       <div class="listing-card-header flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-colors" data-listing-id="${l.id}">
@@ -4946,25 +5023,55 @@ function renderListingsFromCache() {
           <div class="font-data-mono text-[10px] text-outline/60 mb-0.5">${escapeHtml(l.products?.master_sku || "")}</div>
           <div class="text-sm font-medium text-on-surface truncate" title="${escapeHtml(l.platform_listing_name)}">${escapeHtml(l.platform_listing_name)}</div>
         </div>
-        <div class="hidden sm:flex items-center gap-1.5 flex-shrink-0">${platformDots}</div>
-        <div class="hidden md:flex flex-col items-end flex-shrink-0 min-w-[80px]">
-          <span class="font-data-mono text-xs text-on-surface">MYR ${l.price_myr ?? "—"}</span>
-          <span class="font-data-mono text-[10px] text-outline">SGD ${l.price_sgd ?? "—"}</span>
+        <div class="hidden sm:flex items-center gap-1.5 flex-shrink-0">
+          ${platformDots}
+          <span class="font-data-mono text-[10px] ml-0.5" style="color:${coverageColor}">${platformCount}/5</span>
         </div>
-        <span class="font-data-mono text-[10px] text-outline/50 flex-shrink-0 hidden sm:block">${vars.length} var${vars.length !== 1 ? "s" : ""}</span>
+        <div class="hidden md:flex flex-col items-end flex-shrink-0 min-w-[90px]">
+          <span class="font-data-mono text-xs font-semibold text-on-surface">MYR ${l.price_myr != null ? Number(l.price_myr).toFixed(2) : "—"}</span>
+          <span class="font-data-mono text-[10px] text-outline">SGD ${l.price_sgd != null ? Number(l.price_sgd).toFixed(2) : "—"}</span>
+        </div>
+        <div class="hidden lg:block flex-shrink-0">${varBadge}</div>
         <button class="btn-edit-listing flex-shrink-0 p-1.5 rounded-lg hover:bg-primary/10 text-outline/50 hover:text-primary transition-all active:scale-90" data-listing-id="${l.id}" type="button" title="Edit listing">
           <span class="material-symbols-outlined text-sm pointer-events-none">edit</span>
         </button>
         <span class="material-symbols-outlined text-outline/50 text-lg transition-transform duration-200 toggle-arrow flex-shrink-0">expand_more</span>
       </div>
-      <div class="listing-card-body hidden border-t border-outline-variant/10 px-4 py-3 flex flex-col gap-3">
-        <div class="flex flex-wrap gap-2">${platformDetails}</div>
+
+      <div class="listing-card-body hidden border-t border-outline-variant/10 px-4 py-4 flex flex-col gap-4">
+        <!-- Pricing + meta -->
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-3 bg-black/20 rounded-lg px-4 py-2 border border-outline-variant/10">
+            <div class="flex flex-col items-center">
+              <span class="font-data-mono text-[9px] text-outline/50 uppercase tracking-wider">MYR</span>
+              <span class="font-data-mono text-base font-semibold text-on-surface">${l.price_myr != null ? Number(l.price_myr).toFixed(2) : "—"}</span>
+            </div>
+            <div class="h-8 w-px bg-outline-variant/20"></div>
+            <div class="flex flex-col items-center">
+              <span class="font-data-mono text-[9px] text-outline/50 uppercase tracking-wider">SGD</span>
+              <span class="font-data-mono text-base font-semibold text-on-surface">${l.price_sgd != null ? Number(l.price_sgd).toFixed(2) : "—"}</span>
+            </div>
+          </div>
+          <span class="font-data-mono text-[10px] text-outline/50">Updated ${relativeTime(l.updated_at)}</span>
+          <div class="ml-auto">${varBadge}</div>
+        </div>
+
+        <!-- Platform IDs -->
+        <div>
+          <div class="font-data-mono text-[9px] text-outline/60 uppercase tracking-wider mb-2">Platform IDs <span class="normal-case text-outline/30">(hover to copy or open)</span></div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">${platformIdCards}</div>
+        </div>
+
+        ${descSection}
+
+        <!-- Variations -->
         <div>
           <div class="font-data-mono text-[9px] text-outline/60 uppercase tracking-wider mb-1.5">Variations (${vars.length})</div>
           <div class="bg-black/15 rounded-lg border border-outline-variant/10 overflow-hidden">
             <table class="w-full text-left">
               <thead>
                 <tr class="border-b border-outline-variant/10">
+                  <th class="py-2 px-3 w-6"></th>
                   <th class="font-data-mono text-[9px] text-outline/60 uppercase tracking-wider py-2 px-3">Platform Name</th>
                   <th class="font-data-mono text-[9px] text-outline/60 uppercase tracking-wider py-2 px-3">Normalized</th>
                   <th class="font-data-mono text-[9px] text-outline/60 uppercase tracking-wider py-2 px-3">Variant SKU</th>
@@ -4982,10 +5089,8 @@ function renderListingsFromCache() {
 }
 
 function setupListingsTab() {
-  // Search input
   document.getElementById("listings-search")?.addEventListener("input", debounce(() => renderListingsFromCache(), 200));
 
-  // Active filter buttons
   document.querySelectorAll(".listings-filter-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".listings-filter-btn").forEach(b => {
@@ -4999,7 +5104,6 @@ function setupListingsTab() {
     });
   });
 
-  // Platform filter buttons
   document.querySelectorAll(".listings-platform-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".listings-platform-btn").forEach(b => {
@@ -5013,10 +5117,35 @@ function setupListingsTab() {
     });
   });
 
-  // Event delegation on listings tbody
+  document.getElementById("listings-sort")?.addEventListener("change", e => {
+    listingsSortOrder = e.target.value;
+    renderListingsFromCache();
+  });
+
+  document.getElementById("listings-missing-filter")?.addEventListener("change", e => {
+    listingsMissingFilter = e.target.value;
+    renderListingsFromCache();
+  });
+
   const tbody = document.getElementById("listings-tbody");
   if (tbody) {
     tbody.addEventListener("click", e => {
+      const copyPlatformBtn = e.target.closest(".btn-copy-platform-id");
+      if (copyPlatformBtn) {
+        e.stopPropagation();
+        navigator.clipboard.writeText(copyPlatformBtn.dataset.id).then(() =>
+          showToast(`${copyPlatformBtn.dataset.label} ID copied`, "info")
+        );
+        return;
+      }
+      const copyDescBtn = e.target.closest(".btn-copy-description");
+      if (copyDescBtn) {
+        e.stopPropagation();
+        navigator.clipboard.writeText(copyDescBtn.dataset.description).then(() =>
+          showToast("Description copied", "success")
+        );
+        return;
+      }
       const editListingBtn = e.target.closest(".btn-edit-listing");
       if (editListingBtn) {
         e.stopPropagation();
@@ -5043,13 +5172,11 @@ function setupListingsTab() {
     });
   }
 
-  // Edit listing modal wiring
   document.getElementById("edit-listing-close-btn")?.addEventListener("click", closeEditListingModal);
   document.getElementById("edit-listing-cancel-btn")?.addEventListener("click", closeEditListingModal);
   document.getElementById("edit-listing-save-btn")?.addEventListener("click", saveEditListing);
   document.getElementById("edit-listing-modal")?.addEventListener("click", e => { if (e.target === e.currentTarget) closeEditListingModal(); });
 
-  // Edit variation modal wiring
   document.getElementById("edit-variation-close-btn")?.addEventListener("click", closeEditVariationModal);
   document.getElementById("edit-variation-cancel-btn")?.addEventListener("click", closeEditVariationModal);
   document.getElementById("edit-variation-save-btn")?.addEventListener("click", saveEditVariation);
