@@ -540,26 +540,71 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
     return None, False
 
 
+# Maps new human-readable column names to the internal names used throughout process_catalog.
+_COL_ALIASES: dict[str, str] = {
+    "brand name":          "Brand",
+    "category":            "Catagory",   # intentional — matches internal typo
+    "set number":          "Set Number",
+    "product base name":   "Reference Name",
+    "variant type":        "Type",
+    "variant sku":         "SKU",
+    "seal sticker url":    "Seal Sticker",
+    "print files url":     "Files",
+    "pictures url":        "Pictures",
+    "adobe express url":   "Express",
+    "print file name":     "File Name",
+    "simplyprint file id": "Simplyprint File ID",
+    "print time (min)":    "Print Time",
+    "listing title":       "Listing Title",
+    "price myr":           "MY",
+    "price sgd":           "SG",
+    "shopee my id":        "Shopee",
+    "shopee sg id":        "SG.1",
+    "shopee ph id":        "PH",
+    "shopee th id":        "TH",
+    "lazada my id":        "Laz",
+    "variation name":      "Variation Name",
+}
+
+def _split_catalog_list(val) -> list:
+    """Split a pipe- or comma-delimited catalog field into a list of stripped strings."""
+    s = str(val).strip() if val is not None else ""
+    if not s or s.lower() in ("nan", "none"):
+        return []
+    sep = "|" if "|" in s else ","
+    return [item.strip() for item in s.split(sep) if item.strip()]
+
 def process_catalog(file_path: str):
     """Processes catalog sheet and upserts it into Supabase."""
     try:
         if file_path.endswith('.csv'):
             df = pd.read_csv(file_path)
-            if 'Brand' not in df.columns and len(df) > 0 and 'Brand' in df.iloc[0].values:
-                df = pd.read_csv(file_path, header=1)
+            if 'Brand' not in df.columns and len(df) > 0:
+                r1 = [str(v).lower() for v in df.iloc[0].values if pd.notna(v)]
+                if any('brand' in v for v in r1):
+                    df = pd.read_csv(file_path, header=1)
         elif file_path.endswith(('.xls', '.xlsx')):
             df = pd.read_excel(file_path)
-            if 'Brand' not in df.columns and len(df) > 0 and 'Brand' in df.iloc[0].values:
-                df = pd.read_excel(file_path, header=1)
+            if 'Brand' not in df.columns and len(df) > 0:
+                r1 = [str(v).lower() for v in df.iloc[0].values if pd.notna(v)]
+                if any('brand' in v for v in r1):
+                    df = pd.read_excel(file_path, header=1)
         else:
             raise ValueError("Unsupported file format. Please provide a .csv or .xlsx file.")
-            
+
         print(f"Processing catalog from {file_path}...")
-        
-        # Clean column names by stripping whitespace
-        df.columns = [str(c).strip() for c in df.columns]
-        # Rename 'sku' to 'SKU' to match case expected by main.py
-        df = df.rename(columns={col: 'SKU' for col in df.columns if col.lower() == 'sku'})
+
+        # Strip whitespace and required-field markers (* suffix) from column names
+        df.columns = [re.sub(r'\s*\*\s*$', '', str(c)).strip() for c in df.columns]
+        # Map new human-readable column names to internal names
+        col_renames = {c: _COL_ALIASES[c.lower()] for c in df.columns if c.lower() in _COL_ALIASES}
+        if col_renames:
+            df = df.rename(columns=col_renames)
+        # Rename any remaining SKU casing variant
+        df = df.rename(columns={col: 'SKU' for col in df.columns if col.lower() == 'sku' and col != 'SKU'})
+        # Skip instruction/example row (first data row containing "e.g.")
+        if len(df) > 0 and any('e.g.' in str(v).lower() for v in df.iloc[0].values if pd.notna(v)):
+            df = df.iloc[1:].reset_index(drop=True)
         df = df[df['Reference Name'].notna() & (df['Reference Name'].astype(str).str.strip() != '')].copy()
         
         resolved_rows = []
@@ -785,10 +830,10 @@ def process_catalog(file_path: str):
                     else:
                         file_names, sp_ids, weights, times = [], [], [], []
                 else:
-                    file_names = [f.strip() for f in file_names_str.split('|') if f.strip()]
-                    sp_ids = [s.strip() for s in sp_ids_str.split('|') if s.strip()] if sp_ids_str and sp_ids_str.lower() not in ['nan', 'none'] else []
-                    weights = [w.strip() for w in weights_str.split('|') if w.strip()] if weights_str and weights_str.lower() not in ['nan', 'none'] else []
-                    times = [t.strip() for t in times_str.split('|') if t.strip()] if times_str and times_str.lower() not in ['nan', 'none'] else []
+                    file_names = _split_catalog_list(file_names_str)
+                    sp_ids     = _split_catalog_list(sp_ids_str)
+                    weights    = _split_catalog_list(weights_str)
+                    times      = _split_catalog_list(times_str)
                     
                 existing_pf_res = supabase.table("print_files").select("id, print_file_name").eq("variant_id", variant_id).execute()
                 existing_pfs = existing_pf_res.data if existing_pf_res.data else []
