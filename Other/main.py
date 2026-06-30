@@ -572,6 +572,14 @@ _COL_ALIASES: dict[str, str] = {
     "platform_variation_name":      "Variation Name",
     "platform_listing_name":        "Listing Title",
     "platform_listing_description": "Listing Description",
+    # Alternative price/platform column names
+    "price my":                     "MY",
+    "price sg":                     "SG",
+    "shopee my link":               "Shopee",
+    "shopee sg link":               "SG.1",
+    "shopee th link":               "TH",
+    "shopee ph link":               "PH",
+    "lazada my link":               "Laz",
 }
 
 def _split_catalog_list(val) -> list:
