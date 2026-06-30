@@ -1239,10 +1239,20 @@ class ScoutAgent:
     def log_to_db(self, level: str, message: str, details: Optional[dict] = None):
         log_system(level, message, details, agent_name=self.agent_name)
 
+    def _get_or_create_label(self, name: str) -> str:
+        """Returns the Gmail label ID for `name`, creating it if it doesn't exist."""
+        existing = self.gmail_service.users().labels().list(userId='me').execute().get('labels', [])
+        for lbl in existing:
+            if lbl['name'].lower() == name.lower():
+                return lbl['id']
+        created = self.gmail_service.users().labels().create(userId='me', body={'name': name}).execute()
+        logger.info(f"Created Gmail label '{name}' (id={created['id']})")
+        return created['id']
+
     def fetch_unread_order_emails(self):
-        """Fetches unread emails from Shopee or Lazada containing order confirmations."""
+        """Fetches unprocessed order emails from Shopee or Lazada (last 14 days, not yet labelled orbot-processed)."""
         try:
-            query = 'is:unread (from:shopee OR from:lazada) (subject:"Time to ship" OR subject:"order" OR subject:"order confirmation")'
+            query = '(from:shopee OR from:lazada) newer_than:14d -label:orbot-processed'
             results = self.gmail_service.users().messages().list(userId='me', q=query).execute()
             messages = results.get('messages', [])
 
@@ -1305,12 +1315,13 @@ class ScoutAgent:
 
     def mark_email_as_read(self, message_id):
         try:
+            label_id = self._get_or_create_label('orbot-processed')
             self.gmail_service.users().messages().modify(
-                userId='me', 
-                id=message_id, 
-                body={'removeLabelIds': ['UNREAD']}
+                userId='me',
+                id=message_id,
+                body={'addLabelIds': [label_id], 'removeLabelIds': ['UNREAD']}
             ).execute()
-            logger.info(f"Marked email {message_id} as read.")
+            logger.info(f"Marked email {message_id} as orbot-processed.")
         except HttpError as error:
             logger.error(f"An error occurred marking email as read: {error}")
 
