@@ -3567,7 +3567,42 @@ def check_overall_order_status(order_id: str):
         supabase.table('orders').update({'overall_order_status': 'printing'}).eq('id', order_id).execute()
 
 
+#
+# Print sequencing guarantee: pending order_items are sorted by their parent order's
+# order_timestamp (oldest first) and dispatched to SimplyPrint with "position": "bottom",
+# so a single, uninterrupted dispatch pass appends jobs in order-arrival order. Two things
+# could break that guarantee, and this lock + logging address them:
+#
+#   1. Concurrent dispatch runs. run_foreman_dispatch is triggered from two places — auto-
+#      dispatch after every Scout-ingested order, and the manual "Dispatch Prints" button
+#      (/foreman/dispatch). Without serialization, a manual click during a slow in-flight
+#      auto-dispatch (large orders take 10-60s due to the 1s/file SimplyPrint rate limit)
+#      could interleave AddItem calls in wall-clock order instead of order-arrival order.
+#      _foreman_dispatch_lock forces every call to fully complete before the next begins —
+#      each call re-queries pending items fresh, so this is cheap and correct even when a
+#      queued-up call finds nothing left to do.
+#
+#   2. A single bad item shouldn't block the whole print farm. If the OLDEST pending item
+#      fails (e.g. missing print files) it's put back to 'pending' and retried on the next
+#      pass, but the loop continues to newer items rather than halting everyone behind it
+#      (chosen deliberately: blocking all fulfillment on one bad data row is worse than a
+#      brief, visible sequence skip). _log_sequence_skip_if_needed makes that skip loud —
+#      logged with both the stuck order and the order that jumped ahead — instead of silent.
+#
+# Not fixable in software: A1-mini and regular-A1 printers are disjoint queues
+# (for_printers groups jobs by physical printer capability), so FIFO can only be
+# guaranteed within each printer-capability group, not globally across incompatible
+# hardware — an order needing a busy printer type cannot block an idle one.
+#
+_foreman_dispatch_lock = threading.Lock()
+
 def run_foreman_dispatch(sp_key: Optional[str] = None, dry_run: bool = False) -> dict:
+    """Dispatches pending order items to SimplyPrint in order-arrival sequence. Serializes
+    concurrent callers (see module comment above) so runs never interleave."""
+    with _foreman_dispatch_lock:
+        return _run_foreman_dispatch_locked(sp_key=sp_key, dry_run=dry_run)
+
+def _run_foreman_dispatch_locked(sp_key: Optional[str] = None, dry_run: bool = False) -> dict:
     """Fetches pending order items and dispatches their print files to the SimplyPrint queue."""
     api_key = sp_key or os.getenv("SIMPLYPRINT_API_KEY")
     if not api_key and not dry_run:
@@ -3597,6 +3632,22 @@ def run_foreman_dispatch(sp_key: Optional[str] = None, dry_run: bool = False) ->
     total_files_dispatched = 0
     total_fulfilled_from_stock = 0
     processed_item_ids = []
+    # Tracks orders whose item failed and was reverted to 'pending' earlier in THIS pass
+    # (agreed policy: skip and continue rather than block the whole queue — see module
+    # comment above run_foreman_dispatch). If a newer order's item then dispatches/
+    # completes while an older one is stuck, that's a real sequence inversion — flag it
+    # loudly instead of letting it pass silently.
+    skipped_orders = []
+
+    def _flag_if_jumped_ahead(current_item):
+        if not skipped_orders:
+            return
+        current_order_id = current_item.get('orders', {}).get('platform_order_id', current_item.get('order_id'))
+        stuck = ", ".join(f"{s['platform_order_id']} ({s['reason']})" for s in skipped_orders)
+        msg = (f"Sequence skip: order {current_order_id} dispatched ahead of earlier "
+               f"order(s) still pending due to a prior failure this pass: {stuck}")
+        logger.warning(f"[Foreman] {msg}")
+        log_system('warning', msg, agent_name='Foreman')
 
     for item in pending_items:
         lock_res = supabase.table('order_items') \
@@ -3635,6 +3686,7 @@ def run_foreman_dispatch(sp_key: Optional[str] = None, dry_run: bool = False) ->
                 check_overall_order_status(item['order_id'])
                 total_fulfilled_from_stock += fulfilled_from_stock
                 processed_item_ids.append(item['id'])
+                _flag_if_jumped_ahead(item)
                 continue
 
             files_res = supabase.table('print_files') \
@@ -3705,11 +3757,14 @@ def run_foreman_dispatch(sp_key: Optional[str] = None, dry_run: bool = False) ->
             check_overall_order_status(item['order_id'])
             processed_item_ids.append(item['id'])
             log_system('info', f"Dispatched {item_files_dispatched} file(s) for order item {item['id']}.", agent_name='Foreman')
+            _flag_if_jumped_ahead(item)
 
         except Exception as e:
             logger.error(f"Foreman error on item {item['id']}: {e}")
             supabase.table('order_items').update({'item_print_status': 'pending'}).eq('id', item['id']).execute()
             log_system('error', f"Error processing item {item['id']}: {e}", agent_name='Foreman')
+            order_pid = item.get('orders', {}).get('platform_order_id', item.get('order_id'))
+            skipped_orders.append({'platform_order_id': order_pid, 'reason': str(e)})
 
     return {
         "status": "success",
