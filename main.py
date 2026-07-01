@@ -151,6 +151,79 @@ def _get_google_creds():
     _google_creds_cache = creds
     return creds
 
+# Module-level cache of the shops table, keyed for fast shop resolution. Scout resolves the
+# shop for every incoming order, so we avoid a DB round-trip per email. Refreshed lazily
+# (TTL) and on demand (invalidate_shops_cache) when shops are edited.
+_shops_cache = None
+_shops_cache_ts = 0.0
+_SHOPS_CACHE_TTL = 300  # seconds
+
+def invalidate_shops_cache():
+    """Force the next get_shops() to re-read from the DB (call after editing shops)."""
+    global _shops_cache, _shops_cache_ts
+    _shops_cache = None
+    _shops_cache_ts = 0.0
+
+def get_shops(force: bool = False):
+    """Returns the list of shop rows, cached in memory with a short TTL."""
+    global _shops_cache, _shops_cache_ts
+    now = time.time()
+    if not force and _shops_cache is not None and (now - _shops_cache_ts) < _SHOPS_CACHE_TTL:
+        return _shops_cache
+    try:
+        res = supabase.table("shops").select(
+            "id, name, slug, sku_prefix, email_aliases, product_model, "
+            "default_currency, waybill_folder_id, ai_copy_profile, is_active"
+        ).execute()
+        _shops_cache = res.data or []
+        _shops_cache_ts = now
+    except Exception as e:
+        logger.error(f"Failed to load shops: {e}")
+        if _shops_cache is None:
+            _shops_cache = []
+    return _shops_cache
+
+def get_shop_by_id(shop_id: Optional[str]) -> Optional[dict]:
+    """Returns the shop row for an id, or None."""
+    if not shop_id:
+        return None
+    for s in get_shops():
+        if s["id"] == shop_id:
+            return s
+    return None
+
+def resolve_shop(shop_name: Optional[str]) -> Optional[dict]:
+    """Resolves a marketplace shop/seller name (as extracted from an order email) to a shop
+    row by matching against each shop's email_aliases (case-insensitive, whitespace/handle
+    tolerant). Returns the shop dict, or None when no alias matches (→ Unassigned)."""
+    if not shop_name:
+        return None
+
+    def _norm(s: str) -> str:
+        # Lowercase and strip everything but alphanumerics so "Blocked Off", "blockedoff",
+        # and "blockedoff.my" all compare equal on their shared stem.
+        return re.sub(r'[^a-z0-9]', '', (s or '').lower())
+
+    target = _norm(shop_name)
+    if not target:
+        return None
+
+    best = None
+    for s in get_shops():
+        if s.get("is_active") is False:
+            continue
+        for alias in (s.get("email_aliases") or []):
+            na = _norm(alias)
+            if not na:
+                continue
+            # Match if either side contains the other's stem (handles "blockedoff" vs
+            # "blockedoff.my" and shop names that embed extra marketplace suffixes).
+            if na == target or na in target or target in na:
+                # Prefer the longest alias match (most specific shop).
+                if best is None or len(na) > best[0]:
+                    best = (len(na), s)
+    return best[1] if best else None
+
 # In-process Scout lock (used when fcntl is unavailable)
 _scout_thread_lock = threading.Lock()
 
@@ -280,6 +353,7 @@ class OrderDetails(BaseModel):
     platform_order_id: str = Field(description="Shopee/Lazada order ID. CRITICAL: Strip any leading '#' prefix if present.")
     order_timestamp: str = Field(description="Order timestamp (ISO 8601). Guess timezone if not provided, assume UTC+8 for Malaysia.")
     sales_platform: str = Field(description="Platform name ('Shopee', 'Lazada').")
+    shop_name: Optional[str] = Field(default=None, description="The SELLER'S shop/store name — i.e. the name of OUR store that received this order (NOT the buyer, NOT the marketplace). On Shopee/Lazada order emails this appears in greetings like 'Hello <ShopName>', 'Your shop <ShopName> received an order', or in the email footer/subject. Return the shop name verbatim if present, otherwise null.")
     customer_name: str = Field(description="Customer/buyer name or username, e.g. 'duoble8402' from 'Kindly ship order to duoble8402.'.")
     order_subtotal: float = Field(description="Order subtotal amount.")
     order_currency: str = Field(default="MYR", description="ISO currency code of the order, inferred from the currency symbol/code in the email (RM/MYR→MYR, S$/SGD→SGD, ฿/บาท/THB→THB, ₱/PhP/PHP→PHP, Rp/IDR→IDR, ₫/đ/VND→VND, NT$/TWD→TWD). Use 'MYR' only if no currency indicator is present.")
@@ -1489,7 +1563,10 @@ class ScoutAgent:
             f"Extract structured order details from this marketplace email.\n"
             f"CRITICAL for items: Extract EVERY product listed — Shopee/Lazada emails often list 2 or more items "
             f"separated by line breaks, numbers, or table rows. Each distinct product listing must be its own "
-            f"entry in the items list. Do not skip any product even if it appears in a different section or language.\n\n"
+            f"entry in the items list. Do not skip any product even if it appears in a different section or language.\n"
+            f"CRITICAL for shop_name: identify the SELLER'S shop/store name that received this order (the greeting "
+            f"or footer names our store, e.g. 'Hello <ShopName>'). This is NOT the buyer and NOT 'Shopee'/'Lazada'. "
+            f"If no seller shop name is present, set shop_name to null.\n\n"
             f"{cleaned_body}"
         )
 
@@ -1788,6 +1865,17 @@ class ScoutAgent:
         except Exception as e:
             logger.error(f"Error checking order duplication: {e}")
             
+        # Resolve which of our shops this order belongs to, from the seller shop name the
+        # LLM extracted. No match → shop_id stays None ("Unassigned"), surfaced in the UI.
+        shop = resolve_shop(getattr(order_details, "shop_name", None))
+        shop_id = shop["id"] if shop else None
+        if shop:
+            logger.info(f"Order {platform_order_id} attributed to shop '{shop['name']}' "
+                        f"(from shop_name={order_details.shop_name!r}).")
+        else:
+            logger.warning(f"Order {platform_order_id} could not be attributed to a shop "
+                           f"(shop_name={getattr(order_details, 'shop_name', None)!r}) — leaving Unassigned.")
+
         try:
             order_record = {
                 "platform_order_id": platform_order_id,
@@ -1796,7 +1884,8 @@ class ScoutAgent:
                 "customer_name": order_details.customer_name,
                 "order_subtotal": order_details.order_subtotal,
                 "order_currency": order_details.order_currency,
-                "overall_order_status": "pending"
+                "overall_order_status": "pending",
+                "shop_id": shop_id
             }
             order_response = self.supabase.table("orders").insert(order_record).execute()
             order_id = order_response.data[0]['id']
