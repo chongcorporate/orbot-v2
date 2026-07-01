@@ -1252,9 +1252,12 @@ class ScoutAgent:
     def fetch_unread_order_emails(self):
         """Fetches unprocessed order emails from Shopee or Lazada (last 14 days, not yet labelled orbot-processed)."""
         try:
-            query = '(from:shopee OR from:lazada) newer_than:14d -label:orbot-processed'
+            # Include subject-based fallback in case Shopee/Lazada route emails via third-party domains
+            query = '(from:shopee OR from:lazada OR subject:"time to ship" OR subject:"new order" OR subject:"Order Confirmation") newer_than:14d -label:orbot-processed'
+            logger.info(f"Scout Gmail query: {query}")
             results = self.gmail_service.users().messages().list(userId='me', q=query).execute()
             messages = results.get('messages', [])
+            logger.info(f"Scout Gmail query returned {len(messages)} message(s).")
 
             email_contents = []
             for message in messages:
@@ -1264,6 +1267,7 @@ class ScoutAgent:
                 sender  = headers.get('from', '')
                 date    = headers.get('date', '')
                 body_content = self._extract_email_body(msg['payload'])
+                logger.info(f"Scout found email: subject='{subject}' from='{sender}'")
 
                 email_contents.append({
                     'id': message['id'],
