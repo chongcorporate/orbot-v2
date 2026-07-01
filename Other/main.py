@@ -248,7 +248,7 @@ class OrderDetails(BaseModel):
             return float(v) if v else 0.0
         except (ValueError, TypeError):
             return 0.0
-    items: List[OrderItem] = Field(description="Items purchased.")
+    items: List[OrderItem] = Field(description="CRITICAL: ALL items purchased in this order. Shopee/Lazada emails may list multiple products separated by numbers, bullets, line breaks, or in a table. You MUST extract every distinct product as a separate OrderItem — never collapse multiple products into one entry. If the email says '2 products' or '3 items', your list must have that many entries.")
 
 class PLItem(BaseModel):
     listing_title: str = Field(description="The name or title of the product listing. E.g. 'Display Base for Lego Minifigure' or 'Wall Mount for Lego NASA ISS Space Station (21312)'. Strip off any item indices like '1.' or trailing quantity/price if they are merged.")
@@ -1403,8 +1403,10 @@ class ScoutAgent:
         known_str = ('Known fields (use these, do not re-extract):\n' + '\n'.join(known) + '\n\n') if known else ''
         prompt = (
             f"{known_str}"
-            f"Extract structured order details from this email. "
-            f"Focus on: customer name, subtotal, and the full items list with variation names.\n\n"
+            f"Extract structured order details from this marketplace email.\n"
+            f"CRITICAL for items: Extract EVERY product listed — Shopee/Lazada emails often list 2 or more items "
+            f"separated by line breaks, numbers, or table rows. Each distinct product listing must be its own "
+            f"entry in the items list. Do not skip any product even if it appears in a different section or language.\n\n"
             f"{cleaned_body}"
         )
 
