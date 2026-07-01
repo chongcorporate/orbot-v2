@@ -227,6 +227,7 @@ class OrderItem(BaseModel):
     purchased_quantity: int = Field(description="Quantity ordered.")
 
 class OrderDetails(BaseModel):
+    is_order_email: bool = Field(description="Set to true ONLY if this email is a genuine new order confirmation from Shopee or Lazada containing an order ID, customer name, and items. Set to false for logistics notifications (SPX, J&T, tracking updates, drop-off reminders, seller centre alerts, or any email that is NOT a new order).")
     platform_order_id: str = Field(description="Shopee/Lazada order ID. CRITICAL: Strip any leading '#' prefix if present.")
     order_timestamp: str = Field(description="Order timestamp (ISO 8601). Guess timezone if not provided, assume UTC+8 for Malaysia.")
     sales_platform: str = Field(description="Platform name ('Shopee', 'Lazada').")
@@ -1422,7 +1423,11 @@ class ScoutAgent:
                 self._log_gemini_usage(model, response)
                 order_data = json.loads(response.text)
                 order_data.update({k: v for k, v in prefilled.items() if v})
-                return OrderDetails(**order_data)
+                parsed = OrderDetails(**order_data)
+                if not parsed.is_order_email:
+                    logger.info(f"[Scout] Email is not an order (LLM flagged is_order_email=False). Skipping.")
+                    return None
+                return parsed
             except Exception as e:
                 err_str = str(e)
                 is_transient = '503' in err_str or 'UNAVAILABLE' in err_str or '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str
