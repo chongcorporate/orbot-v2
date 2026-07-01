@@ -99,6 +99,14 @@ WAYBILL_MAIN_FOLDER_ID = "1AH2vclLcPO7xNTvcW9s3w5XqfuA4mkFE"
 SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/gmail.modify']
 SIMPLYPRINT_COMPANY_ID = "13502"
 
+# Gmail push notifications (Pub/Sub). When GMAIL_PUBSUB_TOPIC is set, Scout runs
+# event-driven: Gmail users.watch() publishes to this topic, Pub/Sub pushes to the
+# /gmail/notifications webhook, and each push triggers a single scan. GMAIL_PUSH_TOKEN
+# is a shared secret appended to the push URL (?token=...) to reject spoofed requests.
+# If GMAIL_PUBSUB_TOPIC is unset, Scout falls back to the legacy periodic poll.
+GMAIL_PUBSUB_TOPIC = os.environ.get("GMAIL_PUBSUB_TOPIC")  # e.g. projects/orbot-123/topics/gmail-orders
+GMAIL_PUSH_TOKEN = os.environ.get("GMAIL_PUSH_TOKEN")
+
 TOKEN_PATH = str(_base_dir / 'token.json')
 CREDENTIALS_PATH = str(_base_dir / 'credentials.json')
 
@@ -233,7 +241,7 @@ class OrderDetails(BaseModel):
     sales_platform: str = Field(description="Platform name ('Shopee', 'Lazada').")
     customer_name: str = Field(description="Customer/buyer name or username, e.g. 'duoble8402' from 'Kindly ship order to duoble8402.'.")
     order_subtotal: float = Field(description="Order subtotal amount.")
-    order_currency: str = Field(default="MYR", description="Currency of the order, e.g., 'MYR', 'SGD'.")
+    order_currency: str = Field(default="MYR", description="ISO currency code of the order, inferred from the currency symbol/code in the email (RM/MYR→MYR, S$/SGD→SGD, ฿/บาท/THB→THB, ₱/PhP/PHP→PHP, Rp/IDR→IDR, ₫/đ/VND→VND, NT$/TWD→TWD). Use 'MYR' only if no currency indicator is present.")
 
     @field_validator('order_subtotal', mode='before')
     @classmethod
@@ -1240,6 +1248,29 @@ class ScoutAgent:
     def log_to_db(self, level: str, message: str, details: Optional[dict] = None):
         log_system(level, message, details, agent_name=self.agent_name)
 
+    def start_watch(self) -> Optional[dict]:
+        """Registers a Gmail push-notification watch on the INBOX against the configured
+        Pub/Sub topic. Gmail then publishes a message to the topic whenever the inbox
+        changes, which Pub/Sub pushes to /gmail/notifications. Must be renewed before the
+        ~7-day expiry. Returns the watch response ({historyId, expiration}) or None."""
+        if not GMAIL_PUBSUB_TOPIC:
+            logger.warning("start_watch called but GMAIL_PUBSUB_TOPIC is not set — skipping.")
+            return None
+        try:
+            resp = self.gmail_service.users().watch(userId='me', body={
+                'topicName': GMAIL_PUBSUB_TOPIC,
+                'labelIds': ['INBOX'],
+                'labelFilterAction': 'include',
+            }).execute()
+            exp_ms = int(resp.get('expiration', 0))
+            exp_str = datetime.fromtimestamp(exp_ms / 1000).isoformat() if exp_ms else 'unknown'
+            logger.info(f"Gmail watch registered on topic {GMAIL_PUBSUB_TOPIC}. "
+                        f"historyId={resp.get('historyId')} expires={exp_str}")
+            return resp
+        except HttpError as error:
+            logger.error(f"Failed to register Gmail watch: {error}")
+            return None
+
     def _get_or_create_label(self, name: str) -> str:
         """Returns the Gmail label ID for `name`, creating it if it doesn't exist."""
         existing = self.gmail_service.users().labels().list(userId='me').execute().get('labels', [])
@@ -1380,13 +1411,37 @@ class ScoutAgent:
             except Exception:
                 pass
 
-        # Currency hint
-        if 'sgd' in body[:800].lower():
-            result['order_currency'] = 'SGD'
-        else:
-            result['order_currency'] = 'MYR'
+        # Currency hint — detect across SEA Shopee markets from symbols/codes in the body.
+        # Only set when a clear signal is found; otherwise leave unset so the LLM (or the
+        # OrderDetails MYR default) decides. Order matters: multi-char symbols first so
+        # 'S$'/'NT$' aren't swallowed by a bare '$'.
+        cur = self._detect_currency(body)
+        if cur:
+            result['order_currency'] = cur
 
         return result
+
+    # ISO code first (unambiguous), then currency symbols. NT$/S$/RM checked before bare '$'.
+    _CURRENCY_CODES = ('MYR', 'SGD', 'THB', 'PHP', 'IDR', 'VND', 'TWD')
+    _CURRENCY_SYMBOLS = (
+        ('NT$', 'TWD'), ('S$', 'SGD'), ('RM', 'MYR'), ('₱', 'PHP'), ('PhP', 'PHP'),
+        ('฿', 'THB'), ('บาท', 'THB'), ('Rp', 'IDR'), ('₫', 'VND'), ('đ', 'VND'),
+    )
+
+    def _detect_currency(self, body: str) -> Optional[str]:
+        """Detect the order currency from an email body. Returns an ISO code or None."""
+        window = (body or "")[:1500]
+        # Explicit ISO code beats everything (e.g. "Subtotal: THB 1,200").
+        for code in self._CURRENCY_CODES:
+            if re.search(rf'\b{code}\b', window, re.I):
+                return code
+        # Fall back to currency symbols; require an adjacent amount so substrings like
+        # 'rm' in 'warm' don't false-trigger. Most-specific symbols are checked first.
+        for sym, code in self._CURRENCY_SYMBOLS:
+            pat = re.escape(sym)
+            if re.search(rf'{pat}\s*[\d]', window, re.I) or re.search(rf'[\d]\s*{pat}', window, re.I):
+                return code
+        return None
 
     def parse_email_with_llm(self, email_body: str, subject: str = '', sender: str = '', date_header: str = '') -> Optional[OrderDetails]:
         prefilled = self._regex_preparse(subject, sender, date_header, email_body)
@@ -3207,7 +3262,8 @@ async def run_waybill_daemon_async():
         await asyncio.sleep(5)
 
 async def run_scout_periodic_async():
-    """Runs the periodic Scout Gmail polling loop in the asyncio event loop."""
+    """Runs the periodic Scout Gmail polling loop in the asyncio event loop.
+    Legacy fallback used only when GMAIL_PUBSUB_TOPIC is not configured."""
     print("[*] Scout Periodic Gmail Polling async task started.")
     while True:
         try:
@@ -3222,6 +3278,27 @@ async def run_scout_periodic_async():
         except Exception as e:
             print(f"Scout Periodic Poll Error: {e}")
         await asyncio.sleep(300)
+
+async def run_gmail_watch_renewal_async():
+    """Event-driven Scout: keeps the Gmail push-notification watch alive. Registers the
+    watch immediately on startup, then renews daily (Gmail watches expire after ~7 days).
+    Actual scanning is triggered by the /gmail/notifications webhook, not this loop."""
+    print("[*] Gmail watch renewal task started (event-driven Scout).")
+    while True:
+        try:
+            agent = await asyncio.to_thread(ScoutAgent)
+            resp = await asyncio.to_thread(agent.start_watch)
+            if resp:
+                await asyncio.to_thread(
+                    supabase.table('agent_heartbeats').upsert({
+                        'agent_name': 'scout',
+                        'last_heartbeat': datetime.now().isoformat()
+                    }).execute
+                )
+        except Exception as e:
+            print(f"Gmail watch renewal error: {e}")
+        # Renew once a day — comfortably inside the ~7-day watch expiry.
+        await asyncio.sleep(24 * 60 * 60)
 
 
 # ----------------- Foreman Dispatch (ported from Edge Function) -----------------
@@ -3554,6 +3631,46 @@ def scout_poll(background_tasks: BackgroundTasks):
 
     background_tasks.add_task(run_scout)
     return {"status": "Scout Gmail poll triggered"}
+
+@app.post("/scout/watch")
+def scout_watch():
+    """Manually (re)registers the Gmail push-notification watch. Useful for first-time
+    setup and debugging. Renewal otherwise happens automatically on a daily loop."""
+    if not GMAIL_PUBSUB_TOPIC:
+        raise HTTPException(status_code=400, detail="GMAIL_PUBSUB_TOPIC is not configured.")
+    agent = ScoutAgent()
+    resp = agent.start_watch()
+    if not resp:
+        raise HTTPException(status_code=502, detail="Gmail watch registration failed — check logs.")
+    return {"status": "watch registered", "historyId": resp.get("historyId"), "expiration": resp.get("expiration")}
+
+@app.post("/gmail/notifications")
+async def gmail_notifications(request: Request, background_tasks: BackgroundTasks, token: str = ""):
+    """Pub/Sub push endpoint. Gmail publishes to the topic on every inbox change; Pub/Sub
+    pushes that here. We validate the shared secret, ack immediately (200), and run one
+    dedup'd Scout scan in the background. The push body's historyId is not needed — the
+    scan uses the '-label:orbot-processed' query, which is idempotent."""
+    # Reject spoofed calls: the push subscription URL carries ?token=<GMAIL_PUSH_TOKEN>.
+    if GMAIL_PUSH_TOKEN and token != GMAIL_PUSH_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid push token.")
+
+    # Ack the message even if the body is malformed, so Pub/Sub doesn't redeliver forever.
+    try:
+        envelope = await request.json()
+        msg_id = (envelope or {}).get("message", {}).get("messageId", "?")
+        print(f"[*] Gmail push notification received (messageId={msg_id}). Triggering Scout scan...")
+    except Exception:
+        print("[*] Gmail push notification received (unparseable body). Triggering Scout scan...")
+
+    def run_scout():
+        try:
+            agent = ScoutAgent()
+            agent.run(force=True)
+        except Exception as e:
+            print(f"Scout push-triggered scan error: {e}")
+
+    background_tasks.add_task(run_scout)
+    return {"status": "ok"}
 
 @app.post("/scout/ingest-order")
 def scout_ingest_order(order: dict):
@@ -4061,7 +4178,14 @@ async def startup_event():
     if os.environ.get("START_DAEMON_THREADS", "true").lower() == "true":
         print("[*] Spawning background worker tasks in unified app event loop...")
         asyncio.create_task(run_waybill_daemon_async())
-        asyncio.create_task(run_scout_periodic_async())
+        if GMAIL_PUBSUB_TOPIC:
+            # Event-driven: scans are triggered by the /gmail/notifications webhook.
+            # This loop only keeps the Gmail watch registered/renewed.
+            print("[*] GMAIL_PUBSUB_TOPIC set — Scout running in event-driven (push) mode.")
+            asyncio.create_task(run_gmail_watch_renewal_async())
+        else:
+            print("[*] GMAIL_PUBSUB_TOPIC not set — Scout running in legacy periodic-poll mode.")
+            asyncio.create_task(run_scout_periodic_async())
 
 
 # ----------------- CLI Argument Routing -----------------
