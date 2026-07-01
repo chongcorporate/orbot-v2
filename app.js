@@ -3752,10 +3752,12 @@ function setupPrinterControls() {
     if (el) el.addEventListener("click", () => navigateToTab(tab));
   });
 
-  // Auto-refresh pending orders table every 30s when on overview tab
+  // Auto-refresh pending orders table every 60s when on overview tab and the browser
+  // tab is actually visible — no point re-fetching the full nested orders query (and
+  // rebuilding the table) while the user isn't looking at it.
   setInterval(() => {
-    if (currentTab === "overview") fetchAndRenderOrders();
-  }, 30000);
+    if (currentTab === "overview" && !document.hidden) fetchAndRenderOrders();
+  }, 60000);
 
   const clearDbBtn = document.getElementById("clear-db-btn");
   if (clearDbBtn) clearDbBtn.addEventListener("click", clearDatabase);
@@ -3875,7 +3877,9 @@ function setupCatalogStockListeners() {
           headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
           body: JSON.stringify({ simplyprint_file_id: spFileId, print_file_name: fileName })
         });
-        const data = await res.json();
+        const rawText = await res.text();
+        let data;
+        try { data = JSON.parse(rawText); } catch { throw new Error(`Backend error (HTTP ${res.status}): ${rawText.substring(0, 120)}`); }
         if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
         showToast(`Queued: ${fileName}`, "success");
         logAction(`File sent to print queue: ${fileName}`, "info", { simplyprint_file_id: spFileId, job_id: data.simplyprint_job_id });
