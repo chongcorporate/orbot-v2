@@ -88,7 +88,8 @@ supabase_options = ClientOptions(
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY, options=supabase_options)
 ai_client = None
 if GEMINI_API_KEY:
-    ai_client = genai.Client(api_key=GEMINI_API_KEY)
+    # 30s request timeout — a hung Gemini call must not stall a Scout webhook scan indefinitely.
+    ai_client = genai.Client(api_key=GEMINI_API_KEY, http_options={"timeout": 30000})
 
 # Global HTTP Session for connection pooling
 http_session = requests.Session()
@@ -109,6 +110,46 @@ GMAIL_PUSH_TOKEN = os.environ.get("GMAIL_PUSH_TOKEN")
 
 TOKEN_PATH = str(_base_dir / 'token.json')
 CREDENTIALS_PATH = str(_base_dir / 'credentials.json')
+
+# Module-level cache for Google OAuth creds + built API service clients. Gmail and Drive
+# share one token.json under the combined SCOPES above. Without this cache, every
+# ScoutAgent() instantiation (one per Pub/Sub webhook push in event-driven mode) and every
+# get_drive_service() call would re-read token.json from disk and rebuild the API client
+# from scratch — wasteful, and each unnecessary refresh risks Google rate-limiting us.
+_google_creds_cache = None
+_gmail_service_cache = None
+_drive_service_cache = None
+
+def _get_google_creds():
+    """Loads/refreshes Google OAuth creds, caching in memory across calls. Only touches
+    disk or the network when the cached credentials are missing or actually invalid."""
+    global _google_creds_cache, _gmail_service_cache, _drive_service_cache
+    creds = _google_creds_cache
+    if not creds and os.path.exists(TOKEN_PATH):
+        creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(GoogleAuthRequest())
+            except Exception as e:
+                logger.warning(f"Google token refresh failed: {e}. Re-authenticating...")
+                creds = None
+        if not creds:
+            check_interactive("Google OAuth (Scout/Waybill)")
+            if not os.path.exists(CREDENTIALS_PATH):
+                raise FileNotFoundError(f"Missing Google OAuth credentials.json at {CREDENTIALS_PATH}")
+            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
+            creds = flow.run_local_server(port=0)
+            # Brand-new credentials object — any cached services were built against the
+            # old one and must be rebuilt against this one.
+            _gmail_service_cache = None
+            _drive_service_cache = None
+        with open(TOKEN_PATH, 'w') as token:
+            token.write(creds.to_json())
+
+    _google_creds_cache = creds
+    return creds
 
 # In-process Scout lock (used when fcntl is unavailable)
 _scout_thread_lock = threading.Lock()
@@ -1217,29 +1258,16 @@ class ScoutAgent:
             return True
 
     def _authenticate_gmail(self):
-        """Authenticates with Gmail API and returns the service object."""
-        creds = None
-        if os.path.exists(TOKEN_PATH):
-            creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
-        
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                try:
-                    creds.refresh(GoogleAuthRequest())
-                except Exception as e:
-                    logger.warning(f"Failed to refresh Gmail token: {e}. Re-authenticating...")
-                    creds = None
-            if not creds:
-                check_interactive("Gmail API (Scout)")
-                if not os.path.exists(CREDENTIALS_PATH):
-                    logger.warning("credentials.json not found. Gmail authentication will fail.")
-                flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
-                creds = flow.run_local_server(port=0)
-            with open(TOKEN_PATH, 'w') as token:
-                token.write(creds.to_json())
-
+        """Returns the (module-level cached) Gmail API service object. See
+        _get_google_creds() — repeated ScoutAgent() instantiations reuse the same
+        service instead of rebuilding it on every webhook push / poll cycle."""
+        global _gmail_service_cache
+        creds = _get_google_creds()
+        if _gmail_service_cache is not None:
+            return _gmail_service_cache
         try:
             service = build('gmail', 'v1', credentials=creds)
+            _gmail_service_cache = service
             return service
         except HttpError as error:
             logger.error(f"An error occurred during Gmail API authentication: {error}")
@@ -1487,10 +1515,15 @@ class ScoutAgent:
                 return parsed
             except Exception as e:
                 err_str = str(e)
-                is_transient = '503' in err_str or 'UNAVAILABLE' in err_str or '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str
+                err_type = type(e).__name__
+                is_timeout = 'Timeout' in err_type or 'timeout' in err_str.lower()
+                is_transient = (
+                    is_timeout or '503' in err_str or 'UNAVAILABLE' in err_str
+                    or '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str
+                )
                 is_last = i == len(_scout_models) - 1
                 if is_transient and not is_last:
-                    logger.warning(f"[Scout] {model} transient error, trying next model.")
+                    logger.warning(f"[Scout] {model} transient error ({err_type}), trying next model.")
                     continue
                 if is_transient:
                     logger.warning(f"[Scout] All models temporarily unavailable — email will retry next cycle.")
@@ -2099,6 +2132,41 @@ class ScoutAgent:
                 pass
 
 
+# On-demand scan triggers (manual /scout/poll, the Gmail push webhook, and the
+# scout_gmail_scan daemon job) all call ScoutAgent.run(force=True), which intentionally
+# bypasses the fcntl-based lock so a user-initiated scan isn't silently skipped just
+# because the periodic poll happens to be running. That leaves these on-demand triggers
+# with no protection against each other — e.g. two Pub/Sub pushes arriving within
+# milliseconds can otherwise run two fully concurrent scans. _trigger_scout_scan()
+# coalesces overlapping triggers with a plain threading.Lock (these all run in FastAPI's
+# background-task threadpool, not on the asyncio event loop, so threading.Lock — not
+# asyncio.Lock — is the correct primitive here): if a scan is already in progress, the
+# new trigger doesn't start a second one — it just asks the in-progress scan to loop
+# once more after it finishes, so no new email is missed.
+_scout_run_lock = threading.Lock()
+_scout_rerun_requested = False
+
+def _trigger_scout_scan():
+    """Runs a forced Scout scan, coalescing overlapping triggers into a single execution."""
+    global _scout_rerun_requested
+    if not _scout_run_lock.acquire(blocking=False):
+        _scout_rerun_requested = True
+        logger.info("[Scout] Scan already in progress — coalescing this trigger into a rerun.")
+        return
+    try:
+        while True:
+            _scout_rerun_requested = False
+            try:
+                agent = ScoutAgent()
+                agent.run(force=True)
+            except Exception as e:
+                logger.error(f"Scout scan error: {e}")
+            if not _scout_rerun_requested:
+                break
+    finally:
+        _scout_run_lock.release()
+
+
 # ----------------- SECTION 4: Waybill Agent Ingest & SimplyPrint Telemetry -----------------
 
 def resolve_variant_id_to_sku(supabase_client, listing_title: str, variation_name: Optional[str]) -> Optional[str]:
@@ -2114,26 +2182,15 @@ def resolve_variant_id_to_sku(supabase_client, listing_title: str, variation_nam
         return None
 
 def get_drive_service():
-    """Initializes and returns the Google Drive API service client."""
-    creds = None
-    if os.path.exists(TOKEN_PATH):
-        creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(GoogleAuthRequest())
-            except Exception as e:
-                print(f"[*] Token refresh failed: {e}. Re-authenticating...")
-                creds = None
-        if not creds:
-            check_interactive("Google Drive API (Waybill)")
-            if not os.path.exists(CREDENTIALS_PATH):
-                raise FileNotFoundError(f"Missing Google OAuth credentials.json at {CREDENTIALS_PATH}")
-            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open(TOKEN_PATH, 'w') as token:
-            token.write(creds.to_json())
-    return build('drive', 'v3', credentials=creds)
+    """Returns the (module-level cached) Google Drive API service client. See
+    _get_google_creds() — the waybill daemon calls this once per job; caching avoids
+    rebuilding the API client and re-reading token.json on every call."""
+    global _drive_service_cache
+    creds = _get_google_creds()
+    if _drive_service_cache is not None:
+        return _drive_service_cache
+    _drive_service_cache = build('drive', 'v3', credentials=creds)
+    return _drive_service_cache
 
 def log_system_waybill(level: str, message: str, details: dict = None):
     log_system(level, message, details, agent_name="Waybill Agent")
@@ -3121,8 +3178,7 @@ async def run_waybill_daemon_async():
                             
                     elif job_type == 'scout_gmail_scan':
                         print("[*] Executing Scout Gmail scan...")
-                        agent = await asyncio.to_thread(ScoutAgent)
-                        await asyncio.to_thread(agent.run, force=True)
+                        await asyncio.to_thread(_trigger_scout_scan)
                         await asyncio.to_thread(
                             supabase.table('agent_heartbeats').upsert({
                                 'agent_name': 'orbot_service',
@@ -3622,14 +3678,7 @@ def get_status():
 @app.post("/scout/poll")
 def scout_poll(background_tasks: BackgroundTasks):
     """Manually triggers Scout Gmail unread orders poll cycle in a background thread."""
-    def run_scout():
-        try:
-            agent = ScoutAgent()
-            agent.run(force=True)
-        except Exception as e:
-            print(f"Scout poll background task error: {e}")
-
-    background_tasks.add_task(run_scout)
+    background_tasks.add_task(_trigger_scout_scan)
     return {"status": "Scout Gmail poll triggered"}
 
 @app.post("/scout/watch")
@@ -3662,14 +3711,7 @@ async def gmail_notifications(request: Request, background_tasks: BackgroundTask
     except Exception:
         print("[*] Gmail push notification received (unparseable body). Triggering Scout scan...")
 
-    def run_scout():
-        try:
-            agent = ScoutAgent()
-            agent.run(force=True)
-        except Exception as e:
-            print(f"Scout push-triggered scan error: {e}")
-
-    background_tasks.add_task(run_scout)
+    background_tasks.add_task(_trigger_scout_scan)
     return {"status": "ok"}
 
 @app.post("/scout/ingest-order")
