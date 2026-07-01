@@ -515,15 +515,35 @@ def _self_heal_listing_variation(supabase_client, listing_id: Optional[str], lis
     except Exception:
         pass  # duplicate = already healed, safe to ignore
 
-def resolve_variant(supabase_client, listing_title: str, variation_name: Optional[str]) -> tuple[Optional[str], bool]:
+def resolve_variant(supabase_client, listing_title: str, variation_name: Optional[str],
+                     shop_id: Optional[str] = None) -> tuple[Optional[str], bool]:
     """Canonical variant resolver shared by Scout and Foreman.
-    Returns (variant_id, is_new_match). is_new_match=True means matched via fallback."""
+    Returns (variant_id, is_new_match). is_new_match=True means matched via fallback.
+
+    shop_id scopes Stage 1/2/3 lookups to that shop's own listings/variants, preventing
+    two brands with colliding listing titles or set numbers from cross-matching. When
+    shop_id is None (order not yet attributed to a shop), matching stays global — the
+    legacy, pre-multi-shop behavior — so unattributed orders are never silently dropped.
+
+    The LEGO-specific stages (set_number/plaque_count lookup, Star Wars, F1 Speed
+    Champions) only run when the resolved shop's product_model is 'lego_display'
+    (the default when shop_id is None/unknown, to preserve legacy behavior for the
+    original single-brand catalog)."""
+    shop = get_shop_by_id(shop_id) if shop_id else None
+    product_model = shop["product_model"] if shop else "lego_display"
+    sku_prefix = shop["sku_prefix"] if shop else "BLO"
+    is_lego = product_model == "lego_display"
+
     norm_var = normalize_variation(variation_name)
     exact_listing_id = None
 
-    logger.info(f"[Matching] Stage 1: listing='{listing_title}' norm_var='{norm_var}'")
+    logger.info(f"[Matching] Stage 1: listing='{listing_title}' norm_var='{norm_var}' shop_id={shop_id}")
     try:
-        listing_res = supabase_client.table("listings").select("id").eq("platform_listing_name", listing_title).limit(1).execute()
+        listing_q = supabase_client.table("listings").select("id, products!inner(shop_id)" if shop_id else "id") \
+            .eq("platform_listing_name", listing_title)
+        if shop_id:
+            listing_q = listing_q.eq("products.shop_id", shop_id)
+        listing_res = listing_q.limit(1).execute()
         if listing_res.data:
             listing_id = listing_res.data[0]["id"]
             exact_listing_id = listing_id
@@ -550,54 +570,59 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
     except Exception as e:
         logger.error(f"[Matching] Stage 1 database error: {e}")
 
-    # Stage 2: intent-based set number + indexed variant lookup
-    intent = extract_variant_intent(norm_var, listing_title)
-    set_num = (
-        extract_set_number_from_text(listing_title) or
-        intent.get("set_number_override") or
-        extract_set_number_from_text(norm_var)
-    )
-    logger.info(f"[Matching] Stage 2: set_num={set_num} intent={intent}")
+    # Stage 2: intent-based set number + indexed variant lookup (LEGO-specific: set
+    # numbers, plaque counts). Skipped for non-LEGO ('generic') shops.
+    if is_lego:
+        intent = extract_variant_intent(norm_var, listing_title)
+        set_num = (
+            extract_set_number_from_text(listing_title) or
+            intent.get("set_number_override") or
+            extract_set_number_from_text(norm_var)
+        )
+        logger.info(f"[Matching] Stage 2: set_num={set_num} intent={intent}")
 
-    if set_num:
-        try:
-            q = supabase_client.table("variants")\
-                .select("id, variant_sku, variant_type, plaque_count")\
-                .eq("set_number", set_num)
+        if set_num:
+            try:
+                q = supabase_client.table("variants")\
+                    .select("id, variant_sku, variant_type, plaque_count, products!inner(shop_id)" if shop_id else
+                            "id, variant_sku, variant_type, plaque_count")\
+                    .eq("set_number", set_num)
+                if shop_id:
+                    q = q.eq("products.shop_id", shop_id)
 
-            vtype = intent["variant_type"]
-            pc    = intent.get("plaque_count")
+                vtype = intent["variant_type"]
+                pc    = intent.get("plaque_count")
 
-            if vtype == "DS" and pc is not None:
-                q = q.eq("variant_type", "DS").eq("plaque_count", pc)
-            elif vtype == "DS-NP":
-                q = q.eq("variant_type", "DS-NP")
-            elif vtype == "FWM":
-                q = q.in_("variant_type", ["FWM", "WM"])
-            elif vtype == "WM":
-                q = q.in_("variant_type", ["WM", "FWM"])
-            else:
-                q = q.in_("variant_type", ["DS", "BASE"])
+                if vtype == "DS" and pc is not None:
+                    q = q.eq("variant_type", "DS").eq("plaque_count", pc)
+                elif vtype == "DS-NP":
+                    q = q.eq("variant_type", "DS-NP")
+                elif vtype == "FWM":
+                    q = q.in_("variant_type", ["FWM", "WM"])
+                elif vtype == "WM":
+                    q = q.in_("variant_type", ["WM", "FWM"])
+                else:
+                    q = q.in_("variant_type", ["DS", "BASE"])
 
-            result = q.limit(1).execute()
-            if result.data:
-                variant = result.data[0]
-                logger.info(f"[Matching] Stage 2 Success: set {set_num} {intent} → '{variant['variant_sku']}'")
-                _self_heal_listing_variation(supabase_client, exact_listing_id, listing_title,
-                                             variant["id"], norm_var, variation_name)
-                return variant["id"], True
-        except Exception as e:
-            logger.error(f"[Matching] Stage 2 database error: {e}")
+                result = q.limit(1).execute()
+                if result.data:
+                    variant = result.data[0]
+                    logger.info(f"[Matching] Stage 2 Success: set {set_num} {intent} → '{variant['variant_sku']}'")
+                    _self_heal_listing_variation(supabase_client, exact_listing_id, listing_title,
+                                                 variant["id"], norm_var, variation_name)
+                    return variant["id"], True
+            except Exception as e:
+                logger.error(f"[Matching] Stage 2 database error: {e}")
 
-    # Stage 2.5: F1 Speed Champions special matching
-    is_f1 = any(k in listing_title.lower() for k in ["f1", "formula 1", "formula one"])
+    # Stage 2.5: F1 Speed Champions special matching (LEGO-specific; skipped for generic shops)
+    is_f1 = is_lego and any(k in listing_title.lower() for k in ["f1", "formula 1", "formula one"])
     is_sc  = any(k in listing_title.lower() for k in ["speed champions", "sc"])
     is_vertical = not any(k in listing_title.lower() for k in ["foldable", "skadis", "wall", "flush", "lift"])
 
     if is_f1 and is_sc and norm_var:
         tier_suffix = get_f1_multi_tier_suffix(norm_var, listing_title)
         if tier_suffix:
-            target_sku = f"BLO-SC-DS-F1-{tier_suffix}"
+            target_sku = f"{sku_prefix}-SC-DS-F1-{tier_suffix}"
             logger.info(f"[Matching] Stage 2.5 F1 multi-tier: '{target_sku}'")
             try:
                 res = supabase_client.table("variants").select("id, variant_sku").eq("variant_sku", target_sku).execute()
@@ -611,7 +636,7 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
     if is_f1 and is_sc and is_vertical and norm_var:
         suffix = get_f1_sku_suffix(norm_var)
         if suffix:
-            target_sku = f"BLO-SC-VDS-F1-{suffix}"
+            target_sku = f"{sku_prefix}-SC-VDS-F1-{suffix}"
             logger.info(f"[Matching] Stage 2.5 F1 team: '{target_sku}'")
             try:
                 res = supabase_client.table("variants").select("id, variant_sku").eq("variant_sku", target_sku).execute()
@@ -630,9 +655,12 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
     if len(words) >= 2:
         search_pattern = f"%{words[0]}%{words[1]}%"
         try:
-            fuzzy_listings = supabase_client.table("listings")\
-                .select("id, platform_listing_name")\
-                .ilike("platform_listing_name", search_pattern).limit(5).execute()
+            fuzzy_q = supabase_client.table("listings")\
+                .select("id, platform_listing_name, products!inner(shop_id)" if shop_id else "id, platform_listing_name")\
+                .ilike("platform_listing_name", search_pattern)
+            if shop_id:
+                fuzzy_q = fuzzy_q.eq("products.shop_id", shop_id)
+            fuzzy_listings = fuzzy_q.limit(5).execute()
             if fuzzy_listings.data:
                 best_fuzzy = fuzzy_listings.data[0]
                 variations = supabase_client.table("listing_variations")\
@@ -762,7 +790,13 @@ def process_catalog(file_path: str):
             brand_val = row.get('Brand')
             if pd.isna(brand_val) or not str(brand_val).strip() or str(brand_val).strip().lower() == 'nan':
                 brand_val = "Blocked Off"
-                
+
+            # Resolve the shop for this row's Brand column (cached lookup — no DB round-trip
+            # per row). Falls back to Blocked Off's "BLO" prefix when the brand doesn't match
+            # any known shop, preserving legacy behavior for the original single-brand catalog.
+            brand_shop = resolve_shop(str(brand_val).strip())
+            row_sku_prefix = brand_shop["sku_prefix"] if brand_shop else "BLO"
+
             v_type = clean_variant_type(row.get('Type'))
             sku_val = row.get('SKU')
             if pd.isna(sku_val) or not str(sku_val).strip() or str(sku_val).strip().lower() == 'nan':
@@ -773,7 +807,7 @@ def process_catalog(file_path: str):
                     "nintendo": "NTD", "jurassic world": "OTR", "dc": "DC"
                 }
                 theme_code = theme_map.get(str(cat_val).strip().lower(), str(cat_val).strip()[:3].upper() if cat_val else "OTH")
-                sku = f"BLO-{theme_code}-{set_number}-{v_type}"
+                sku = f"{row_sku_prefix}-{theme_code}-{set_number}-{v_type}"
             else:
                 sku = str(sku_val).strip()
                 
@@ -793,6 +827,7 @@ def process_catalog(file_path: str):
                 "set_number": set_number,
                 "category": cat_val,
                 "brand": brand_val,
+                "shop_id": brand_shop["id"] if brand_shop else None,
                 "v_type": v_type,
                 "master_sku": master_sku,
                 "reference_name": ref_name,
@@ -899,7 +934,8 @@ def process_catalog(file_path: str):
                 "brand_name": first_item["brand"],
                 "product_category": first_item["category"],
                 "master_sku": m_sku,
-                "product_base_name": product_base_name
+                "product_base_name": product_base_name,
+                "shop_id": first_item["shop_id"]
             })
             prod_res = supabase.table("products").upsert(product_data, on_conflict="master_sku").execute()
             product_id = prod_res.data[0]["id"]
@@ -1610,8 +1646,9 @@ class ScoutAgent:
                 self.log_to_db("error", msg, {"email_body_preview": email_body[:200]})
                 return None
 
-    def resolve_variant_id(self, listing_title: str, variation_name: Optional[str]) -> tuple[Optional[str], bool]:
-        return resolve_variant(self.supabase, listing_title, variation_name)
+    def resolve_variant_id(self, listing_title: str, variation_name: Optional[str],
+                            shop_id: Optional[str] = None) -> tuple[Optional[str], bool]:
+        return resolve_variant(self.supabase, listing_title, variation_name, shop_id=shop_id)
 
     def _resolve_variant_id_DEPRECATED(self, listing_title: str, variation_name: Optional[str]) -> tuple[Optional[str], bool]:
         norm_var = (variation_name or "").strip()
@@ -1909,7 +1946,7 @@ class ScoutAgent:
             quantity = item.purchased_quantity
             
             try:
-                variant_id, is_fuzzy = self.resolve_variant_id(listing_title, variation_name)
+                variant_id, is_fuzzy = self.resolve_variant_id(listing_title, variation_name, shop_id=shop_id)
                 
                 if not variant_id:
                     has_matching_failure = True
@@ -3950,8 +3987,9 @@ _PRODUCT_TYPE_LABELS: dict = {
 }
 
 
-def _launch_build_sku_tree(theme: str, set_number: str, product_types: list, plaque_count: int) -> list:
-    master = f"BLO-{theme}-{set_number}"
+def _launch_build_sku_tree(theme: str, set_number: str, product_types: list, plaque_count: int,
+                            sku_prefix: str = "BLO") -> list:
+    master = f"{sku_prefix}-{theme}-{set_number}"
     out = []
     for ptype in product_types:
         if ptype == "DS":
@@ -3975,13 +4013,21 @@ def _launch_variation_name(set_number: str, v: dict) -> str:
     return f"({set_number}){ptype}"
 
 
-def _launch_generate_copy(set_name: str, set_number: str, theme: str, product_types: list) -> dict:
+def _launch_generate_copy(set_name: str, set_number: str, theme: str, product_types: list,
+                           shop: Optional[dict] = None) -> dict:
+    """Generates Shopee/Lazada listing copy via Gemini. brand/domain/region come from
+    shop['ai_copy_profile'] when a shop is resolved, falling back to the original
+    Blocked Off/LEGO wording so the existing single-brand flow is unaffected."""
+    profile = (shop or {}).get("ai_copy_profile") or {}
+    brand  = profile.get("brand", "Blocked Off")
+    domain = profile.get("domain", "custom 3D-printed LEGO display accessories")
+    region = profile.get("region", "Malaysia")
+
     theme_full = _THEME_CODES.get(theme, theme)
     types_str  = ", ".join(_PRODUCT_TYPE_LABELS.get(pt, pt) for pt in product_types)
     prompt = (
-        f"You are writing a product listing for a Shopee/Lazada seller in Malaysia selling custom "
-        f"3D-printed LEGO display accessories.\n"
-        f"Brand: Blocked Off\n"
+        f"You are writing a product listing for a Shopee/Lazada seller in {region} selling {domain}.\n"
+        f"Brand: {brand}\n"
         f"LEGO set: {set_name} ({set_number})\n"
         f"LEGO theme: {theme_full}\n"
         f"Product types: {types_str}\n\n"
@@ -3990,7 +4036,7 @@ def _launch_generate_copy(set_name: str, set_number: str, theme: str, product_ty
         f"Rules:\n"
         f"- listing_title: max 120 chars. Format: '[Product type] for Lego [Theme] [Set Name] ([Set Number])'. SEO-friendly.\n"
         f"- description: 150-250 words. Plain text, no markdown. Mention: custom-fit, high-quality 3D printing, "
-        f"available variants, Blocked Off brand. Malaysian English is fine.\n"
+        f"available variants, {brand} brand. Malaysian English is fine.\n"
         f"Return ONLY the JSON. No extra text."
     )
     response = ai_client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
@@ -4002,7 +4048,7 @@ def _launch_generate_copy(set_name: str, set_number: str, theme: str, product_ty
         return {
             "listing_title": f"Display Stand for Lego {theme_full} {set_name} ({set_number})",
             "description": (f"Custom display stand for the Lego {set_name} ({set_number}). "
-                            f"Available in {types_str}. High quality 3D printed by Blocked Off Malaysia."),
+                            f"Available in {types_str}. High quality 3D printed by {brand} {region}."),
         }
 
 
@@ -4028,6 +4074,7 @@ async def catalog_preview_product(request: Request):
     set_name     = str(body.get("set_name", "")).strip()
     set_number   = str(body.get("set_number", "")).strip()
     theme        = str(body.get("theme", "")).strip().upper()
+    brand_name   = str(body.get("brand_name", "Blocked Off")).strip() or "Blocked Off"
     product_types = body.get("product_types", [])
     plaque_count  = int(body.get("plaque_count", 1))
     price_myr     = body.get("price_myr")
@@ -4036,13 +4083,16 @@ async def catalog_preview_product(request: Request):
     if not set_name or not set_number or not theme or not product_types:
         raise HTTPException(status_code=400, detail="set_name, set_number, theme, product_types required.")
 
-    variants = _launch_build_sku_tree(theme, set_number, product_types, plaque_count)
-    copy     = _launch_generate_copy(set_name, set_number, theme, product_types)
+    shop       = resolve_shop(brand_name)
+    sku_prefix = shop["sku_prefix"] if shop else "BLO"
+
+    variants = _launch_build_sku_tree(theme, set_number, product_types, plaque_count, sku_prefix=sku_prefix)
+    copy     = _launch_generate_copy(set_name, set_number, theme, product_types, shop=shop)
 
     return {
         "listing_title": copy["listing_title"],
         "description":   copy["description"],
-        "master_sku":    f"BLO-{theme}-{set_number}",
+        "master_sku":    f"{sku_prefix}-{theme}-{set_number}",
         "platforms":     platforms,
         "variants": [
             {"sku": v["sku"], "type": v["type"], "label": v["label"],
@@ -4083,19 +4133,24 @@ async def catalog_launch_product(request: Request):
     if not set_name or not set_number or not theme or not product_types or not listing_title:
         raise HTTPException(status_code=400, detail="Missing required fields.")
 
-    variants          = _launch_build_sku_tree(theme, set_number, product_types, plaque_count)
-    master_sku        = f"BLO-{theme}-{set_number}"
+    shop       = resolve_shop(brand_name)
+    sku_prefix = shop["sku_prefix"] if shop else "BLO"
+
+    variants          = _launch_build_sku_tree(theme, set_number, product_types, plaque_count, sku_prefix=sku_prefix)
+    master_sku        = f"{sku_prefix}-{theme}-{set_number}"
     product_base_name = f"{set_name} ({set_number})"
     if not product_category:
         product_category = _PRODUCT_TYPE_LABELS.get(product_types[0], product_types[0])
 
     # ── products upsert ────────────────────────────────────────────────────
-    prod_res = supabase.table("products").upsert({
+    prod_data = clean_dict({
         "brand_name":        brand_name,
         "product_category":  product_category,
         "master_sku":        master_sku,
         "product_base_name": product_base_name,
-    }, on_conflict="master_sku").execute()
+        "shop_id":           shop["id"] if shop else None,
+    })
+    prod_res = supabase.table("products").upsert(prod_data, on_conflict="master_sku").execute()
     product_id = prod_res.data[0]["id"]
 
     # ── variants upsert ────────────────────────────────────────────────────
