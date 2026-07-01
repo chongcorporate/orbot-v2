@@ -478,8 +478,6 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
           <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10">Items</th>
           <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10">Subtotal</th>
           <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10 text-center">Waybill Status</th>
-          <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10">Printer / Queue</th>
-          <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10 text-center">ETA</th>
           <th class="py-2 px-3 font-semibold text-on-surface-variant${prefix === "" ? " border-r border-outline-variant/10" : ""}">Status</th>
           ${prefix === "" ? `<th class="py-2 px-3 font-semibold text-on-surface-variant text-center w-12">Action</th>` : ""}
         </tr>
@@ -534,62 +532,6 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
       itemsHtml = `<span style="color: var(--text-muted); font-size: 0.85rem;">No items</span>`;
     }
     
-    // Calculate SimplyPrint live telemetry metrics
-    const allJobs = [];
-    itemsList.forEach(item => {
-      if (item.print_jobs) {
-        item.print_jobs.forEach(job => {
-          allJobs.push({
-            ...job,
-            itemSku: item.variant_sku
-          });
-        });
-      }
-    });
-
-    let printerQueueText = "-";
-    const printingJobs = allJobs.filter(j => j.job_execution_status === 'printing');
-    if (printingJobs.length > 0) {
-      const printingPrinters = [...new Set(printingJobs.filter(j => j.printer_name).map(j => j.printer_name))];
-      printerQueueText = printingPrinters.length > 0 
-        ? printingPrinters.map(p => `[${p}]`).join(", ") 
-        : "Printing";
-    } else {
-      const pendingJobs = allJobs.filter(j => j.job_execution_status === 'pending' && j.queue_position !== null && j.queue_position !== undefined);
-      if (pendingJobs.length > 0) {
-        const minQueue = Math.min(...pendingJobs.map(j => j.queue_position));
-        printerQueueText = `Queue: #${minQueue}`;
-      }
-    }
-
-    let etaHtmlCol = `<span class="text-on-surface-variant/40 font-data-mono text-[10px]">-</span>`;
-    if (printingJobs.length > 0) {
-      const finishTimes = printingJobs.map(j => j.estimated_finish_time).filter(t => t);
-      let longestEta = "";
-      if (finishTimes.length > 0) {
-        const maxTime = new Date(Math.max(...finishTimes.map(t => new Date(t).getTime())));
-        longestEta = formatEta(maxTime.toISOString());
-      }
-      
-      if (longestEta) {
-        const displayEta = longestEta.replace("ETA: ~", "~").replace("ETA: ", "");
-        etaHtmlCol = `<span class="font-data-mono text-[10px] text-surface-tint font-bold">${displayEta}</span>`;
-      } else {
-        etaHtmlCol = `<span class="font-data-mono text-[10px] text-surface-tint font-semibold">Printing</span>`;
-      }
-    } else if (allJobs.length > 0) {
-      const completedJobs = allJobs.filter(j => j.job_execution_status === 'completed');
-      const failedJobs = allJobs.filter(j => j.job_execution_status === 'failed');
-      
-      if (completedJobs.length === allJobs.length) {
-        etaHtmlCol = `<span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-data-mono text-[10px]">Done</span>`;
-      } else if (failedJobs.length > 0) {
-        etaHtmlCol = `<span class="px-2 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/20 font-data-mono text-[10px]">Failed</span>`;
-      } else {
-        etaHtmlCol = `<span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 font-data-mono text-[10px]">Queued</span>`;
-      }
-    }
-
     // Build Details HTML (Pre-rendered for zero-latency toggle)
     let detailsHtml = "";
     if (itemsList.length === 0) {
@@ -766,8 +708,6 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         <td class="py-2.5 px-3 border-r border-outline-variant/10 text-center">
           <span class="badge ${waybillStatusClass} text-[10px] py-0.5 px-2.5 uppercase font-bold tracking-wide">${waybillStatusDisplay}</span>
         </td>
-        <td class="py-2.5 px-3 border-r border-outline-variant/10 font-data-mono font-medium text-on-surface-variant/85">${printerQueueText}</td>
-        <td class="py-2.5 px-3 border-r border-outline-variant/10 text-center">${etaHtmlCol}</td>
         <td class="py-2.5 px-3${prefix === "" ? " border-r border-outline-variant/10" : ""}">
           <div class="overall-status-select-container">${selectHtml}</div>
         </td>
@@ -779,7 +719,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         </td>` : ""}
       </tr>
       <tr class="hidden border-b border-outline-variant/10 bg-black/10 order-details-row" id="${prefix}details-${order.id}">
-        <td colspan="${prefix === "" ? "12" : "11"}" class="p-3 border-r border-outline-variant/10">
+        <td colspan="${prefix === "" ? "10" : "9"}" class="p-3 border-r border-outline-variant/10">
           <div class="order-items-detail" id="${prefix}items-container-${order.id}">
             ${detailsHtml}
           </div>
