@@ -4476,12 +4476,10 @@ function openCatalogEditModal(productId) {
             ${field("Variant Name", "variants", v.id, "variant_name", v.variant_name)}
             <div>
               <label class="font-label-caps text-[10px] text-outline uppercase tracking-wider block mb-1">Variant Type</label>
-              <select class="edit-field w-full bg-black/30 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-xs font-data-mono text-on-surface focus:border-primary/50 focus:outline-none transition-colors"
+              <input list="variant-type-suggestions" type="text"
+                value="${String(v.variant_type ?? "").replace(/"/g, "&quot;")}"
+                class="edit-field w-full bg-black/30 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-xs font-data-mono text-on-surface focus:border-primary/50 focus:outline-none transition-colors"
                 data-table="variants" data-id="${v.id}" data-field="variant_type" data-type="text">
-                ${["DS-1","DS-2","DS-3","DS-4","DS-NP","WM","FWM","BASE"].map(t =>
-                  `<option value="${t}" ${v.variant_type === t ? "selected" : ""}>${t}</option>`
-                ).join("")}
-              </select>
             </div>
             ${field("Stock Quantity", "variants", v.id, "stock_quantity", v.stock_quantity, "number")}
             <div class="col-span-2">${field("Seal Sticker Drive URL", "variants", v.id, "seal_sticker_gdrive_url", v.seal_sticker_gdrive_url)}</div>
@@ -4496,6 +4494,14 @@ function openCatalogEditModal(productId) {
       </div>
     `;
   });
+
+  // Free-text input above with suggestions — variant_type isn't DB-constrained to LEGO
+  // codes (DS/WM/etc.), since generic (non-LEGO) shops use their own type names.
+  html += `
+    <datalist id="variant-type-suggestions">
+      ${["DS-1","DS-2","DS-3","DS-4","DS-NP","WM","FWM","BASE"].map(t => `<option value="${t}">`).join("")}
+    </datalist>
+  `;
 
   contentEl.innerHTML = html;
   modal.classList.add("active");
@@ -4738,7 +4744,7 @@ function setLaunchStatus(type, msg) {
 }
 
 async function doLaunchPreview() {
-  const { set_name, set_number, theme, product_types, plaque_count, price_myr, platforms } = getLaunchFormData();
+  const { set_name, set_number, theme, brand_name, product_types, plaque_count, price_myr, platforms } = getLaunchFormData();
   if (!set_name || !set_number || !theme || product_types.length === 0) {
     setLaunchStatus('error', 'Fill in set name, set number, theme, and select at least one product type.');
     return;
@@ -4755,7 +4761,7 @@ async function doLaunchPreview() {
     const res = await fetch(`${backendUrl}/catalog/preview-product`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ set_name, set_number, theme, product_types, plaque_count, price_myr, platforms }),
+      body: JSON.stringify({ set_name, set_number, theme, brand_name, product_types, plaque_count, price_myr, platforms }),
     });
     const data = JSON.parse(await res.text());
     if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
