@@ -470,6 +470,14 @@
         </div>
       </div>
 
+      <!-- Shop Scope Switcher -->
+      <div class="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-panel" title="Active shop scope">
+        <span class="material-symbols-outlined text-surface-tint text-[18px]">storefront</span>
+        <select id="shop-switcher" class="bg-transparent border-0 focus:ring-0 focus:outline-none text-on-surface font-data-mono text-xs font-bold cursor-pointer pr-1">
+          <option value="all">All Shops</option>
+        </select>
+      </div>
+
       <!-- System Clock & Date -->
       <div class="flex flex-col justify-center select-none font-data-mono text-outline leading-none text-right">
         <span class="text-xs font-bold text-on-surface" id="system-clock">--:--:-- --</span>
@@ -2279,6 +2287,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=1.6.18"></script>
+  <script src="app.js?v=1.7.0"></script>
 </body>
 </html>

@@ -23,6 +23,11 @@ let listingsPlatformFilter = "all";
 let listingsSortOrder = "name_asc";
 let listingsMissingFilter = "all";
 let ganttTimeWindow = 24;
+// Multi-shop: the currently-selected shop scope. "all" = every shop, "unassigned" = orders
+// with no shop_id, otherwise a shops.id. Persisted so it survives reloads. cachedShops holds
+// the shops table for the header switcher and for mapping shop_id -> name in the UI.
+let currentShop = localStorage.getItem("orbot_current_shop") || "all";
+let cachedShops = [];
 
 function debounce(fn, delay) {
   let timer;
@@ -190,15 +195,89 @@ function initSupabase() {
   }
 }
 
+// ---------------- Multi-shop scope ----------------
+// Load shops, populate the header switcher, and re-render the active view on change.
+async function initShopSwitcher() {
+  const sel = document.getElementById("shop-switcher");
+  if (!supabaseClient || !sel) return;
+  try {
+    const { data: shops, error } = await supabaseClient
+      .from("shops")
+      .select("id, name, slug, is_active")
+      .order("name", { ascending: true });
+    if (error) throw error;
+    cachedShops = shops || [];
+  } catch (err) {
+    console.error("Failed to load shops:", err);
+    cachedShops = [];
+  }
+
+  // Rebuild options: All Shops → each active shop → Unassigned.
+  const opts = [`<option value="all">All Shops</option>`];
+  for (const s of cachedShops) {
+    if (s.is_active === false) continue;
+    opts.push(`<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`);
+  }
+  opts.push(`<option value="unassigned">Unassigned</option>`);
+  sel.innerHTML = opts.join("");
+
+  // Restore persisted selection if it still exists, else fall back to "all".
+  const valid = ["all", "unassigned", ...cachedShops.map(s => s.id)];
+  if (!valid.includes(currentShop)) currentShop = "all";
+  sel.value = currentShop;
+
+  sel.addEventListener("change", () => {
+    currentShop = sel.value;
+    localStorage.setItem("orbot_current_shop", currentShop);
+    onShopChange();
+  });
+}
+
+// Map a shop_id to its display name (for badges/columns).
+function shopName(shopId) {
+  if (!shopId) return "Unassigned";
+  const s = cachedShops.find(x => x.id === shopId);
+  return s ? s.name : "Unknown";
+}
+
+// Apply the active shop scope to a Supabase query on a table that has a shop_id column
+// (orders). "all" → no filter; "unassigned" → shop_id IS NULL; otherwise → that shop.
+function scopeByShop(query) {
+  if (currentShop === "all") return query;
+  if (currentShop === "unassigned") return query.is("shop_id", null);
+  return query.eq("shop_id", currentShop);
+}
+
+// True when a cached row (orders/products with a shop_id) passes the active shop scope —
+// used for client-side filtered views (catalog, listings) and cached order lists.
+function passesShopScope(shopId) {
+  if (currentShop === "all") return true;
+  if (currentShop === "unassigned") return !shopId;
+  return shopId === currentShop;
+}
+
+// Re-render everything affected by a shop-scope change.
+function onShopChange() {
+  fetchSummaryStats();
+  fetchAndRenderOrders();
+  if (currentTab === "waybills") fetchAndRenderWaybillsArchive();
+  if (currentTab === "catalog") renderCatalogFromCache();
+  if (currentTab === "listings") renderListingsFromCache();
+  if (currentTab === "overview") {
+    fetchAndRenderOverviewJobs();
+    fetchAndRenderOverviewLogs();
+  }
+}
+
 // Stats & General Refreshes
 async function fetchSummaryStats() {
   if (!supabaseClient) return;
 
   try {
-    // 1. Fetch orders timestamps for filtering
-    const { data: ordersData, error: oError } = await supabaseClient
+    // 1. Fetch orders timestamps for filtering (scoped to the active shop)
+    const { data: ordersData, error: oError } = await scopeByShop(supabaseClient
       .from("orders")
-      .select("order_timestamp, created_at, overall_order_status");
+      .select("order_timestamp, created_at, overall_order_status"));
     
     // 2. System Errors
     const { count: errorsCount, error: eError } = await supabaseClient
@@ -373,6 +452,7 @@ async function fetchAndRenderOrders(forceFetch = true) {
         end.setDate(end.getDate() + 1);
         query = query.lt("order_timestamp", end.toISOString().split("T")[0]);
       }
+      query = scopeByShop(query);
 
       const { data: orders, error } = await query;
       if (error) throw error;
@@ -695,7 +775,10 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         <td class="py-2.5 px-3 border-r border-outline-variant/10 text-center select-none">
           <span class="material-symbols-outlined text-outline text-base transition-transform duration-250 toggle-icon">expand_more</span>
         </td>
-        <td class="py-2.5 px-3 border-r border-outline-variant/10 font-data-mono font-bold text-on-surface select-all max-w-[200px] truncate" title="${escapeHtml(order.platform_order_id)}">${escapeHtml(order.platform_order_id)}</td>
+        <td class="py-2.5 px-3 border-r border-outline-variant/10 font-data-mono font-bold text-on-surface select-all max-w-[200px] truncate" title="${escapeHtml(order.platform_order_id)}">
+          ${escapeHtml(order.platform_order_id)}
+          ${currentShop === "all" ? `<span class="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-body-md font-bold uppercase tracking-wide ${order.shop_id ? 'bg-surface-tint/15 text-surface-tint border border-surface-tint/25' : 'bg-amber-500/15 text-amber-400 border border-amber-500/25'}" title="Shop">${escapeHtml(shopName(order.shop_id))}</span>` : ""}
+        </td>
         <td class="py-2.5 px-3 border-r border-outline-variant/10">
           <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wide ${platformBadgeClass}">${escapeHtml(order.sales_platform)}</span>
         </td>
@@ -1325,6 +1408,9 @@ async function fetchAndRenderCatalog() {
     }
 
     let filtered = cachedVariants;
+
+    // Apply active shop scope (header switcher)
+    filtered = filtered.filter(v => passesShopScope(v.products?.shop_id));
 
     // Apply Brand filter
     if (brandFilter !== "all") {
@@ -2772,6 +2858,7 @@ async function fetchAndRenderWaybillsArchive() {
       endInclusive.setDate(endInclusive.getDate() + 1);
       query = query.lt("order_timestamp", endInclusive.toISOString().split("T")[0]);
     }
+    query = scopeByShop(query);
 
     const { data: orders, error } = await query;
     if (error) throw error;
@@ -3024,6 +3111,8 @@ window.addEventListener("DOMContentLoaded", () => {
   updateDispatchIndicator();
 
   if (initSupabase()) {
+    // Load shops first so the header switcher + shop-scoped queries have data to work with.
+    initShopSwitcher();
     fetchSummaryStats();
     fetchAgentHeartbeats();
     // Overview tab data — fetched eagerly since overview is the default tab
@@ -4806,7 +4895,7 @@ async function fetchAndRenderListings(useCache = false) {
       while (true) {
         const { data, error } = await supabaseClient
           .from("listings")
-          .select("*, products(id, master_sku, product_base_name, brand_name), listing_variations(*, variants(id, variant_sku, variant_type))")
+          .select("*, products(id, master_sku, product_base_name, brand_name, shop_id), listing_variations(*, variants(id, variant_sku, variant_type))")
           .order("platform_listing_name", { ascending: true })
           .range(start, start + 999);
         if (error) throw error;
@@ -4832,6 +4921,9 @@ function renderListingsFromCache() {
   const statsEl = document.getElementById("listings-stats-bar");
 
   let filtered = [...cachedListings];
+
+  // Active shop scope (header switcher)
+  filtered = filtered.filter(l => passesShopScope(l.products?.shop_id));
 
   if (listingsActiveFilter === "active")   filtered = filtered.filter(l => l.is_active);
   if (listingsActiveFilter === "inactive") filtered = filtered.filter(l => !l.is_active);
