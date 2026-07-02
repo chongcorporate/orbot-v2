@@ -515,10 +515,22 @@ def _self_heal_listing_variation(supabase_client, listing_id: Optional[str], lis
     except Exception:
         pass  # duplicate = already healed, safe to ignore
 
+_VARIANT_COLS = "variant_sku, variant_name, plaque_count"
+
+def _embed_variant_row(embedded) -> Optional[dict]:
+    """Normalize a PostgREST embedded `variants(...)` payload (which may come back as a
+    single dict for a to-one relationship, or a 1-element list) into a plain dict or None."""
+    if isinstance(embedded, list):
+        return embedded[0] if embedded else None
+    return embedded or None
+
 def resolve_variant(supabase_client, listing_title: str, variation_name: Optional[str],
-                     shop_id: Optional[str] = None) -> tuple[Optional[str], bool]:
+                     shop_id: Optional[str] = None) -> tuple[Optional[str], bool, Optional[dict]]:
     """Canonical variant resolver shared by Scout and Foreman.
-    Returns (variant_id, is_new_match). is_new_match=True means matched via fallback.
+    Returns (variant_id, is_new_match, variant_row). is_new_match=True means matched via
+    fallback. variant_row carries {variant_sku, variant_name, plaque_count} when the matching
+    query already fetched it (lets callers skip a follow-up variants lookup); it may be None,
+    in which case the caller must fetch those columns itself.
 
     shop_id scopes Stage 1/2/3 lookups to that shop's own listings/variants, preventing
     two brands with colliding listing titles or set numbers from cross-matching. When
@@ -549,23 +561,23 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
             exact_listing_id = listing_id
 
             lv_res = supabase_client.table("listing_variations")\
-                .select("variant_id")\
+                .select(f"variant_id, variants({_VARIANT_COLS})")\
                 .eq("listing_id", listing_id)\
                 .eq("normalized_variation_name", norm_var)\
                 .limit(1).execute()
             if lv_res.data:
                 logger.info(f"[Matching] Stage 1 Success: '{norm_var}' → {lv_res.data[0]['variant_id']}")
-                return lv_res.data[0]["variant_id"], False
+                return lv_res.data[0]["variant_id"], False, _embed_variant_row(lv_res.data[0].get("variants"))
 
             # Fallback 1.1: listing has exactly one variation with a blank/default name
             all_vars_res = supabase_client.table("listing_variations")\
-                .select("variant_id, platform_variation_name")\
+                .select(f"variant_id, platform_variation_name, variants({_VARIANT_COLS})")\
                 .eq("listing_id", listing_id).execute()
             if all_vars_res.data and len(all_vars_res.data) == 1:
                 db_var = all_vars_res.data[0]["platform_variation_name"].strip()
                 if db_var == "" or db_var.lower() == "default" or norm_var == "":
                     logger.info(f"[Matching] Fallback 1.1: single blank variation → {all_vars_res.data[0]['variant_id']}")
-                    return all_vars_res.data[0]["variant_id"], True
+                    return all_vars_res.data[0]["variant_id"], True, _embed_variant_row(all_vars_res.data[0].get("variants"))
 
     except Exception as e:
         logger.error(f"[Matching] Stage 1 database error: {e}")
@@ -584,8 +596,8 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
         if set_num:
             try:
                 q = supabase_client.table("variants")\
-                    .select("id, variant_sku, variant_type, plaque_count, products!inner(shop_id)" if shop_id else
-                            "id, variant_sku, variant_type, plaque_count")\
+                    .select("id, variant_sku, variant_name, variant_type, plaque_count, products!inner(shop_id)" if shop_id else
+                            "id, variant_sku, variant_name, variant_type, plaque_count")\
                     .eq("set_number", set_num)
                 if shop_id:
                     q = q.eq("products.shop_id", shop_id)
@@ -610,7 +622,7 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
                     logger.info(f"[Matching] Stage 2 Success: set {set_num} {intent} → '{variant['variant_sku']}'")
                     _self_heal_listing_variation(supabase_client, exact_listing_id, listing_title,
                                                  variant["id"], norm_var, variation_name)
-                    return variant["id"], True
+                    return variant["id"], True, {k: variant.get(k) for k in ("variant_sku", "variant_name", "plaque_count")}
             except Exception as e:
                 logger.error(f"[Matching] Stage 2 database error: {e}")
 
@@ -625,11 +637,11 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
             target_sku = f"{sku_prefix}-SC-DS-F1-{tier_suffix}"
             logger.info(f"[Matching] Stage 2.5 F1 multi-tier: '{target_sku}'")
             try:
-                res = supabase_client.table("variants").select("id, variant_sku").eq("variant_sku", target_sku).execute()
+                res = supabase_client.table("variants").select(f"id, {_VARIANT_COLS}").eq("variant_sku", target_sku).execute()
                 if res.data:
                     _self_heal_listing_variation(supabase_client, exact_listing_id, listing_title,
                                                  res.data[0]["id"], norm_var, variation_name)
-                    return res.data[0]["id"], True
+                    return res.data[0]["id"], True, {k: res.data[0].get(k) for k in ("variant_sku", "variant_name", "plaque_count")}
             except Exception as e:
                 logger.error(f"[Matching] Stage 2.5 F1 multi-tier database error: {e}")
 
@@ -639,11 +651,11 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
             target_sku = f"{sku_prefix}-SC-VDS-F1-{suffix}"
             logger.info(f"[Matching] Stage 2.5 F1 team: '{target_sku}'")
             try:
-                res = supabase_client.table("variants").select("id, variant_sku").eq("variant_sku", target_sku).execute()
+                res = supabase_client.table("variants").select(f"id, {_VARIANT_COLS}").eq("variant_sku", target_sku).execute()
                 if res.data:
                     _self_heal_listing_variation(supabase_client, exact_listing_id, listing_title,
                                                  res.data[0]["id"], norm_var, variation_name)
-                    return res.data[0]["id"], True
+                    return res.data[0]["id"], True, {k: res.data[0].get(k) for k in ("variant_sku", "variant_name", "plaque_count")}
             except Exception as e:
                 logger.error(f"[Matching] Stage 2.5 F1 team database error: {e}")
 
@@ -664,7 +676,7 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
             if fuzzy_listings.data:
                 best_fuzzy = fuzzy_listings.data[0]
                 variations = supabase_client.table("listing_variations")\
-                    .select("variant_id, platform_variation_name, normalized_variation_name")\
+                    .select(f"variant_id, platform_variation_name, normalized_variation_name, variants({_VARIANT_COLS})")\
                     .eq("listing_id", best_fuzzy["id"]).execute()
                 if variations.data:
                     best_var = next((v for v in variations.data if v["normalized_variation_name"] == norm_var), None)
@@ -684,12 +696,12 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
                     if not best_var:
                         logger.warning(f"[Matching] Stage 3: found '{best_fuzzy['platform_listing_name']}' "
                                         f"but no variation matched '{norm_var}'. Not guessing.")
-                        return None, False
-                    return best_var["variant_id"], True
+                        return None, False, None
+                    return best_var["variant_id"], True, _embed_variant_row(best_var.get("variants"))
         except Exception as e:
             logger.error(f"[Matching] Stage 3 database error: {e}")
 
-    return None, False
+    return None, False, None
 
 
 # Maps new human-readable column names to the internal names used throughout process_catalog.
@@ -1329,6 +1341,13 @@ def scan_and_reorganize(source_dir, dest_dir, match_map, set_num_map):
 
 # ----------------- SECTION 3: Scout Gmail Ingestion Agent -----------------
 
+class TransientLLMError(Exception):
+    """Raised when every Gemini model in the fallback chain is temporarily unavailable
+    (timeout / 503 / 429). The caller must leave the email unread so it is retried on the
+    next scan (webhook push or the periodic backstop) rather than being marked processed."""
+    pass
+
+
 class ScoutAgent:
     def __init__(self):
         self.agent_name = "Scout"
@@ -1419,25 +1438,83 @@ class ScoutAgent:
         logger.info(f"Created Gmail label '{name}' (id={created['id']})")
         return created['id']
 
+    # Subjects that clearly mark a NON-order email (marketing, logistics, account notices) —
+    # safe to skip without an LLM call.
+    _NON_ORDER_SUBJECT_RE = re.compile(
+        r'(?i)\b('
+        r'voucher|flash\s*sale|\d+\s*%|%\s*off|discount|promo(tion)?|deal|cashback|'
+        r'coins?|reward|rate\s+your|review\s+your|leave\s+(a\s+)?feedback|'
+        r'has\s+been\s+delivered|out\s+for\s+delivery|on\s+(its|the)\s+way|'
+        r'in\s+transit|tracking|parcel|picked\s*up|pick\s*up|drop\s*off|'
+        r'refund|payment\s+received|payout|withdraw|wallet|statement|'
+        r'newsletter|subscribe|welcome|verify|password|security|otp'
+        r')\b'
+    )
+    # Subjects that clearly mark an ORDER — always parse, regardless of other signals.
+    _ORDER_SUBJECT_RE = re.compile(
+        r'(?i)('
+        r'time\s+to\s+ship|new\s+order|order\s+confirmation|order\s+placed|to\s+ship|'
+        r'you\s+(have|\'?ve)\s+(got\s+)?a?\s*new\s+order|new\s+sale|made\s+a\s+sale|'
+        r'pesanan\s+bahar?u|ada\s+pesanan'
+        r')'
+    )
+
+    def _is_probable_order(self, subject: str, sender: str) -> bool:
+        """Cheap pre-LLM gate on subject/sender. Returns False only for emails that clearly
+        are NOT orders (marketing, logistics, account notices) so they can be skipped without
+        paying for a Gemini call. Anything ambiguous returns True — the LLM + is_order_email
+        flag remain the safety net, so the gate never drops a genuine order."""
+        subj = subject or ''
+        if self._ORDER_SUBJECT_RE.search(subj):
+            return True
+        if self._NON_ORDER_SUBJECT_RE.search(subj):
+            return False
+        return True
+
     def fetch_unread_order_emails(self):
-        """Fetches unprocessed order emails from Shopee or Lazada (last 14 days, not yet labelled orbot-processed)."""
+        """Fetches unprocessed order emails from Shopee/Lazada (last 14 days, not yet labelled
+        orbot-processed). Uses a metadata-first pass so obvious non-order emails (marketing,
+        logistics) are labelled and skipped without fetching the full body or calling Gemini;
+        only probable-order candidates are returned with their full body."""
         try:
             # Include subject-based fallback in case Shopee/Lazada route emails via third-party domains
             query = '(from:shopee OR from:lazada OR subject:"time to ship" OR subject:"new order" OR subject:"Order Confirmation") newer_than:14d -label:orbot-processed'
             logger.info(f"Scout Gmail query: {query}")
-            results = self.gmail_service.users().messages().list(userId='me', q=query).execute()
-            messages = results.get('messages', [])
+
+            # 1) List every matching id, following pagination so a backlog >100 isn't truncated.
+            messages = []
+            page_token = None
+            while True:
+                results = self.gmail_service.users().messages().list(
+                    userId='me', q=query, pageToken=page_token, maxResults=100
+                ).execute()
+                messages.extend(results.get('messages', []))
+                page_token = results.get('nextPageToken')
+                if not page_token:
+                    break
             logger.info(f"Scout Gmail query returned {len(messages)} message(s).")
 
             email_contents = []
             for message in messages:
-                msg = self.gmail_service.users().messages().get(userId='me', id=message['id'], format='full').execute()
-                headers = {h['name'].lower(): h['value'] for h in msg['payload']['headers']}
+                # 2) Metadata-only fetch — enough to run the pre-LLM gate without pulling the body.
+                meta = self.gmail_service.users().messages().get(
+                    userId='me', id=message['id'], format='metadata',
+                    metadataHeaders=['Subject', 'From', 'Date']
+                ).execute()
+                headers = {h['name'].lower(): h['value'] for h in meta.get('payload', {}).get('headers', [])}
                 subject = headers.get('subject', 'No Subject')
                 sender  = headers.get('from', '')
                 date    = headers.get('date', '')
+
+                if not self._is_probable_order(subject, sender):
+                    logger.info(f"Scout skipping non-order email without LLM: subject='{subject}' from='{sender}'")
+                    self.mark_email_as_read(message['id'])
+                    continue
+
+                # 3) Survivor — fetch the full body for LLM parsing.
+                msg = self.gmail_service.users().messages().get(userId='me', id=message['id'], format='full').execute()
                 body_content = self._extract_email_body(msg['payload'])
-                logger.info(f"Scout found email: subject='{subject}' from='{sender}'")
+                logger.info(f"Scout found order candidate: subject='{subject}' from='{sender}'")
 
                 email_contents.append({
                     'id': message['id'],
@@ -1640,257 +1717,15 @@ class ScoutAgent:
                     continue
                 if is_transient:
                     logger.warning(f"[Scout] All models temporarily unavailable — email will retry next cycle.")
-                    return "TRANSIENT_ERROR"
+                    raise TransientLLMError("All Gemini models temporarily unavailable")
                 msg = f"LLM Parsing failed: {e}"
                 logger.error(msg)
                 self.log_to_db("error", msg, {"email_body_preview": email_body[:200]})
                 return None
 
     def resolve_variant_id(self, listing_title: str, variation_name: Optional[str],
-                            shop_id: Optional[str] = None) -> tuple[Optional[str], bool]:
+                            shop_id: Optional[str] = None) -> tuple[Optional[str], bool, Optional[dict]]:
         return resolve_variant(self.supabase, listing_title, variation_name, shop_id=shop_id)
-
-    def _resolve_variant_id_DEPRECATED(self, listing_title: str, variation_name: Optional[str]) -> tuple[Optional[str], bool]:
-        norm_var = (variation_name or "").strip()
-        exact_listing_id = None
-
-        logger.info(f"[Matching] Stage 1: Exact match for listing '{listing_title}' and variation '{norm_var}'")
-        try:
-            listing_res = self.supabase.table("listings").select("id, product_id").eq("platform_listing_name", listing_title).execute()
-            if listing_res.data:
-                listing_id = listing_res.data[0]["id"]
-                exact_listing_id = listing_id
-                
-                is_star_wars = "star wars" in listing_title.lower() or "starwars" in listing_title.lower()
-                if is_star_wars and norm_var.lower().startswith("base - blank"):
-                    logger.info("[Matching] Star Wars rule: variation starts with 'Base - Blank'.")
-                    set_matches_var = re.findall(r'\b\d{4,6}\b', norm_var)
-                    if set_matches_var:
-                        set_num = set_matches_var[0]
-                        var_res = self.supabase.table("variants").select("id").like("variant_sku", "%DS-NP%").like("variant_sku", f"%{set_num}%").execute()
-                        if var_res.data:
-                            logger.info(f"[Matching] Star Wars rule Success: matched set {set_num} to DS-NP variant = {var_res.data[0]['id']}")
-                            return var_res.data[0]["id"], False
-                            
-                    set_matches_title = re.findall(r'\b\d{4,6}\b', listing_title)
-                    if set_matches_title:
-                        non_years = [num for num in set_matches_title if not re.match(r'^(19\d{2}|20\d{2})$', num)]
-                        if non_years:
-                            first_set = non_years[0]
-                            var_res = self.supabase.table("variants").select("id").like("variant_sku", "%DS-NP%").like("variant_sku", f"%{first_set}%").execute()
-                            if var_res.data:
-                                logger.info(f"[Matching] Star Wars rule Success: matched title set {first_set} to DS-NP variant = {var_res.data[0]['id']}")
-                                return var_res.data[0]["id"], False
-
-                var_res = self.supabase.table("listing_variations").select("variant_id").eq("listing_id", listing_id).eq("platform_variation_name", norm_var).execute()
-                if var_res.data:
-                    logger.info(f"[Matching] Stage 1 Success: found variant_id = {var_res.data[0]['variant_id']}")
-                    return var_res.data[0]["variant_id"], False
-                    
-                all_vars_res = self.supabase.table("listing_variations").select("variant_id, platform_variation_name").eq("listing_id", listing_id).execute()
-                
-                # Stage 1.5: Normalized match ignoring whitespace and case
-                if all_vars_res.data:
-                    def clean_space(s):
-                        return re.sub(r'\s+', '', str(s)).lower()
-                    clean_norm_var = clean_space(norm_var)
-                    for v in all_vars_res.data:
-                        if clean_space(v["platform_variation_name"]) == clean_norm_var:
-                            logger.info(f"[Matching] Stage 1.5 Success (Normalized): mapped '{norm_var}' to '{v['platform_variation_name']}' -> {v['variant_id']}")
-                            return v["variant_id"], False
-
-                # Stage 1.6c: "Base - Plaque,N" → DS-N direct lookup.
-                # The trailing comma-number IS the plaque count and directly identifies DS-N.
-                plaque_m = re.match(r'(?i)^(?:\(\d+\))?base\s*-\s*plaque\s*,\s*(\d+)\s*$', norm_var)
-                if plaque_m and all_vars_res.data:
-                    plaque_count = plaque_m.group(1)
-                    # First: scan listing_variations for a "Plaque,N" entry with matching N
-                    for v in all_vars_res.data:
-                        pm = re.search(r'(?i)plaque\s*,\s*(\d+)\s*$', v["platform_variation_name"])
-                        if pm and pm.group(1) == plaque_count:
-                            logger.info(f"[Matching] Stage 1.6c Success (Plaque,{plaque_count}→DS-{plaque_count}): '{norm_var}' → {v['variant_id']}")
-                            return v["variant_id"], False
-                    # Fallback: match by variant SKU suffix -DS-{N}
-                    variant_ids = [v["variant_id"] for v in all_vars_res.data]
-                    sku_res = self.supabase.table("variants").select("id, variant_sku").in_("id", variant_ids).execute()
-                    target_suffix = f"-DS-{plaque_count}"
-                    matched_v = next((v for v in sku_res.data if v["variant_sku"].endswith(target_suffix)), None)
-                    if matched_v:
-                        logger.info(f"[Matching] Stage 1.6c Success (SKU suffix -DS-{plaque_count}): '{norm_var}' → {matched_v['id']} ({matched_v['variant_sku']})")
-                        return matched_v["id"], False
-
-                # Stage 1.6: "Base - Blank,N" → DS-NP direct lookup.
-                # Any variation whose pre-comma part is "Base - Blank" means no-nameplate;
-                # the trailing number is always irrelevant regardless of product.
-                if re.match(r'(?i)^base\s*-\s*blank\b', norm_var) and all_vars_res.data:
-                    # Find the DS-NP variant in this listing
-                    ds_np_ids = [v["variant_id"] for v in all_vars_res.data]
-                    if ds_np_ids:
-                        vt_res = self.supabase.table("variants").select("id, variant_type").in_("id", ds_np_ids).eq("variant_type", "DS-NP").execute()
-                        if vt_res.data:
-                            logger.info(f"[Matching] Stage 1.6 Success (Base-Blank→DS-NP): '{norm_var}' → {vt_res.data[0]['id']}")
-                            return vt_res.data[0]["id"], False
-
-                # Stage 1.6b: Strip trailing comma-suffix and retry — safe only when the matched
-                # DB entry also belongs to a DS-NP variant (avoids crossing plaque-count variants).
-                stripped_var = re.sub(r',.*$', '', norm_var).strip()
-                if stripped_var and stripped_var != norm_var and all_vars_res.data:
-                    for v in all_vars_res.data:
-                        db_stripped = re.sub(r',.*$', '', v["platform_variation_name"]).strip()
-                        if db_stripped.lower() == stripped_var.lower():
-                            # Only use if this variant is DS-NP, otherwise comma-N is meaningful
-                            vt_chk = self.supabase.table("variants").select("variant_type").eq("id", v["variant_id"]).limit(1).execute()
-                            if vt_chk.data and vt_chk.data[0].get("variant_type") == "DS-NP":
-                                logger.info(f"[Matching] Stage 1.6b Success (DS-NP strip): matched '{norm_var}' → '{v['platform_variation_name']}' -> {v['variant_id']}")
-                                return v["variant_id"], False
-                if all_vars_res.data and len(all_vars_res.data) == 1:
-                    db_var_name = all_vars_res.data[0]["platform_variation_name"].strip()
-                    if db_var_name == "" or db_var_name.lower() == "default" or norm_var == "":
-                        logger.info(f"[Matching] Fallback 1.1: Single variation match - defaulting to '{all_vars_res.data[0]['platform_variation_name']}'")
-                        return all_vars_res.data[0]["variant_id"], True
-                    
-                if all_vars_res.data:
-                    var_lower = norm_var.lower()
-                    if any(k in var_lower for k in ["wall", "mount", "wm", "fwm"]):
-                        matched_var = next((v for v in all_vars_res.data if any(k in v["platform_variation_name"].lower() for k in ["wall", "mount", "wm", "fwm"])), None)
-                        if matched_var:
-                            logger.info(f"[Matching] Fallback 1.2: Mapped variation '{norm_var}' to '{matched_var['platform_variation_name']}'")
-                            return matched_var["variant_id"], True
-        except Exception as e:
-            logger.error(f"[Matching] Stage 1 database error: {e}")
-
-        logger.info(f"[Matching] Stage 2: Set number fallback match for '{listing_title}'")
-        matches = re.findall(r'\b\d{4,6}\b', listing_title)
-        set_num = None
-        if matches:
-            non_years = [num for num in matches if not re.match(r'^(19\d{2}|20\d{2})$', num)]
-            set_num = non_years[0] if non_years else matches[0]
-            
-        if set_num:
-            try:
-                matched_variants_res = self.supabase.table("variants").select("id, variant_sku, variant_name, variant_type").like("variant_sku", f"%{set_num}%").execute()
-                if matched_variants_res.data:
-                    is_wall_mount = any(k in listing_title.lower() or k in norm_var.lower() for k in ["wall", "mount", "wm", "fwm"])
-                    is_no_plate = any(k in listing_title.lower() or k in norm_var.lower() for k in ["no plate", "np", "blank", "without plate"])
-                    
-                    best_variant = None
-                    if is_wall_mount:
-                        is_flush = any(k in listing_title.lower() or k in norm_var.lower() for k in ["flush", "fush", "fwm"])
-                        if is_flush:
-                            best_variant = next((v for v in matched_variants_res.data if v["variant_type"] == "FWM"), None)
-                        if not best_variant:
-                            best_variant = next((v for v in matched_variants_res.data if v["variant_type"] in ["WM", "FWM"]), None)
-                    elif is_no_plate:
-                        best_variant = next((v for v in matched_variants_res.data if v["variant_type"] == "DS-NP"), None)
-                    else:
-                        # If variation name has "Plaque,N" use plaque count to pick DS-N directly
-                        plaque_m2 = re.search(r'(?i)plaque\s*,\s*(\d+)', norm_var)
-                        if plaque_m2:
-                            target_suffix = f"-DS-{plaque_m2.group(1)}"
-                            best_variant = next((v for v in matched_variants_res.data if v["variant_sku"].endswith(target_suffix)), None)
-                            if best_variant:
-                                logger.info(f"[Matching] Stage 2 plaque-count selection: '{norm_var}' → '{best_variant['variant_sku']}'")
-                        if not best_variant:
-                            best_variant = next((v for v in matched_variants_res.data if v["variant_type"] in ["DS", "BASE"]), None)
-
-                    if not best_variant:
-                        best_variant = matched_variants_res.data[0]
-
-                    logger.info(f"[Matching] Stage 2 Success: mapped set {set_num} to variant '{best_variant['variant_sku']}'")
-                    
-                    listing_check = self.supabase.table("listings").select("id").eq("platform_listing_name", listing_title).execute()
-                    if listing_check.data:
-                        try:
-                            self.supabase.table("listing_variations").insert({
-                                "listing_id": listing_check.data[0]["id"],
-                                "variant_id": best_variant["id"],
-                                "platform_variation_name": norm_var,
-                                "reference_name": f"{listing_title} [{norm_var}]"
-                            }).execute()
-                            logger.info(f"[Matching] Self-healed listing variation for '{listing_title}'")
-                        except Exception as e:
-                            logger.error(f"[Matching] Self-heal error: {e}")
-                    return best_variant["id"], True
-            except Exception as e:
-                logger.error(f"[Matching] Stage 2 database error: {e}")
-
-        is_f1 = any(k in listing_title.lower() for k in ["f1", "formula 1", "formula one"])
-        is_sc = any(k in listing_title.lower() for k in ["speed champions", "sc"])
-        is_vertical = not any(k in listing_title.lower() for k in ["foldable", "skadis", "wall", "flush", "lift"])
-        
-        if is_f1 and is_sc and norm_var:
-            tier_suffix = get_f1_multi_tier_suffix(norm_var, listing_title)
-            if tier_suffix:
-                target_sku = f"BLO-SC-DS-F1-{tier_suffix}"
-                logger.info(f"[Matching] F1 Multi-tier matching constructed target SKU '{target_sku}'")
-                try:
-                    res = self.supabase.table("variants").select("id, variant_sku").eq("variant_sku", target_sku).execute()
-                    if res.data:
-                        matched_var = res.data[0]
-                        if exact_listing_id:
-                            try:
-                                self.supabase.table("listing_variations").insert({
-                                    "listing_id": exact_listing_id,
-                                    "variant_id": matched_var["id"],
-                                    "platform_variation_name": norm_var,
-                                    "reference_name": f"{listing_title} [{norm_var}]"
-                                }).execute()
-                            except Exception as e:
-                                logger.error(f"[Matching] Self-heal error: {e}")
-                        return matched_var["id"], True
-                except Exception as e:
-                    logger.error(f"[Matching] F1 Multi-tier matching database error: {e}")
-
-        if is_f1 and is_sc and is_vertical and norm_var:
-            suffix = get_f1_sku_suffix(norm_var)
-            if suffix:
-                target_sku = f"BLO-SC-VDS-F1-{suffix}"
-                logger.info(f"[Matching] Stage 2.5: F1 Team matching constructed target SKU '{target_sku}'")
-                try:
-                    res = self.supabase.table("variants").select("id, variant_sku").eq("variant_sku", target_sku).execute()
-                    if res.data:
-                        matched_var = res.data[0]
-                        if exact_listing_id:
-                            try:
-                                self.supabase.table("listing_variations").insert({
-                                    "listing_id": exact_listing_id,
-                                    "variant_id": matched_var["id"],
-                                    "platform_variation_name": norm_var,
-                                    "reference_name": f"{listing_title} [{norm_var}]"
-                                }).execute()
-                            except Exception as e:
-                                logger.error(f"[Matching] Self-heal error: {e}")
-                        return matched_var["id"], True
-                except Exception as e:
-                    logger.error(f"[Matching] Stage 2.5 database error: {e}")
-
-        logger.info(f"[Matching] Stage 3: Fuzzy similarity matching for '{listing_title}'")
-        clean_title = re.sub(r'Display Stand for Lego|Display Stand for|Wall Mount for Lego|Wall Mount for|Lego', '', listing_title, flags=re.IGNORECASE).strip()
-        words = [w for w in clean_title.split() if len(w) > 2]
-        if len(words) >= 2:
-            search_pattern = f"%{words[0]}%{words[1]}%"
-            try:
-                fuzzy_listings = self.supabase.table("listings").select("id, platform_listing_name").ilike("platform_listing_name", search_pattern).limit(5).execute()
-                if fuzzy_listings.data:
-                    best_fuzzy = fuzzy_listings.data[0]
-                    variations = self.supabase.table("listing_variations").select("variant_id, platform_variation_name").eq("listing_id", best_fuzzy["id"]).execute()
-                    if variations.data:
-                        best_var = next((v for v in variations.data if v["platform_variation_name"].lower() == norm_var.lower()), None)
-                        if not best_var:
-                            best_var = next((v for v in variations.data if norm_var.lower() in v["platform_variation_name"].lower() or v["platform_variation_name"].lower() in norm_var.lower()), None)
-                        if not best_var:
-                            is_wall_mount = any(k in listing_title.lower() or k in norm_var.lower() for k in ["wall", "mount", "wm", "fwm"])
-                            if is_wall_mount:
-                                wm_var = next((v for v in variations.data if any(k in v["platform_variation_name"].lower() for k in ["wall", "mount", "wm", "fwm"])), None)
-                                if wm_var:
-                                    best_var = wm_var
-                        if not best_var:
-                            logger.warning(f"[Matching] Stage 3: found listing '{best_fuzzy['platform_listing_name']}' but no variation matched '{norm_var}'. Not guessing.")
-                            return None, False
-                        return best_var["variant_id"], True
-            except Exception as e:
-                logger.error(f"[Matching] Stage 3 database error: {e}")
-        return None, False
 
     def process_order(self, order_details: OrderDetails):
         platform_order_id = order_details.platform_order_id.strip()
@@ -1928,6 +1763,13 @@ class ScoutAgent:
             order_id = order_response.data[0]['id']
             logger.info(f"Inserted order {order_details.platform_order_id} with ID: {order_id}")
         except Exception as e:
+            # A UNIQUE(platform_order_id) violation means this order was ingested by a
+            # concurrent/redelivered scan between our pre-check and this insert — benign,
+            # not an error. Anything else is a genuine failure worth surfacing.
+            err = str(e).lower()
+            if "duplicate key" in err or "23505" in err or "already exists" in err:
+                logger.info(f"Order {platform_order_id} already ingested (unique-violation race) — skipping.")
+                return
             msg = f"Failed to insert order {order_details.platform_order_id}: {e}"
             logger.error(msg)
             self.log_to_db("error", msg, {"order_details": order_details.model_dump()})
@@ -1946,8 +1788,8 @@ class ScoutAgent:
             quantity = item.purchased_quantity
             
             try:
-                variant_id, is_fuzzy = self.resolve_variant_id(listing_title, variation_name, shop_id=shop_id)
-                
+                variant_id, is_fuzzy, variant_row = self.resolve_variant_id(listing_title, variation_name, shop_id=shop_id)
+
                 if not variant_id:
                     has_matching_failure = True
                     error_msg = f"Listing or variation not found: '{listing_title}' (Variation: '{variation_name}') for order {order_details.platform_order_id}"
@@ -1970,10 +1812,17 @@ class ScoutAgent:
                     has_fuzzy_match = True
                     fuzzy_item_details += f"Listing: '{listing_title}' (Var: '{variation_name}'); "
 
-                var_info = self.supabase.table("variants").select("variant_sku, variant_name, plaque_count").eq("id", variant_id).execute()
-                v_sku         = var_info.data[0]["variant_sku"]    if var_info.data else None
-                v_name        = var_info.data[0]["variant_name"]   if var_info.data else None
-                v_plaque_count = var_info.data[0].get("plaque_count") if var_info.data else None
+                # Prefer the variant columns the resolver already fetched (avoids an extra
+                # round-trip per item); fall back to a lookup only if they weren't returned.
+                if variant_row:
+                    v_sku          = variant_row.get("variant_sku")
+                    v_name         = variant_row.get("variant_name")
+                    v_plaque_count = variant_row.get("plaque_count")
+                else:
+                    var_info = self.supabase.table("variants").select("variant_sku, variant_name, plaque_count").eq("id", variant_id).execute()
+                    v_sku         = var_info.data[0]["variant_sku"]    if var_info.data else None
+                    v_name        = var_info.data[0]["variant_name"]   if var_info.data else None
+                    v_plaque_count = var_info.data[0].get("plaque_count") if var_info.data else None
 
                 # Sanity-check: if the variation expects a specific plaque count, the matched
                 # variant must have the same plaque_count. Mismatches mean bad DB data —
@@ -2061,139 +1910,6 @@ class ScoutAgent:
             logger.warning(msg)
             self.log_to_db("warning", msg)
 
-    def fetch_unread_cancellation_emails(self):
-        try:
-            query = 'is:unread (from:shopee OR from:lazada) (subject:cancelled OR subject:cancellation)'
-            results = self.gmail_service.users().messages().list(userId='me', q=query).execute()
-            messages = results.get('messages', [])
-
-            email_contents = []
-            for message in messages:
-                msg = self.gmail_service.users().messages().get(userId='me', id=message['id'], format='full').execute()
-                headers = msg['payload']['headers']
-                subject = next((header['value'] for header in headers if header['name'].lower() == 'subject'), "No Subject")
-                body_content = self._extract_email_body(msg['payload'])
-                
-                email_contents.append({
-                    'id': message['id'],
-                    'subject': subject,
-                    'body': body_content
-                })
-            return email_contents
-        except HttpError as error:
-            logger.error(f"An error occurred fetching cancellation emails: {error}")
-            return []
-
-    def process_cancellation(self, email_body: str) -> bool:
-        cleaned_body = self._clean_text_for_llm(email_body)
-        prompt = (
-            "You are extracting data from a Shopee or Lazada order cancellation email. "
-            "Extract the Order ID exactly as it appears. "
-            "Return ONLY a JSON object: {\"platform_order_id\": \"string\"}. "
-            f"Email body: {cleaned_body}"
-        )
-        try:
-            class CancelDetails(BaseModel):
-                platform_order_id: str = Field(description="The platform order ID to cancel")
-                
-            response = self.ai_client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-                config={
-                    'response_mime_type': 'application/json',
-                    'response_schema': CancelDetails,
-                    'temperature': 0.1
-                }
-            )
-            self._log_gemini_usage('gemini-2.5-flash', response)
-            cancel_data = json.loads(response.text)
-            platform_order_id = cancel_data.get("platform_order_id")
-            
-            if not platform_order_id:
-                raise ValueError("No platform_order_id found in Gemini response.")
-                
-            logger.info(f"Processing local cancellation for order: {platform_order_id}")
-            
-            ord_res = self.supabase.table('orders').select('id').eq('platform_order_id', platform_order_id).execute()
-            if not ord_res.data:
-                msg = f"Received cancellation for order {platform_order_id}, but it is not in the database."
-                logger.warning(msg)
-                self.log_to_db("warning", msg)
-                return False
-                
-            order_id = ord_res.data[0]['id']
-            items_res = self.supabase.table('order_items').select('id').eq('order_id', order_id).execute()
-            order_items = items_res.data or []
-            
-            company_id = SIMPLYPRINT_COMPANY_ID
-            api_key = os.getenv("SIMPLYPRINT_API_KEY")
-            if not api_key:
-                logger.error("SIMPLYPRINT_API_KEY is not set.")
-                return False
-                
-            headers = {
-                "X-API-KEY": api_key,
-                "Accept": "application/json"
-            }
-            
-            active_printers = []
-            try:
-                r_pr = http_session.post(f"https://api.simplyprint.io/{company_id}/printers/Get", headers=headers, json={}, timeout=10)
-                if r_pr.status_code == 200:
-                    active_printers = r_pr.json().get("data", [])
-            except Exception as pe:
-                logger.error(f"Failed to fetch printers from SimplyPrint: {pe}")
-                
-            for item in order_items:
-                jobs_res = self.supabase.table('print_jobs').select('id, simplyprint_job_id').eq('order_item_id', item['id']).execute()
-                print_jobs = jobs_res.data or []
-                
-                for job in print_jobs:
-                    job_id = job.get('simplyprint_job_id')
-                    if job_id and job_id != "UNKNOWN_JOB_ID" and not job_id.startswith("MOCK_"):
-                        try:
-                            q_url = f"https://api.simplyprint.io/{company_id}/queue/DeleteItem?job={job_id}"
-                            r_q = http_session.post(q_url, headers=headers, timeout=10)
-                            if r_q.status_code == 200:
-                                logger.info(f"Queue item {job_id} deleted successfully.")
-                            else:
-                                logger.info(f"Queue item delete failed for job {job_id} (code {r_q.status_code}): {r_q.text}. Checking active printers...")
-                                printer_id_to_cancel = None
-                                for p in active_printers:
-                                    p_job = p.get("job")
-                                    if p_job and str(p_job.get("id")) == str(job_id):
-                                        printer_id_to_cancel = p.get("printer", {}).get("id")
-                                        break
-                                        
-                                if printer_id_to_cancel:
-                                    logger.info(f"Job {job_id} is active on printer {printer_id_to_cancel}. Sending Cancel action...")
-                                    r_cancel = http_session.post(f"https://api.simplyprint.io/{company_id}/printers/actions/Cancel?pid={printer_id_to_cancel}", headers=headers, timeout=10)
-                                    if r_cancel.status_code == 200:
-                                        logger.info(f"Successfully cancelled job on printer {printer_id_to_cancel}")
-                                    else:
-                                        logger.error(f"Failed to cancel job on printer {printer_id_to_cancel}: {r_cancel.text}")
-                        except Exception as je:
-                            logger.error(f"Error cancelling print job {job_id}: {je}")
-            
-            item_ids = [item['id'] for item in order_items]
-            if item_ids:
-                try:
-                    self.supabase.table('print_jobs').delete().in_('order_item_id', item_ids).execute()
-                    logger.info("Deleted associated print jobs from database.")
-                except Exception as de:
-                    logger.error(f"Failed to delete print jobs from database: {de}")
-
-            self.supabase.table('orders').update({"overall_order_status": "cancelled"}).eq('id', order_id).execute()
-            msg = f"Successfully cancelled Order {platform_order_id} in database and SimplyPrint."
-            logger.info(msg)
-            self.log_to_db("info", msg)
-            return True
-        except Exception as e:
-            msg = f"Failed to process cancellation email: {e}"
-            logger.error(msg)
-            self.log_to_db("error", msg, {"email_body_preview": email_body[:200]})
-            return False
-
     def run(self, force=False):
         """Main execution loop for the Scout agent."""
         if not force and not self._acquire_lock():
@@ -2211,15 +1927,18 @@ class ScoutAgent:
                         self.mark_email_as_read(email['id'])
                         continue
 
-                    order_details = self.parse_email_with_llm(
-                        email['body'],
-                        subject=email.get('subject', ''),
-                        sender=email.get('sender', ''),
-                        date_header=email.get('date', ''),
-                    )
-                    if order_details == "TRANSIENT_ERROR":
+                    try:
+                        order_details = self.parse_email_with_llm(
+                            email['body'],
+                            subject=email.get('subject', ''),
+                            sender=email.get('sender', ''),
+                            date_header=email.get('date', ''),
+                        )
+                    except TransientLLMError:
                         logger.warning(f"Transient Gemini error for email {email['id']} — leaving unread for next cycle.")
-                    elif order_details:
+                        continue
+
+                    if order_details:
                         try:
                             self.process_order(order_details)
                         except Exception as e:
@@ -2231,8 +1950,6 @@ class ScoutAgent:
             else:
                 logger.info("No new order emails found.")
 
-            # Cancellation detection disabled
-            pass
             logger.info("Scout Agent finished polling cycle.")
         finally:
             if self._held_thread_lock:
@@ -2297,9 +2014,11 @@ def _trigger_scout_scan():
 
 def resolve_variant_id_to_sku(supabase_client, listing_title: str, variation_name: Optional[str]) -> Optional[str]:
     """Resolves listing title and variation name to the database variant SKU. Thin wrapper over resolve_variant()."""
-    variant_id, _ = resolve_variant(supabase_client, listing_title, variation_name)
+    variant_id, _, variant_row = resolve_variant(supabase_client, listing_title, variation_name)
     if not variant_id:
         return None
+    if variant_row and variant_row.get("variant_sku"):
+        return variant_row["variant_sku"]
     try:
         res = supabase_client.table("variants").select("variant_sku").eq("id", variant_id).limit(1).execute()
         return res.data[0]["variant_sku"] if res.data else None
@@ -3483,6 +3202,28 @@ async def run_gmail_watch_renewal_async():
         await asyncio.sleep(24 * 60 * 60)
 
 
+async def run_scout_backstop_async():
+    """Event-driven Scout safety net. In push mode the webhook drives scans, but a dropped
+    Pub/Sub delivery or a transient Gemini error (which leaves the email unread) would
+    otherwise wait for an unrelated inbox change to fire the next push. This loop runs a
+    coalescing scan every 5 min so nothing sits unprocessed indefinitely. It routes through
+    _trigger_scout_scan(), so it shares the same lock as webhook scans and never runs
+    concurrently with one."""
+    print("[*] Scout backstop scan task started (event-driven safety net, every 5 min).")
+    while True:
+        await asyncio.sleep(300)
+        try:
+            await asyncio.to_thread(_trigger_scout_scan)
+            await asyncio.to_thread(
+                supabase.table('agent_heartbeats').upsert({
+                    'agent_name': 'scout',
+                    'last_heartbeat': datetime.now().isoformat()
+                }).execute
+            )
+        except Exception as e:
+            print(f"Scout backstop scan error: {e}")
+
+
 # ----------------- Foreman Dispatch (ported from Edge Function) -----------------
 
 def filter_print_files(print_files: list, variant_name: Optional[str]) -> list:
@@ -4421,9 +4162,11 @@ async def startup_event():
         asyncio.create_task(run_waybill_daemon_async())
         if GMAIL_PUBSUB_TOPIC:
             # Event-driven: scans are triggered by the /gmail/notifications webhook.
-            # This loop only keeps the Gmail watch registered/renewed.
+            # The watch-renewal loop keeps the Gmail watch registered; the backstop loop
+            # is a low-frequency safety net catching dropped pushes / transient-error retries.
             print("[*] GMAIL_PUBSUB_TOPIC set — Scout running in event-driven (push) mode.")
             asyncio.create_task(run_gmail_watch_renewal_async())
+            asyncio.create_task(run_scout_backstop_async())
         else:
             print("[*] GMAIL_PUBSUB_TOPIC not set — Scout running in legacy periodic-poll mode.")
             asyncio.create_task(run_scout_periodic_async())
