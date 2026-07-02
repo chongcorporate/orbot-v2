@@ -785,8 +785,8 @@
         
         <!-- Main Row: Content & Controls -->
         <div class="grid grid-cols-12 gap-5">
-          <!-- Activity Panel (Combined Recent Jobs & Alerts) - Full Width -->
-          <div class="col-span-12 flex flex-col gap-5">
+          <!-- Activity Panel (Combined Recent Jobs & Alerts) -->
+          <div class="col-span-12 xl:col-span-8 flex flex-col gap-5">
             <div class="glass-panel rounded-xl p-5 flex flex-col h-[512px]">
               <h3 class="font-headline-sm text-headline-sm text-on-surface mb-3 flex items-center gap-2 select-none">
                 <span class="material-symbols-outlined text-surface-tint">update</span> Activity
@@ -807,6 +807,37 @@
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Agent Fleet summary (Aurora Pro) -->
+          <div class="col-span-12 xl:col-span-4 flex flex-col gap-5">
+            <div class="glass-panel rounded-xl p-5 flex flex-col h-[512px]">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface mb-3 flex items-center gap-2 select-none">
+                <span class="material-symbols-outlined text-surface-tint">smart_toy</span> Agent Fleet
+              </h3>
+              <div class="flex flex-col gap-2 flex-grow">
+                <div class="flex items-center gap-2.5 bg-black/20 rounded-lg px-3 py-2.5 border border-outline-variant/10">
+                  <div class="w-2 h-2 rounded-full flex-shrink-0" id="overview-fleet-scout-dot" style="background:#ff5252"></div>
+                  <span class="text-xs font-semibold text-on-surface flex-1 truncate">Scout — Gmail order intake</span>
+                  <span class="font-data-mono text-[10px] text-outline flex-shrink-0" id="overview-fleet-scout-text">Offline</span>
+                </div>
+                <div class="flex items-center gap-2.5 bg-black/20 rounded-lg px-3 py-2.5 border border-outline-variant/10">
+                  <div class="w-2 h-2 rounded-full flex-shrink-0" id="overview-fleet-foreman-dot" style="background:#ff5252"></div>
+                  <span class="text-xs font-semibold text-on-surface flex-1 truncate">Foreman — print scheduling</span>
+                  <span class="font-data-mono text-[10px] text-outline flex-shrink-0" id="overview-fleet-foreman-text">Offline</span>
+                </div>
+                <div class="flex items-center gap-2.5 bg-black/20 rounded-lg px-3 py-2.5 border border-outline-variant/10">
+                  <div class="w-2 h-2 rounded-full flex-shrink-0" id="overview-fleet-waybill-dot" style="background:#ff5252"></div>
+                  <span class="text-xs font-semibold text-on-surface flex-1 truncate">Waybill — logistics parsing</span>
+                  <span class="font-data-mono text-[10px] text-outline flex-shrink-0" id="overview-fleet-waybill-text">Offline</span>
+                </div>
+                <div class="flex items-center gap-2.5 bg-black/20 rounded-lg px-3 py-2.5 border border-outline-variant/10">
+                  <div class="w-2 h-2 rounded-full flex-shrink-0" id="overview-fleet-spsync-dot" style="background:#ff5252"></div>
+                  <span class="text-xs font-semibold text-on-surface flex-1 truncate">SP Telemetry — printer sync</span>
+                  <span class="font-data-mono text-[10px] text-outline flex-shrink-0" id="overview-fleet-spsync-text">Offline</span>
+                </div>
               </div>
             </div>
           </div>
@@ -903,11 +934,22 @@
             </div>
           </div>
           
-          <!-- Orders List Scroll Container -->
-          <div class="rounded-lg border border-outline-variant/10 bg-black/10 h-[550px] overflow-auto relative" id="orders-list">
-            <div class="font-data-mono text-xs text-outline text-center py-12">
-              <span class="material-symbols-outlined animate-spin text-2xl mb-2 block">autorenew</span>
-              Fetching orders from database...
+          <!-- Orders Master-Detail: compact list (left) + persistent detail panel (right) -->
+          <div class="omd-split">
+            <div class="omd-list-panel">
+              <div class="omd-list-head" id="orders-list-head"></div>
+              <div class="omd-list-rows" id="orders-list">
+                <div class="font-data-mono text-xs text-outline text-center py-12">
+                  <span class="material-symbols-outlined animate-spin text-2xl mb-2 block">autorenew</span>
+                  Fetching orders from database...
+                </div>
+              </div>
+            </div>
+            <div class="omd-detail-panel" id="order-detail-panel">
+              <div class="omd-empty-state">
+                <span class="material-symbols-outlined">touch_app</span>
+                <p>Select an order to view details</p>
+              </div>
             </div>
           </div>
         </div>
@@ -1113,11 +1155,19 @@
             <button id="catalog-clear-filters-btn" class="hidden text-xs text-primary/70 hover:text-primary transition-colors font-label-caps uppercase tracking-wider">Clear Filters</button>
           </div>
           
-          <!-- Catalog scrollable list container -->
-          <div class="h-[600px] overflow-y-auto pr-1 bg-black/10 rounded-xl border border-outline-variant/10 p-4" id="catalog-container">
-            <div class="flex flex-col gap-3.5" id="catalog-tbody">
-              <!-- Dynamically populated variant cards -->
-              <div class="col-span-full text-center text-outline py-12">Loading catalog items...</div>
+          <!-- Products Master-Detail: compact list (left) + persistent detail panel (right) -->
+          <div class="omd-split">
+            <div class="omd-list-panel">
+              <div class="omd-list-head" id="catalog-list-head"></div>
+              <div class="omd-list-rows" id="catalog-tbody">
+                <div class="text-center text-outline py-12">Loading catalog items...</div>
+              </div>
+            </div>
+            <div class="omd-detail-panel" id="product-detail-panel">
+              <div class="omd-empty-state">
+                <span class="material-symbols-outlined">touch_app</span>
+                <p>Select a product to view details</p>
+              </div>
             </div>
           </div>
         </div>
@@ -1530,6 +1580,45 @@
               <button class="px-3 py-2 bg-error/15 hover:bg-error/25 text-error border border-error/40 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-[0_0_12px_rgba(255,82,82,0.15)] animate-pulse" id="printers-btn-estop-all">
                 <span class="material-symbols-outlined text-sm font-bold">emergency_home</span> E-STOP ALL
               </button>
+            </div>
+          </div>
+
+          <!-- Condensed health strip (Aurora Pro): at-a-glance service + agents + quota -->
+          <div class="ops-health-strip">
+            <div class="ops-health-panel">
+              <div class="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+                <span class="material-symbols-outlined text-primary text-xl select-none">dns</span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs font-bold text-on-surface">Orbot Service</div>
+                <div class="text-[10px] font-data-mono text-outline mt-0.5" id="ops-strip-hb-orbot_service-time">Railway daemon</div>
+              </div>
+              <div class="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-full border border-outline-variant/15 flex-shrink-0">
+                <div class="status-light-offline" id="ops-strip-hb-orbot_service-dot"></div>
+                <span class="font-data-mono font-bold text-[10px] uppercase" id="ops-strip-hb-orbot_service-text">Offline</span>
+              </div>
+            </div>
+            <div class="ops-health-panel">
+              <div class="ops-agent-pills">
+                <div class="ops-apill off" id="ops-pill-scout"><div class="ad" id="ops-pill-scout-dot"></div><div class="an">SCOUT</div></div>
+                <div class="ops-apill off" id="ops-pill-foreman"><div class="ad" id="ops-pill-foreman-dot"></div><div class="an">FOREMAN</div></div>
+                <div class="ops-apill off" id="ops-pill-waybill"><div class="ad" id="ops-pill-waybill-dot"></div><div class="an">WAYBILL</div></div>
+                <div class="ops-apill off" id="ops-pill-spsync"><div class="ad" id="ops-pill-spsync-dot"></div><div class="an">SP SYNC</div></div>
+              </div>
+            </div>
+            <div class="ops-health-panel">
+              <div class="ops-gem">
+                <div class="grow">
+                  <span class="glabel">Gemini Req</span>
+                  <div class="gbar"><i id="ops-gemini-requests-bar" style="width:0%; background:var(--primary-color);"></i></div>
+                  <span class="gval" id="ops-gemini-requests-count">0 / 1,500</span>
+                </div>
+                <div class="grow">
+                  <span class="glabel">Tokens</span>
+                  <div class="gbar"><i id="ops-gemini-tokens-bar" style="width:0%; background:#22d3ee;"></i></div>
+                  <span class="gval" id="ops-gemini-tokens-count">0 / 1M</span>
+                </div>
+              </div>
             </div>
           </div>
 

@@ -14,6 +14,8 @@ let ordersDateSortDirection = "desc"; // "desc" or "asc"
 let waybillsDateSortDirection = "desc"; // "desc" or "asc"
 let catalogSortOrder = "asc"; // "asc" or "desc"
 let cachedOrders = [];
+let selectedOrderId = null; // Master-detail: which order's detail panel is showing
+let selectedProductId = null; // Master-detail: which product's detail panel is showing
 let cachedVariants = [];
 let cachedProducts = [];
 let cachedFilteredWaybills = [];
@@ -262,7 +264,7 @@ function onShopChange() {
   fetchAndRenderOrders();
   if (currentTab === "orders") fetchAndRenderWaybillsArchive();
   if (currentTab === "products") {
-    renderCatalogFromCache();
+    fetchAndRenderCatalog();
     renderListingsFromCache();
   }
   if (currentTab === "overview") {
@@ -404,6 +406,18 @@ async function fetchAndRenderGeminiUsage() {
       tokBarEl.style.width = `${pct}%`;
     }
 
+    // Condensed health-strip mini-gauges (Operations page) — same numbers, compact form.
+    const reqPct = Math.min((totalRequests / 1500) * 100, 100);
+    const tokPct = Math.min((totalTokens / 1000000) * 100, 100);
+    const stripReqCount = document.getElementById("ops-gemini-requests-count");
+    const stripReqBar = document.getElementById("ops-gemini-requests-bar");
+    const stripTokCount = document.getElementById("ops-gemini-tokens-count");
+    const stripTokBar = document.getElementById("ops-gemini-tokens-bar");
+    if (stripReqCount) stripReqCount.innerText = `${totalRequests.toLocaleString()} / 1,500`;
+    if (stripReqBar) stripReqBar.style.width = `${reqPct}%`;
+    if (stripTokCount) stripTokCount.innerText = `${(totalTokens / 1000).toFixed(0)}K / 1M`;
+    if (stripTokBar) stripTokBar.style.width = `${tokPct}%`;
+
     if (costEl) costEl.innerText = `$${estCost.toFixed(4)}`;
     if (inputEl) inputEl.innerText = totalPromptTokens.toLocaleString();
     if (outputEl) outputEl.innerText = totalCompletionTokens.toLocaleString();
@@ -514,7 +528,7 @@ async function fetchAndRenderOrders(forceFetch = true) {
     });
 
     if (listContainer) {
-      renderOrdersTableToContainer(listContainer, "", filtered);
+      renderOrdersMasterDetail(filtered);
     }
     if (overviewContainer) {
       const pendingOrders = cachedOrders.filter(o => (o.overall_order_status || "").toLowerCase() !== "completed");
@@ -923,6 +937,343 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
     sortHeader.addEventListener("click", () => {
       ordersDateSortDirection = ordersDateSortDirection === "asc" ? "desc" : "asc";
       fetchAndRenderOrders(false);
+    });
+  }
+}
+
+// ==========================================================================
+// Orders Master-Detail (Aurora Pro): compact list + persistent detail panel
+// ==========================================================================
+
+function renderOrdersMasterDetail(filtered) {
+  const headEl = document.getElementById("orders-list-head");
+  const rowsEl = document.getElementById("orders-list");
+  const panel = document.getElementById("order-detail-panel");
+  if (!headEl || !rowsEl || !panel) return;
+
+  headEl.className = "omd-list-head omd-orders-cols";
+  headEl.innerHTML = `<span>Order</span><span>Customer</span><span>Items</span><span>Subtotal</span><span>Status</span><span>Waybill</span>`;
+
+  if (filtered.length === 0) {
+    rowsEl.innerHTML = emptyDiv("No matching orders found.", "receipt_long");
+    panel.innerHTML = `<div class="omd-empty-state"><span class="material-symbols-outlined">touch_app</span><p>Select an order to view details</p></div>`;
+    selectedOrderId = null;
+    return;
+  }
+
+  rowsEl.innerHTML = filtered.map(order => {
+    const statusLower = (order.overall_order_status || "").toLowerCase();
+    let statusClass = "completed";
+    if (statusLower === "printing") statusClass = "printing";
+    else if (statusLower === "printed") statusClass = "printed";
+    else if (statusLower === "pending") statusClass = "pending";
+    else if (statusLower === "hold" || statusLower === "on hold") statusClass = "hold";
+
+    const waybillStatusLower = (order.waybill_processing_status || "pending").toLowerCase();
+    let waybillStatusClass = "pending";
+    if (waybillStatusLower === "ready" || waybillStatusLower === "ready to print" || waybillStatusLower === "compiled") waybillStatusClass = "completed";
+    else if (waybillStatusLower === "printed") waybillStatusClass = "printing";
+    else if (waybillStatusLower === "on hold" || waybillStatusLower === "hold" || waybillStatusLower === "failed") waybillStatusClass = "hold";
+    let waybillStatusDisplay = order.waybill_processing_status || "pending";
+    if (waybillStatusDisplay.toLowerCase() === "ready to print") waybillStatusDisplay = "ready";
+
+    const itemsList = order.order_items || [];
+    let itemsHtml = itemsList.map(item =>
+      `<span class="omd-item-chip">${escapeHtml(item.variant_sku || "")}${item.purchased_quantity > 1 ? ` ×${item.purchased_quantity}` : ""}</span>`
+    ).join("");
+    if (!itemsHtml) itemsHtml = `<span class="omd-item-chip" style="opacity:.5;">No items</span>`;
+
+    const platformLower = (order.sales_platform || "").toLowerCase();
+    let platformBadgeClass = "bg-surface-container text-on-surface-variant/80";
+    if (platformLower.includes("shopee")) platformBadgeClass = "bg-orange-500/15 text-orange-400";
+    else if (platformLower.includes("lazada")) platformBadgeClass = "bg-blue-600/15 text-blue-400";
+    else if (platformLower.includes("shopify")) platformBadgeClass = "bg-green-600/15 text-green-400";
+
+    const isSelected = order.id === selectedOrderId;
+
+    return `
+      <div class="omd-row omd-orders-cols${isSelected ? " selected" : ""}" data-order-id="${order.id}">
+        <div class="omd-oid-cell">
+          <div class="omd-oid-num truncate" title="${escapeHtml(order.platform_order_id)}">${escapeHtml(order.platform_order_id)}</div>
+          <span class="omd-plat ${platformBadgeClass}">${escapeHtml(order.sales_platform || "")}</span>
+        </div>
+        <div class="text-xs font-medium text-on-surface truncate">${escapeHtml(order.customer_name) || "N/A"}</div>
+        <div class="omd-items-cell">${itemsHtml}</div>
+        <div class="omd-subtotal-cell">${order.order_subtotal} ${order.order_currency}</div>
+        <div><span class="badge ${statusClass}" style="font-size:9.5px; padding:3px 9px;">${escapeHtml(order.overall_order_status || "pending")}</span></div>
+        <div><span class="badge ${waybillStatusClass}" style="font-size:9.5px; padding:3px 9px;">${escapeHtml(waybillStatusDisplay)}</span></div>
+      </div>
+    `;
+  }).join("");
+
+  rowsEl.querySelectorAll(".omd-row").forEach(row => {
+    row.addEventListener("click", () => {
+      selectOrderForDetail(row.getAttribute("data-order-id"), filtered);
+    });
+  });
+
+  // Restore selection if it still exists in the filtered set, else default to the first row
+  const stillExists = filtered.some(o => o.id === selectedOrderId);
+  selectOrderForDetail(stillExists ? selectedOrderId : filtered[0].id, filtered);
+}
+
+function selectOrderForDetail(orderId, filtered) {
+  selectedOrderId = orderId;
+  const order = (filtered || cachedOrders).find(o => o.id === orderId);
+  const panel = document.getElementById("order-detail-panel");
+  if (!panel) return;
+
+  if (!order) {
+    panel.innerHTML = `<div class="omd-empty-state"><span class="material-symbols-outlined">touch_app</span><p>Select an order to view details</p></div>`;
+    return;
+  }
+
+  panel.innerHTML = buildOrderDetailPanel(order);
+  bindOrderDetailPanelEvents();
+
+  document.querySelectorAll("#orders-list .omd-row").forEach(r => {
+    r.classList.toggle("selected", r.getAttribute("data-order-id") === orderId);
+  });
+}
+
+function buildOrderDetailPanel(order) {
+  const orderDateVal = order.order_timestamp || order.created_at;
+  const dateStr = orderDateVal ? new Date(orderDateVal).toLocaleString() : "N/A";
+
+  const platformLower = (order.sales_platform || "").toLowerCase();
+  let platformBadgeClass = "bg-surface-container text-on-surface-variant/80";
+  if (platformLower.includes("shopee")) platformBadgeClass = "bg-orange-500/15 text-orange-400";
+  else if (platformLower.includes("lazada")) platformBadgeClass = "bg-blue-600/15 text-blue-400";
+  else if (platformLower.includes("shopify")) platformBadgeClass = "bg-green-600/15 text-green-400";
+
+  const itemsList = order.order_items || [];
+  let itemsHtml;
+  if (itemsList.length === 0) {
+    itemsHtml = `<div class="font-data-mono text-xs text-outline py-2 text-center">No items found in this order.</div>`;
+  } else {
+    itemsHtml = itemsList.map(item => {
+      const dispatchedStr = item.sent_to_print_timestamp ? new Date(item.sent_to_print_timestamp).toLocaleString() : "Not dispatched";
+      const stickerUrl = item.variants?.seal_sticker_gdrive_url || "";
+      const stickerBtn = stickerUrl
+        ? `<a href="${stickerUrl}" target="_blank" rel="noopener" class="omd-tag-btn"><span class="material-symbols-outlined">label</span>Sticker</a>`
+        : `<span class="omd-tag-btn off"><span class="material-symbols-outlined">label_off</span>Sticker</span>`;
+
+      const jobs = item.print_jobs || [];
+      const jobsHtml = jobs.length > 0 ? jobs.map(j => {
+        let badgeClass = "pending";
+        if (j.job_execution_status === "printing") badgeClass = "printing";
+        else if (j.job_execution_status === "completed") badgeClass = "completed";
+        else if (j.job_execution_status === "failed") badgeClass = "hold";
+
+        const etaText = j.job_execution_status !== "completed" && j.estimated_finish_time ? formatEta(j.estimated_finish_time) : "";
+        const spFileId = j.print_files?.simplyprint_file_id || "";
+        const safeFileName = (j.print_file_name || "").replace(/'/g, "\\'");
+        const safeJobId = j.id || "";
+        const redispatchBtn = j.print_file_name
+          ? `<button onclick="redispatchPrintFile('${spFileId}','${safeFileName}','${safeJobId}',this)" class="omd-tag-btn"><span class="material-symbols-outlined">refresh</span>Re-dispatch</button>`
+          : "";
+        const progressHtml = j.job_execution_status === "printing"
+          ? `<div class="omd-job-bar"><i style="width:${j.percent_complete || 0}%"></i></div>`
+          : "";
+
+        return `
+          <div class="omd-job-card">
+            <div class="omd-row-between">
+              <span class="font-data-mono text-[10px] text-on-surface-variant/80 truncate" title="${escapeHtml(j.print_file_name || "")}">
+                <span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px;color:var(--accent-blue);">code</span> ${escapeHtml(j.print_file_name || "")}
+              </span>
+              <span class="badge ${badgeClass}" style="font-size:9px; padding:2px 8px; flex-shrink:0;">${j.job_execution_status}</span>
+            </div>
+            ${progressHtml}
+            <div class="omd-row-between" style="margin-top:6px;">
+              <span class="font-data-mono text-[9.5px] text-outline">${j.printer_name || (etaText ? `ETA ${etaText}` : "")}</span>
+              ${redispatchBtn}
+            </div>
+          </div>
+        `;
+      }).join("") : `<div class="text-[10px] text-outline font-data-mono mt-1">No print jobs dispatched yet.</div>`;
+
+      return `
+        <div class="omd-item-card">
+          <div class="omd-row-between">
+            <span class="omd-isku">${escapeHtml(item.variant_sku || "UNKNOWN")}</span>
+            <span class="badge ${item.item_print_status?.toLowerCase() === "printing" ? "printing" : (item.item_print_status?.toLowerCase() === "pending" ? "pending" : "completed")}" style="font-size:9px; padding:2px 8px;">${item.item_print_status}</span>
+          </div>
+          <div class="text-xs font-medium text-on-surface">${escapeHtml(item.variant_name || "Generic Item")} · Qty ${item.purchased_quantity}</div>
+          <div class="text-[10px] text-outline font-data-mono">Dispatched: ${dispatchedStr}</div>
+          ${jobsHtml}
+          <div style="display:flex; gap:6px; margin-top:2px;">${stickerBtn}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  // Waybill section — uses the real orders.raw_waybill_gdrive_url / processed_waybill_gdrive_url
+  // columns (already fetched via the `orders.*` select), not fabricated data.
+  const waybillStatusLower = (order.waybill_processing_status || "pending").toLowerCase();
+  let waybillStatusClass = "pending";
+  if (waybillStatusLower === "ready" || waybillStatusLower === "ready to print" || waybillStatusLower === "compiled") waybillStatusClass = "completed";
+  else if (waybillStatusLower === "printed") waybillStatusClass = "printing";
+  else if (waybillStatusLower === "on hold" || waybillStatusLower === "hold" || waybillStatusLower === "failed") waybillStatusClass = "hold";
+  let waybillStatusDisplay = order.waybill_processing_status || "pending";
+  if (waybillStatusDisplay.toLowerCase() === "ready to print") waybillStatusDisplay = "ready";
+
+  const rawPdfBtn = order.raw_waybill_gdrive_url
+    ? `<a href="${order.raw_waybill_gdrive_url}" target="_blank" rel="noopener" class="omd-tag-btn"><span class="material-symbols-outlined">description</span>Raw PDF</a>`
+    : `<span class="omd-tag-btn off"><span class="material-symbols-outlined">block</span>Raw PDF</span>`;
+  const processedPdfBtn = order.processed_waybill_gdrive_url
+    ? `<a href="${order.processed_waybill_gdrive_url}" target="_blank" rel="noopener" class="omd-tag-btn"><span class="material-symbols-outlined">description</span>Processed</a>`
+    : `<span class="omd-tag-btn off"><span class="material-symbols-outlined">block</span>Processed — n/a</span>`;
+
+  // Timeline — derived entirely from real fields (created_at / order_timestamp,
+  // order_items.sent_to_print_timestamp, waybill_processing_status). No fabricated data
+  // (the orders table has no shipping-address columns, so that mockup section is dropped).
+  const earliestDispatch = itemsList
+    .map(i => i.sent_to_print_timestamp)
+    .filter(Boolean)
+    .sort()[0];
+  const tlSteps = [{ done: true, label: `Order received via ${escapeHtml(order.sales_platform || "platform")}`, ts: dateStr }];
+  if (earliestDispatch) {
+    tlSteps.push({ done: true, label: "Sent to print", ts: new Date(earliestDispatch).toLocaleString() });
+  } else {
+    tlSteps.push({ pending: true, label: "Awaiting print dispatch", ts: "—" });
+  }
+  if (waybillStatusClass === "completed") {
+    tlSteps.push({ done: true, label: `Waybill ${waybillStatusDisplay}`, ts: "" });
+  } else if (waybillStatusClass === "hold") {
+    tlSteps.push({ active: true, label: `Waybill ${waybillStatusDisplay} — needs attention`, ts: "" });
+  } else {
+    tlSteps.push({ pending: true, label: "Awaiting waybill compile", ts: "—" });
+  }
+  const tlHtml = tlSteps.map(s => `
+    <div class="omd-tl-row">
+      <div class="omd-tl-dot ${s.done ? "done" : s.active ? "active" : "pending"}"></div>
+      <div class="omd-tl-body">
+        <span class="omd-tl-t"${s.pending ? ' style="color:var(--text-muted);"' : ""}>${s.label}</span>
+        <span class="omd-tl-ts">${s.ts}</span>
+      </div>
+    </div>
+  `).join("");
+
+  const statusLower = (order.overall_order_status || "").toLowerCase();
+  const statusSelectClass = statusLower === "on hold" ? "hold" : (statusLower || "pending");
+
+  return `
+    <div class="omd-dp-head">
+      <div>
+        <div class="omd-oid">${escapeHtml(order.platform_order_id)}</div>
+        <div class="omd-meta">
+          <span class="px-2 py-0.5 rounded text-[9px] uppercase font-bold tracking-wide ${platformBadgeClass}">${escapeHtml(order.sales_platform || "")}</span>
+          <span class="sep">·</span><span>${dateStr}</span>
+          <span class="sep">·</span><span>${escapeHtml(order.customer_name) || "N/A"}</span>
+        </div>
+      </div>
+      <button class="delete-order-btn p-1.5 rounded hover:bg-error/20 border border-transparent hover:border-error/30 text-error transition-transform flex items-center justify-center cursor-pointer flex-shrink-0" data-order-id="${order.id}" data-platform-order-id="${escapeHtml(order.platform_order_id)}" title="Delete Order">
+        <span class="material-symbols-outlined text-[16px]">delete</span>
+      </button>
+    </div>
+
+    <div>
+      <div class="omd-section-title"><span class="material-symbols-outlined">inventory_2</span>Items (${itemsList.length})</div>
+      ${itemsHtml}
+    </div>
+
+    <div>
+      <div class="omd-section-title"><span class="material-symbols-outlined">local_shipping</span>Waybill</div>
+      <div class="omd-item-card" style="flex-direction:row; align-items:center; justify-content:space-between; margin-bottom:0;">
+        <span class="badge ${waybillStatusClass}" style="font-size:9.5px; padding:3px 9px;">${escapeHtml(waybillStatusDisplay)}</span>
+        <div style="display:flex; gap:6px;">${rawPdfBtn}${processedPdfBtn}</div>
+      </div>
+    </div>
+
+    <div style="flex:1; min-height:0;">
+      <div class="omd-section-title"><span class="material-symbols-outlined">history</span>Order Timeline</div>
+      ${tlHtml}
+    </div>
+
+    <div class="omd-dp-footer">
+      <div class="omd-section-title" style="margin-bottom:2px;">Update Status</div>
+      <select class="badge ${statusSelectClass} overall-status-select" data-order-id="${order.id}" style="width:100%; text-align:center; text-transform:capitalize; padding:8px;">
+        <option value="pending" ${statusLower === "pending" ? "selected" : ""}>Pending</option>
+        <option value="printing" ${statusLower === "printing" ? "selected" : ""}>Printing</option>
+        <option value="printed" ${statusLower === "printed" ? "selected" : ""}>Printed</option>
+        <option value="completed" ${statusLower === "completed" ? "selected" : ""}>Completed</option>
+        <option value="hold" ${statusLower === "hold" || statusLower === "on hold" ? "selected" : ""}>Hold</option>
+      </select>
+    </div>
+  `;
+}
+
+function bindOrderDetailPanelEvents() {
+  const panel = document.getElementById("order-detail-panel");
+  if (!panel) return;
+
+  const select = panel.querySelector(".overall-status-select");
+  if (select) {
+    select.addEventListener("change", async (e) => {
+      const orderId = select.getAttribute("data-order-id");
+      const newStatus = e.target.value;
+      try {
+        select.disabled = true;
+        const { error } = await supabaseClient
+          .from("orders")
+          .update({ overall_order_status: newStatus })
+          .eq("id", orderId);
+        if (error) throw error;
+        logAction(`Order status changed: ${orderId} → ${newStatus}`, "info", { order_id: orderId, new_status: newStatus });
+        fetchSummaryStats();
+        fetchAndRenderOrders();
+      } catch (err) {
+        showToast("Error updating order status: " + err.message, "error");
+        fetchAndRenderOrders();
+      } finally {
+        select.disabled = false;
+      }
+    });
+  }
+
+  const deleteBtn = panel.querySelector(".delete-order-btn");
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", async () => {
+      const orderId = deleteBtn.getAttribute("data-order-id");
+      const platformOrderId = deleteBtn.getAttribute("data-platform-order-id");
+
+      const confirmed = await showConfirmModal(
+        "Delete Order",
+        `Are you sure you want to delete order ${platformOrderId}? This will cancel any associated SimplyPrint jobs and remove the order from the database.`,
+        "Delete"
+      );
+      if (!confirmed) return;
+
+      deleteBtn.disabled = true;
+      try {
+        const { data: items, error: itemsErr } = await supabaseClient
+          .from("order_items").select("id").eq("order_id", orderId);
+        if (itemsErr) throw itemsErr;
+
+        if (items && items.length > 0) {
+          const itemIds = items.map(i => i.id);
+          const { error: pjErr } = await supabaseClient
+            .from("print_jobs").delete().in("order_item_id", itemIds);
+          if (pjErr) throw pjErr;
+        }
+
+        const { error: oiErr } = await supabaseClient
+          .from("order_items").delete().eq("order_id", orderId);
+        if (oiErr) throw oiErr;
+
+        const { error: oErr } = await supabaseClient
+          .from("orders").delete().eq("id", orderId);
+        if (oErr) throw oErr;
+
+        logAction(`Order deleted: ${platformOrderId}`, "warning", { order_id: orderId, platform_order_id: platformOrderId });
+        selectedOrderId = null;
+        fetchSummaryStats();
+        fetchAndRenderOrders();
+      } catch (err) {
+        showToast("Error deleting order: " + err.message, "error");
+        deleteBtn.disabled = false;
+      }
     });
   }
 }
@@ -1462,128 +1813,261 @@ async function fetchAndRenderCatalog() {
 
     if (productsList.length === 0) {
       tbody.innerHTML = emptyDiv("No catalog items found matching filters.", "inventory_2");
+      const detailPanel = document.getElementById("product-detail-panel");
+      if (detailPanel) detailPanel.innerHTML = `<div class="omd-empty-state"><span class="material-symbols-outlined">touch_app</span><p>Select a product to view details</p></div>`;
+      selectedProductId = null;
       return;
     }
 
-    tbody.innerHTML = productsList.map(p => {
-      // Calculate totals across variations
-      let totalWeight = 0;
-      let totalTime = 0;
-      let totalSlices = 0;
-      p.variations.forEach(v => {
-        if (v.print_files) {
-          totalWeight += v.print_files.reduce((sum, f) => sum + (f.weight_g || 0), 0);
-          totalTime += v.print_files.reduce((sum, f) => sum + (f.print_time_m || 0), 0);
-          totalSlices += v.print_files.length;
-        }
-      });
+    renderProductsMasterDetail(productsList);
 
-      let totalsText = "";
-      if (totalSlices > 0) {
-        totalsText = `<span class="text-[10px] font-semibold text-outline tracking-wider uppercase">${totalWeight}G | ${totalTime}M (${totalSlices} Slices)</span>`;
-      } else {
-        totalsText = `<span class="text-[10px] text-on-surface-variant/30 italic">No files mapped</span>`;
-      }
+  } catch (err) {
+    if (tbody) tbody.innerHTML = emptyDiv(`Error loading catalog: ${err.message}`, "error");
+  }
+}
 
-      const variationsHtml = p.variations.map(v => {
-        const filesHtml = v.print_files && v.print_files.length > 0
-          ? `
-            <div class="flex flex-wrap gap-1.5 mt-1.5">
-              ${v.print_files.map(f => `
-                <div class="font-data-mono text-[10px] flex items-center gap-2 bg-black/20 hover:bg-black/35 px-2.5 py-1 rounded border border-outline-variant/10 hover:border-outline-variant/25 transition-all duration-200 min-w-0">
-                  <span class="material-symbols-outlined text-[12px] text-surface-tint/70 select-none">description</span>
-                  <span class="text-on-surface-variant truncate font-medium max-w-[120px] sm:max-w-[180px] select-all" title="${f.print_file_name}">${f.print_file_name}</span>
-                  <span class="text-on-surface-variant/40 text-[9px] font-semibold flex-shrink-0 tracking-wider border-l border-outline-variant/10 pl-2 ml-1">${f.weight_g}G | ${f.print_time_m}M</span>
-                  ${f.simplyprint_file_id ? `<button class="btn-send-file-print flex-shrink-0 flex items-center justify-center w-5 h-5 rounded hover:bg-primary/20 text-primary/60 hover:text-primary transition-all active:scale-90" data-sp-file-id="${f.simplyprint_file_id}" data-file-name="${f.print_file_name}" title="Send to print queue" type="button"><span class="material-symbols-outlined text-[12px] pointer-events-none">print</span></button>` : ''}
-                </div>
-              `).join("")}
-            </div>
-          `
-          : `<div class="text-on-surface-variant/30 font-data-mono text-[10px] mt-1.5 italic">No print slices mapped.</div>`;
+// ==========================================================================
+// Products Master-Detail (Aurora Pro): compact list + persistent detail
+// panel, with a Catalog <-> Listings cross-link (variation mapping table,
+// platform coverage) built from cachedListings.
+// ==========================================================================
 
-        let typeBadgeClass = "bg-primary/5 text-primary border-primary/20";
-        if (v.variant_type === "WM") {
-          typeBadgeClass = "bg-[#bc13fe]/5 text-[#ebb2ff] border-[#bc13fe]/20";
-        } else if (v.variant_type === "BASE") {
-          typeBadgeClass = "bg-amber-500/5 text-amber-400 border-amber-500/20";
-        } else if (v.variant_type === "DS-NP") {
-          typeBadgeClass = "bg-emerald-500/5 text-emerald-400 border-emerald-500/20";
-        }
+// Find the listing tied to a product, if any. A product can technically have
+// more than one listing row (no unique constraint), but in practice it's 1:1;
+// we surface the first match, matching how the data is actually used today.
+function findListingForProduct(productId) {
+  return cachedListings.find(l => l.products?.id === productId) || null;
+}
 
-        return `
-          <div class="flex flex-col md:flex-row justify-between items-start md:items-center p-3 rounded-lg bg-surface-container-low/40 border border-outline-variant/10 gap-3">
-            <div class="flex-grow min-w-0 w-full md:w-auto">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="badge text-[9px] font-bold py-0.5 px-2.5 rounded-full border ${typeBadgeClass} uppercase select-none flex-shrink-0">${v.variant_type}</span>
-                <span class="font-data-mono text-xs font-semibold tracking-wider text-[#ebb2ff] break-all select-all">${v.variant_sku}</span>
-                <span class="text-sm font-medium text-on-surface truncate ml-2" title="${v.variant_name}">${v.variant_name}</span>
-              </div>
-              ${filesHtml}
-            </div>
-            <div class="flex-shrink-0 flex items-center gap-2 self-stretch md:self-auto justify-end border-t md:border-t-0 border-outline-variant/5 pt-2 md:pt-0">
-              ${v.seal_sticker_gdrive_url ? `<button class="btn-seal-sticker flex items-center gap-1 text-[10px] font-label-caps text-on-surface-variant/60 hover:text-amber-400 transition-colors active:scale-95 uppercase tracking-wider select-none" data-url="${v.seal_sticker_gdrive_url}" data-sku="${v.variant_sku}" title="Download seal sticker" type="button"><span class="material-symbols-outlined text-[13px] pointer-events-none">label</span>Seal</button>` : ''}
-              <span class="text-[10px] font-label-caps text-on-surface-variant/60 uppercase tracking-wider select-none">Stock:</span>
-              <div class="flex items-center bg-black/30 border border-outline-variant/20 rounded-lg p-0.5 overflow-hidden">
-                <button class="w-6 h-6 flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-white/10 rounded transition-all active:scale-95 btn-stock-dec" data-variant-id="${v.id}" type="button">-</button>
-                <input type="number" min="0" value="${v.stock_quantity || 0}" class="w-10 bg-transparent text-center text-xs font-bold text-on-surface border-0 p-0 outline-none select-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none input-stock-qty" data-variant-id="${v.id}">
-                <button class="w-6 h-6 flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-white/10 rounded transition-all active:scale-95 btn-stock-inc" data-variant-id="${v.id}" type="button">+</button>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join("");
+function renderProductsMasterDetail(productsList) {
+  const headEl = document.getElementById("catalog-list-head");
+  const rowsEl = document.getElementById("catalog-tbody");
+  const panel = document.getElementById("product-detail-panel");
+  if (!headEl || !rowsEl || !panel) return;
 
+  headEl.className = "omd-list-head omd-products-cols";
+  headEl.innerHTML = `<span>Product</span><span>Brand / Category</span><span>Variants</span><span>Platforms</span><span>Price</span><span></span>`;
+
+  rowsEl.innerHTML = productsList.map(p => {
+    const listing = findListingForProduct(p.id);
+    const platformCount = listing ? LISTING_PLATFORMS.filter(pl => !!listing[pl.key]).length : 0;
+    const dotsHtml = LISTING_PLATFORMS.map(pl =>
+      `<div class="omd-pdot" style="${listing && listing[pl.key] ? `background:${pl.color}` : ""}" title="${pl.label}${listing && listing[pl.key] ? "" : ": not listed"}"></div>`
+    ).join("");
+    const priceText = listing && listing.price_myr != null ? `RM ${Number(listing.price_myr).toFixed(2)}` : "—";
+    const hasUnmapped = listing && (listing.listing_variations || []).some(lv => !lv.variant_id);
+    const issueIcon = (hasUnmapped || !listing)
+      ? `<span class="material-symbols-outlined" title="${!listing ? "Not listed on any platform" : "Has unmapped listing variations"}">warning</span>`
+      : "";
+
+    const isSelected = p.id === selectedProductId;
+
+    return `
+      <div class="omd-row omd-products-cols${isSelected ? " selected" : ""}" data-product-id="${p.id}">
+        <div>
+          <span class="omd-msku">${escapeHtml(p.master_sku)}</span>
+          <div class="omd-pname truncate" title="${escapeHtml(p.product_base_name)}">${escapeHtml(p.product_base_name)}</div>
+        </div>
+        <div class="omd-cat-cell"><b>${escapeHtml(p.brand_name)}</b><br>${escapeHtml(p.product_category)}</div>
+        <div class="text-[10.5px] font-data-mono text-on-surface-variant/70">${p.variations.length} var${p.variations.length !== 1 ? "s" : ""}</div>
+        <div class="omd-plat-dots"><div class="omd-plat-dots-row">${dotsHtml}</div><span class="omd-cov-label">${platformCount}/5</span></div>
+        <div class="omd-subtotal-cell">${priceText}</div>
+        <div class="omd-issue-cell">${issueIcon}</div>
+      </div>
+    `;
+  }).join("");
+
+  rowsEl.querySelectorAll(".omd-row").forEach(row => {
+    row.addEventListener("click", () => {
+      selectProductForDetail(row.getAttribute("data-product-id"), productsList);
+    });
+  });
+
+  const stillExists = productsList.some(p => p.id === selectedProductId);
+  selectProductForDetail(stillExists ? selectedProductId : productsList[0].id, productsList);
+}
+
+function selectProductForDetail(productId, productsList) {
+  selectedProductId = productId;
+  const product = (productsList || []).find(p => p.id === productId);
+  const panel = document.getElementById("product-detail-panel");
+  if (!panel) return;
+
+  if (!product) {
+    panel.innerHTML = `<div class="omd-empty-state"><span class="material-symbols-outlined">touch_app</span><p>Select a product to view details</p></div>`;
+    return;
+  }
+
+  panel.innerHTML = buildProductDetailPanel(product);
+  bindProductDetailPanelEvents(product);
+
+  document.querySelectorAll("#catalog-tbody .omd-row").forEach(r => {
+    r.classList.toggle("selected", r.getAttribute("data-product-id") === productId);
+  });
+}
+
+function buildProductDetailPanel(product) {
+  const listing = findListingForProduct(product.id);
+
+  const variantsHtml = product.variations.map(v => {
+    let typeClass = "omd-vtype-other";
+    if (v.variant_type === "DS") typeClass = "omd-vtype-ds";
+    else if (v.variant_type === "WM") typeClass = "omd-vtype-wm";
+    else if (v.variant_type === "FWM") typeClass = "omd-vtype-fwm";
+
+    const totalWeight = (v.print_files || []).reduce((sum, f) => sum + (f.weight_g || 0), 0);
+    const totalTime = (v.print_files || []).reduce((sum, f) => sum + (f.print_time_m || 0), 0);
+    const fileText = (v.print_files || []).length > 0 ? `${totalWeight}g · ${totalTime}m` : "no files";
+    const isLow = (v.stock_quantity || 0) <= 5;
+
+    return `
+      <div class="omd-variant-row">
+        <span class="omd-vtype ${typeClass}">${escapeHtml(v.variant_type || "")}</span>
+        <span class="omd-vsku">${escapeHtml(v.variant_sku)}</span>
+        <span class="omd-vname" title="${escapeHtml(v.variant_name)}">${escapeHtml(v.variant_name)}</span>
+        <span class="omd-vfile">${fileText}</span>
+        <div class="omd-stock-stepper${isLow ? " low" : ""}">
+          <div class="sb btn-stock-dec" data-variant-id="${v.id}">–</div>
+          <div class="sv">${v.stock_quantity || 0}</div>
+          <div class="sb btn-stock-inc" data-variant-id="${v.id}">+</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  let listingSectionHtml;
+  let mappingSectionHtml = "";
+  if (listing) {
+    const platformCount = LISTING_PLATFORMS.filter(pl => !!listing[pl.key]).length;
+    const platformCardsHtml = LISTING_PLATFORMS.map(pl => {
+      const val = listing[pl.key];
       return `
-        <div class="glass-panel border border-outline-variant/10 hover:border-[#bc13fe]/30 rounded-xl p-4 transition-all duration-300 group relative overflow-hidden flex flex-col gap-3 product-card glow-hover-purple" data-product-id="${p.id}">
-          <div class="absolute inset-0 bg-gradient-to-r from-secondary-container/0 via-secondary-container/[0.01] to-secondary-container/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
-
-          <!-- Product Card Header (clickable toggle) -->
-          <div class="product-card-header flex justify-between items-center cursor-pointer select-none relative z-10 w-full" data-product-id="${p.id}">
-            <div class="flex flex-col gap-1 min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-data-mono text-[10px] font-semibold tracking-wider text-[#ebb2ff] select-all bg-surface-container/40 px-2 py-0.5 rounded">${p.master_sku}</span>
-                <h4 class="text-sm font-semibold text-on-surface group-hover:text-surface-tint transition-colors duration-300 leading-snug truncate" title="${p.product_base_name}">${p.product_base_name}</h4>
-              </div>
-              <div class="flex items-center gap-1.5 text-[10px] font-medium text-on-surface-variant/50 uppercase tracking-wider mt-1">
-                <span class="material-symbols-outlined text-[12px] select-none">sell</span>
-                <span>${p.brand_name}</span>
-                <span class="text-outline/40">•</span>
-                <span>${p.product_category}</span>
-              </div>
-            </div>
-
-            <!-- Right column: totals & arrow -->
-            <div class="flex items-center gap-3">
-              <div class="hidden sm:flex flex-col items-end gap-0.5 text-right">
-                <span class="badge bg-[#bc13fe]/10 text-[#ebb2ff] text-[9px] font-bold py-0.5 px-2.5 rounded-full border border-[#bc13fe]/20 select-none">${p.variations.length} Variation${p.variations.length > 1 ? 's' : ''}</span>
-                <div class="flex items-center gap-1 mt-0.5">
-                  <span class="material-symbols-outlined text-[12px] text-on-surface-variant/40 select-none">layers</span>
-                  ${totalsText}
-                </div>
-              </div>
-              <button class="w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-white/10 rounded-full transition-all active:scale-95 btn-product-details cursor-pointer z-20" data-product-id="${p.id}" title="View Details" type="button">
-                <span class="material-symbols-outlined text-lg">info</span>
-              </button>
-              <span class="material-symbols-outlined text-outline text-lg transition-transform duration-250 toggle-icon">expand_more</span>
-            </div>
-          </div>
-
-          <!-- Variations Collapsible Container -->
-          <div class="variations-container hidden mt-2 border-t border-outline-variant/10 pt-3 flex flex-col gap-2 relative z-10">
-            <!-- Variation rows -->
-            ${variationsHtml}
-            <div class="flex justify-end pt-2 mt-1 border-t border-outline-variant/10">
-              <button class="btn-catalog-edit px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer" data-product-id="${p.id}" type="button">
-                <span class="material-symbols-outlined text-sm pointer-events-none">edit</span> Edit Product
-              </button>
-            </div>
-          </div>
+        <div class="omd-pcard${val ? "" : " off"}">
+          <div class="pcolor" style="background:${pl.color}"></div>
+          <span class="plabel">${pl.label}</span>
+          <span class="pval">${val ? escapeHtml(val) : "not listed"}</span>
         </div>
       `;
     }).join("");
 
-  } catch (err) {
-    if (tbody) tbody.innerHTML = emptyDiv(`Error loading catalog: ${err.message}`, "error");
+    listingSectionHtml = `
+      <div>
+        <div class="omd-section-title"><span class="material-symbols-outlined">storefront</span>Platform Listing</div>
+        <div class="omd-listing-summary">
+          <div class="omd-price-block">
+            <div class="pb"><span class="pl">MYR</span><span class="pv">${listing.price_myr != null ? Number(listing.price_myr).toFixed(2) : "—"}</span></div>
+            <div class="omd-price-div"></div>
+            <div class="pb"><span class="pl">SGD</span><span class="pv">${listing.price_sgd != null ? Number(listing.price_sgd).toFixed(2) : "—"}</span></div>
+          </div>
+          <span class="badge ${listing.is_active ? "completed" : "hold"}" style="margin-left:auto; font-size:9px; padding:3px 9px;">${listing.is_active ? "Active" : "Off"}</span>
+          <span class="omd-cov-label">${platformCount}/5 platforms</span>
+        </div>
+        <div class="omd-platform-grid">${platformCardsHtml}</div>
+      </div>
+    `;
+
+    const vars = listing.listing_variations || [];
+    if (vars.length > 0) {
+      const rowsHtml = vars.map(lv => {
+        const mapped = !!lv.variant_id;
+        const sku = lv.variants?.variant_sku || "— unlinked";
+        const vtype = lv.variants?.variant_type || "—";
+        return `
+          <tr class="${mapped ? "" : "unmapped"}">
+            <td>${mapped ? `<span class="material-symbols-outlined" style="font-size:13px; color:var(--success-color);">check_circle</span>` : `<span class="material-symbols-outlined" style="font-size:13px; color:var(--error-color);">error</span>`}</td>
+            <td>${escapeHtml(lv.platform_variation_name || "—")}</td>
+            <td class="omd-sku-cell">${escapeHtml(sku)}</td>
+            <td>${escapeHtml(vtype)}</td>
+          </tr>
+        `;
+      }).join("");
+      mappingSectionHtml = `
+        <div>
+          <div class="omd-section-title"><span class="material-symbols-outlined">link</span>Variation Mapping</div>
+          <table class="omd-map-table">
+            <thead><tr><th></th><th>Platform Variation</th><th>SKU</th><th>Type</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      `;
+    }
+  } else {
+    listingSectionHtml = `
+      <div>
+        <div class="omd-section-title"><span class="material-symbols-outlined">storefront</span>Platform Listing</div>
+        <div class="omd-item-card" style="align-items:center; text-align:center; color:var(--text-muted); font-size:11px;">
+          Not listed on any platform yet.
+          <button class="omd-tag-btn btn-add-listing-for-product" data-product-id="${product.id}" style="margin-top:6px;"><span class="material-symbols-outlined">add</span>Add Listing</button>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="omd-dp-head">
+      <div>
+        <span class="omd-msku">${escapeHtml(product.master_sku)}</span>
+        <div class="omd-pname">${escapeHtml(product.product_base_name)}</div>
+        <div class="omd-meta" style="margin-top:4px;">${escapeHtml(product.brand_name)} · ${escapeHtml(product.product_category)}</div>
+      </div>
+      <button class="btn-catalog-edit p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center cursor-pointer flex-shrink-0" data-product-id="${product.id}" title="Edit Product">
+        <span class="material-symbols-outlined text-[16px]">edit</span>
+      </button>
+    </div>
+
+    <div>
+      <div class="omd-section-title"><span class="material-symbols-outlined">inventory_2</span>Variants &amp; Stock (${product.variations.length})</div>
+      ${variantsHtml}
+    </div>
+
+    ${listingSectionHtml}
+    ${mappingSectionHtml}
+
+    <div class="omd-dp-footer">
+      <div class="omd-dp-footer-actions">
+        <div class="btn-secondary btn-product-details" data-product-id="${product.id}" style="cursor:pointer;"><span class="material-symbols-outlined text-sm">info</span>View Full Details</div>
+      </div>
+    </div>
+  `;
+}
+
+function bindProductDetailPanelEvents(product) {
+  const panel = document.getElementById("product-detail-panel");
+  if (!panel) return;
+
+  // Stock stepper buttons — reuse the existing updateStockInDb() helper
+  // (used elsewhere for the same field), just updating this panel's own
+  // DOM node in place afterward instead of a legacy .input-stock-qty field.
+  panel.querySelectorAll(".btn-stock-dec, .btn-stock-inc").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const variantId = btn.getAttribute("data-variant-id");
+      const variant = product.variations.find(v => v.id === variantId);
+      if (!variant) return;
+      const delta = btn.classList.contains("btn-stock-inc") ? 1 : -1;
+      const newQty = Math.max(0, (variant.stock_quantity || 0) + delta);
+      variant.stock_quantity = newQty;
+      const valEl = btn.parentElement.querySelector(".sv");
+      if (valEl) valEl.textContent = newQty;
+      try {
+        await updateStockInDb(variantId, newQty);
+      } catch (err) {
+        showToast("Error updating stock: " + err.message, "error");
+      }
+    });
+  });
+
+  const detailsBtn = panel.querySelector(".btn-product-details");
+  if (detailsBtn) detailsBtn.addEventListener("click", () => openCatalogDetailModal(product.id));
+
+  const editBtn = panel.querySelector(".btn-catalog-edit");
+  if (editBtn) editBtn.addEventListener("click", () => openCatalogEditModal(product.id));
+
+  const addListingBtn = panel.querySelector(".btn-add-listing-for-product");
+  if (addListingBtn) {
+    addListingBtn.addEventListener("click", () => {
+      const modal = document.getElementById("add-listing-modal");
+      if (modal) modal.classList.add("active");
+    });
   }
 }
 
@@ -1966,7 +2450,7 @@ async function fetchAgentHeartbeats() {
     // --- orbot_service (legacy + header elements) ---
     const svcHb = hbMap["orbot_service"];
     const svcOnline = isOnline(svcHb?.last_heartbeat, 120000);
-    const prefixes = ["", "waybill-", "overview-", "header-"];
+    const prefixes = ["", "waybill-", "overview-", "header-", "ops-strip-"];
     prefixes.forEach(prefix => {
       const dotEl = document.getElementById(`${prefix}hb-orbot_service-dot`);
       const textEl = document.getElementById(`${prefix}hb-orbot_service-text`);
@@ -1985,13 +2469,13 @@ async function fetchAgentHeartbeats() {
 
     // --- Agents page cards ---
     const agentConfigs = [
-      { name: "orbot_service", threshold: 120000, color: "#8b7cf6", dotId: "agents-hb-service-dot", textId: "agents-hb-service-text", timeId: "agents-hb-service-time" },
-      { name: "scout",         threshold: 600000, color: "#22d3ee", dotId: "agents-hb-scout-dot",   textId: "agents-hb-scout-text",   timeId: "agents-hb-scout-time" },
-      { name: "orbot_service", threshold: 120000, color: "#8b7cf6", dotId: "agents-hb-foreman-dot", textId: "agents-hb-foreman-text", timeId: "agents-hb-foreman-time" },
-      { name: "waybill_agent", threshold: 600000, color: "#ffaa6b", dotId: "agents-hb-waybill-dot",  textId: "agents-hb-waybill-text",  timeId: "agents-hb-waybill-time" },
-      { name: "orbot_service", threshold: 120000, color: "#7ea6e8", dotId: "agents-hb-spsync-dot",  textId: "agents-hb-spsync-text",  timeId: "agents-hb-spsync-time" },
+      { name: "orbot_service", threshold: 120000, color: "#8b7cf6", dotId: "agents-hb-service-dot", textId: "agents-hb-service-text", timeId: "agents-hb-service-time", pillId: null, fleetId: null },
+      { name: "scout",         threshold: 600000, color: "#22d3ee", dotId: "agents-hb-scout-dot",   textId: "agents-hb-scout-text",   timeId: "agents-hb-scout-time",   pillId: "ops-pill-scout",   fleetId: "overview-fleet-scout" },
+      { name: "orbot_service", threshold: 120000, color: "#8b7cf6", dotId: "agents-hb-foreman-dot", textId: "agents-hb-foreman-text", timeId: "agents-hb-foreman-time", pillId: "ops-pill-foreman", fleetId: "overview-fleet-foreman" },
+      { name: "waybill_agent", threshold: 600000, color: "#ffaa6b", dotId: "agents-hb-waybill-dot",  textId: "agents-hb-waybill-text",  timeId: "agents-hb-waybill-time", pillId: "ops-pill-waybill", fleetId: "overview-fleet-waybill" },
+      { name: "orbot_service", threshold: 120000, color: "#7ea6e8", dotId: "agents-hb-spsync-dot",  textId: "agents-hb-spsync-text",  timeId: "agents-hb-spsync-time", pillId: "ops-pill-spsync", fleetId: "overview-fleet-spsync" },
     ];
-    agentConfigs.forEach(({ name, threshold, color, dotId, textId, timeId }) => {
+    agentConfigs.forEach(({ name, threshold, color, dotId, textId, timeId, pillId, fleetId }) => {
       const hb = hbMap[name];
       const online = isOnline(hb?.last_heartbeat, threshold);
       const dotEl = document.getElementById(dotId);
@@ -2000,6 +2484,21 @@ async function fetchAgentHeartbeats() {
       if (dotEl) dotEl.style.background = online ? "#10b981" : "#ff5252";
       if (textEl) { textEl.innerText = online ? "Online" : "Offline"; textEl.style.color = online ? "#10b981" : "#ff5252"; }
       if (timeEl) timeEl.innerText = timeAgo(hb?.last_heartbeat);
+
+      // Condensed health-strip pill (Operations page) — same online/offline signal,
+      // shown as a compact colored dot instead of a full card.
+      if (pillId) {
+        const pillEl = document.getElementById(pillId);
+        if (pillEl) pillEl.className = `ops-apill ${online ? "ok" : "off"}`;
+      }
+
+      // Overview dashboard's Agent Fleet summary — same signal again, list form.
+      if (fleetId) {
+        const fleetDot = document.getElementById(`${fleetId}-dot`);
+        const fleetText = document.getElementById(`${fleetId}-text`);
+        if (fleetDot) fleetDot.style.background = online ? "#10b981" : "#ff5252";
+        if (fleetText) { fleetText.innerText = online ? "Online" : "Offline"; fleetText.style.color = online ? "#10b981" : "#ff5252"; }
+      }
     });
 
   } catch (err) {
@@ -3499,8 +3998,10 @@ async function fetchAndRenderPrintersAndQueue() {
               </div>
         `;
 
+        const cardAccentClass = !p.online ? "pcard-error" : ((p.state || "").toLowerCase() === "printing" ? "pcard-printing" : "pcard-idle");
+
         return `
-          <div class="glass-panel rounded-xl p-4 flex flex-col justify-between hover:bg-surface-container-highest/10 transition-colors duration-300 ${p.online ? 'glow-hover-cyan' : 'glow-hover-red'}">
+          <div class="glass-panel rounded-xl p-4 flex flex-col justify-between hover:bg-surface-container-highest/10 transition-colors duration-300 ${cardAccentClass} ${p.online ? 'glow-hover-cyan' : 'glow-hover-red'}">
             <div>
               <div class="flex justify-between items-start">
                 <div class="flex items-center gap-2.5">
@@ -4905,6 +5406,11 @@ async function fetchAndRenderListings(useCache = false) {
         start += 1000;
       }
       cachedListings = allListings;
+      // Products master-detail cross-links catalog rows against cachedListings
+      // (platform coverage dots, price, unmapped-variation warnings). Since this
+      // fetch runs in parallel with fetchAndRenderCatalog() when the Products tab
+      // opens, refresh the catalog list now that listings have actually arrived.
+      if (currentTab === "products" && cachedVariants.length > 0) fetchAndRenderCatalog();
     } catch (err) {
       tbody.innerHTML = emptyDiv(`Error loading listings: ${err.message}`, "error");
       return;
