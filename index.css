@@ -1648,7 +1648,9 @@ div[popover="hint"] {
   display: grid;
   grid-template-columns: 1.6fr 1fr;
   gap: 16px;
-  height: 560px;
+  /* Fill the viewport below the page chrome instead of a fixed height:
+     more rows visible on tall screens, never cramped on short ones. */
+  height: clamp(480px, calc(100vh - 330px), 1100px);
 }
 .omd-list-panel {
   background: var(--glass-bg);
@@ -2083,14 +2085,20 @@ div[popover="hint"] {
   flex-shrink: 0;
 }
 .omd-stock-stepper .sb {
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.omd-stock-stepper .sb:hover {
+  background: rgba(139, 124, 246, 0.15);
+  color: var(--text-primary);
 }
 .omd-stock-stepper .sv {
   width: 28px;

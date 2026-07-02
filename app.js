@@ -18,6 +18,7 @@ let selectedOrderId = null; // Master-detail: which order's detail panel is show
 let bulkSelectedOrderIds = new Set(); // Orders list: checkbox-selected rows for bulk actions
 let selectedProductId = null; // Master-detail: which product's detail panel is showing
 let catalogAttentionFilter = "all"; // "all" | "needs_attention" | "full_coverage" | "low_stock"
+let lastRenderedProductsList = []; // Snapshot of the currently rendered product list, for keyboard nav
 let cachedVariants = [];
 let cachedProducts = [];
 let cachedFilteredWaybills = [];
@@ -1952,11 +1953,13 @@ function renderProductsMasterDetail(productsList) {
   const panel = document.getElementById("product-detail-panel");
   if (!headEl || !rowsEl || !panel) return;
 
+  lastRenderedProductsList = productsList;
+
   headEl.className = "omd-list-head omd-products-cols";
   headEl.innerHTML = `<span>Product</span><span>Brand / Category</span><span>Variants</span><span>Platforms</span><span>Price</span><span></span>`;
 
   rowsEl.innerHTML = productsList.map(p => {
-    const { listing, platformCount, hasIssue } = computeProductAttention(p);
+    const { listing, platformCount, hasIssue, isLowStock } = computeProductAttention(p);
     const dotsHtml = LISTING_PLATFORMS.map(pl =>
       `<div class="omd-pdot" style="${listing && listing[pl.key] ? `background:${pl.color}` : ""}" title="${pl.label}${listing && listing[pl.key] ? "" : ": not listed"}"></div>`
     ).join("");
@@ -1974,7 +1977,7 @@ function renderProductsMasterDetail(productsList) {
           <div class="omd-pname truncate" title="${escapeHtml(p.product_base_name)}">${escapeHtml(p.product_base_name)}</div>
         </div>
         <div class="omd-cat-cell"><b>${escapeHtml(p.brand_name)}</b><br>${escapeHtml(p.product_category)}</div>
-        <div class="text-[10.5px] font-data-mono text-on-surface-variant/70">${p.variations.length} var${p.variations.length !== 1 ? "s" : ""}</div>
+        <div class="text-[10.5px] font-data-mono ${isLowStock ? "text-warning" : "text-on-surface-variant/70"}"${isLowStock ? ` title="Has variant(s) with stock ≤ 5"` : ""}>${p.variations.length} var${p.variations.length !== 1 ? "s" : ""}${isLowStock ? ` <span class="material-symbols-outlined" style="font-size:11px; vertical-align:-2px;">inventory</span>` : ""}</div>
         <div class="omd-plat-dots"><div class="omd-plat-dots-row">${dotsHtml}</div><span class="omd-cov-label">${platformCount}/5</span></div>
         <div class="omd-subtotal-cell">${priceText}</div>
         <div class="omd-issue-cell">${issueIcon}</div>
@@ -2009,6 +2012,28 @@ function selectProductForDetail(productId, productsList) {
 
   document.querySelectorAll("#catalog-tbody .omd-row").forEach(r => {
     r.classList.toggle("selected", r.getAttribute("data-product-id") === productId);
+    if (r.getAttribute("data-product-id") === productId) r.scrollIntoView({ block: "nearest" });
+  });
+}
+
+// Arrow-key navigation through the products list. Ignores keystrokes while
+// typing in a field or while any modal is open.
+function setupProductsKeyboardNav() {
+  document.addEventListener("keydown", (e) => {
+    if (currentTab !== "products") return;
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "select" || tag === "textarea") return;
+    if (document.querySelector(".modal-overlay.active")) return;
+    if (lastRenderedProductsList.length === 0) return;
+
+    e.preventDefault();
+    const idx = lastRenderedProductsList.findIndex(p => p.id === selectedProductId);
+    const nextIdx = e.key === "ArrowDown"
+      ? Math.min(idx + 1, lastRenderedProductsList.length - 1)
+      : Math.max(idx - 1, 0);
+    if (nextIdx === idx) return;
+    selectProductForDetail(lastRenderedProductsList[nextIdx].id, lastRenderedProductsList);
   });
 }
 
@@ -2601,6 +2626,19 @@ function setupCatalogSearch() {
   document.getElementById("add-listing-header-btn")?.addEventListener("click", () => {
     openAddListingModal();
   });
+
+  // Platform Listings section is collapsed by default — the same data is
+  // surfaced per-product in the detail panel, so the full list is an
+  // on-demand drill-down rather than a permanent second page of scrolling.
+  const listingsToggle = document.getElementById("listings-collapse-toggle");
+  if (listingsToggle) {
+    listingsToggle.addEventListener("click", () => {
+      const chevron = document.getElementById("listings-collapse-chevron");
+      const nowHidden = document.querySelector(".listings-body")?.classList.contains("hidden");
+      document.querySelectorAll(".listings-body").forEach(el => el.classList.toggle("hidden", !nowHidden));
+      if (chevron) chevron.style.transform = nowHidden ? "rotate(180deg)" : "";
+    });
+  }
 }
 
 // Hold Resolution Helper Functions
@@ -4478,6 +4516,7 @@ function setupPrinterControls() {
   setupSettings();
   setupLogsFiltering();
   setupCatalogSearch();
+  setupProductsKeyboardNav();
   setupCatalogModal();
   setupCatalogStockListeners();
   setupWaybillProcessing();
@@ -5656,6 +5695,9 @@ function renderListingsFromCache() {
   const searchVal = (document.getElementById("listings-search")?.value || "").toLowerCase().trim();
   const countEl = document.getElementById("listings-count-display");
   const statsEl = document.getElementById("listings-stats-bar");
+
+  const headerCountEl = document.getElementById("listings-collapse-count");
+  if (headerCountEl) headerCountEl.textContent = `(${cachedListings.length})`;
 
   let filtered = [...cachedListings];
 
