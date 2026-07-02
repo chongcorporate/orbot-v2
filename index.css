@@ -1073,6 +1073,17 @@ input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:f
   box-shadow: 0 0 8px var(--primary-glow) !important;
 }
 
+/* The blanket padding rule above (element+attribute selector) outranks a
+   lone Tailwind utility class in specificity, so pl-8/pl-9/pl-11 on every
+   icon-prefixed search input was silently getting clobbered back to 1rem,
+   pulling the placeholder text under the search icon. Restore the intended
+   left/right padding for inputs that declare it, at matching !important. */
+input[type="text"].pl-8 { padding-left: 2rem !important; }
+input[type="text"].pl-9 { padding-left: 2.25rem !important; }
+input[type="text"].pl-11 { padding-left: 2.75rem !important; }
+input[type="text"].pr-3 { padding-right: 0.75rem !important; }
+input[type="text"].pr-4 { padding-right: 1rem !important; }
+
 select option {
   background: #0d1527 !important;
   color: var(--text-primary) !important;
