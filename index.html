@@ -1610,7 +1610,11 @@
             </div>
           </div>
 
-          <!-- Condensed health strip (Aurora Pro): at-a-glance service + agents + quota -->
+          <!-- Condensed health strip (Aurora Pro): at-a-glance service + agents.
+               Gemini quota used to also have a mini-gauge here, duplicating the
+               full panel below almost verbatim — dropped in favor of one
+               canonical Gemini display, moved up to sit with the rest of the
+               system-health content instead of being buried under printer data. -->
           <div class="ops-health-strip">
             <div class="ops-health-panel">
               <div class="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
@@ -1633,34 +1637,23 @@
                 <div class="ops-apill off" id="ops-pill-spsync"><div class="ad" id="ops-pill-spsync-dot"></div><div class="an">SP SYNC</div></div>
               </div>
             </div>
-            <div class="ops-health-panel">
-              <div class="ops-gem">
-                <div class="grow">
-                  <span class="glabel">Gemini Req</span>
-                  <div class="gbar"><i id="ops-gemini-requests-bar" style="width:0%; background:var(--primary-color);"></i></div>
-                  <span class="gval" id="ops-gemini-requests-count">0 / 1,500</span>
-                </div>
-                <div class="grow">
-                  <span class="glabel">Tokens</span>
-                  <div class="gbar"><i id="ops-gemini-tokens-bar" style="width:0%; background:#22d3ee;"></i></div>
-                  <span class="gval" id="ops-gemini-tokens-count">0 / 1M</span>
-                </div>
-              </div>
-            </div>
           </div>
 
           <!-- Agent Cards (merged from former Agents tab) -->
           <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
 
             <!-- Scout -->
-            <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-[#22d3ee] glow-hover-cyan relative overflow-hidden">
+            <div class="glass-panel rounded-xl p-3.5 flex flex-col gap-2.5 border-l-4 border-[#22d3ee] glow-hover-cyan relative overflow-hidden">
               <div class="absolute inset-0 bg-[#22d3ee]/[0.02] pointer-events-none"></div>
-              <div class="flex items-start gap-3 relative z-10">
-                <div class="w-10 h-10 rounded-xl bg-[#22d3ee]/10 border border-[#22d3ee]/20 flex items-center justify-center flex-shrink-0">
-                  <span class="material-symbols-outlined text-[#22d3ee] text-xl select-none">mail</span>
+              <div class="flex items-start gap-2.5 relative z-10">
+                <div class="w-9 h-9 rounded-lg bg-[#22d3ee]/10 border border-[#22d3ee]/20 flex items-center justify-center flex-shrink-0">
+                  <span class="material-symbols-outlined text-[#22d3ee] text-lg select-none">mail</span>
                 </div>
                 <div class="flex-grow min-w-0">
-                  <h4 class="font-headline-sm text-on-surface">Scout</h4>
+                  <div class="flex items-center gap-1.5">
+                    <h4 class="font-headline-sm text-on-surface text-sm">Scout</h4>
+                    <span class="material-symbols-outlined text-outline/40 hover:text-outline text-[13px] cursor-help" title="Polls orders@gmail.com every 5 min. Parses Shopee/Lazada &quot;Time to Ship&quot; emails with Gemini and ingests orders automatically.">info</span>
+                  </div>
                   <p class="text-[10px] font-data-mono text-outline">Gmail Order Poller</p>
                 </div>
                 <div class="flex flex-col items-end gap-0.5 flex-shrink-0">
@@ -1671,19 +1664,21 @@
                   <span class="font-data-mono text-[9px] text-outline" id="agents-hb-scout-time">—</span>
                 </div>
               </div>
-              <p class="text-xs text-on-surface-variant/70 leading-relaxed relative z-10 flex-grow">Polls <span class="font-data-mono text-[#22d3ee]/80">orders@gmail.com</span> every 5 min. Parses Shopee/Lazada "Time to Ship" emails with Gemini and ingests orders automatically.</p>
-              <button class="w-full py-2 bg-[#22d3ee]/10 hover:bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-scout">Trigger Scan</button>
+              <button class="w-full py-1.5 bg-[#22d3ee]/10 hover:bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] rounded-lg font-label-caps text-[10.5px] font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-scout">Trigger Scan</button>
             </div>
 
             <!-- Foreman -->
-            <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-primary glow-hover-cyan relative overflow-hidden">
+            <div class="glass-panel rounded-xl p-3.5 flex flex-col gap-2.5 border-l-4 border-primary glow-hover-cyan relative overflow-hidden">
               <div class="absolute inset-0 bg-primary/[0.02] pointer-events-none"></div>
-              <div class="flex items-start gap-3 relative z-10">
-                <div class="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-                  <span class="material-symbols-outlined text-primary text-xl select-none">print</span>
+              <div class="flex items-start gap-2.5 relative z-10">
+                <div class="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+                  <span class="material-symbols-outlined text-primary text-lg select-none">print</span>
                 </div>
                 <div class="flex-grow min-w-0">
-                  <h4 class="font-headline-sm text-on-surface">Foreman</h4>
+                  <div class="flex items-center gap-1.5">
+                    <h4 class="font-headline-sm text-on-surface text-sm">Foreman</h4>
+                    <span class="material-symbols-outlined text-outline/40 hover:text-outline text-[13px] cursor-help" title="Resolves pending order items to print files and dispatches them to the correct printer group via SimplyPrint queue.">info</span>
+                  </div>
                   <p class="text-[10px] font-data-mono text-outline">Print Dispatch</p>
                 </div>
                 <div class="flex flex-col items-end gap-0.5 flex-shrink-0">
@@ -1694,19 +1689,21 @@
                   <span class="font-data-mono text-[9px] text-outline" id="agents-hb-foreman-time">—</span>
                 </div>
               </div>
-              <p class="text-xs text-on-surface-variant/70 leading-relaxed relative z-10 flex-grow">Resolves pending order items to print files and dispatches them to the correct printer group via SimplyPrint queue.</p>
-              <button class="w-full py-2 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-foreman">Trigger Dispatch</button>
+              <button class="w-full py-1.5 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg font-label-caps text-[10.5px] font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-foreman">Trigger Dispatch</button>
             </div>
 
             <!-- Waybill Agent -->
-            <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-[#ffaa6b] glow-hover-orange relative overflow-hidden">
+            <div class="glass-panel rounded-xl p-3.5 flex flex-col gap-2.5 border-l-4 border-[#ffaa6b] glow-hover-orange relative overflow-hidden">
               <div class="absolute inset-0 bg-[#ffaa6b]/[0.02] pointer-events-none"></div>
-              <div class="flex items-start gap-3 relative z-10">
-                <div class="w-10 h-10 rounded-xl bg-[#ffaa6b]/10 border border-[#ffaa6b]/20 flex items-center justify-center flex-shrink-0">
-                  <span class="material-symbols-outlined text-[#ffaa6b] text-xl select-none">local_shipping</span>
+              <div class="flex items-start gap-2.5 relative z-10">
+                <div class="w-9 h-9 rounded-lg bg-[#ffaa6b]/10 border border-[#ffaa6b]/20 flex items-center justify-center flex-shrink-0">
+                  <span class="material-symbols-outlined text-[#ffaa6b] text-lg select-none">local_shipping</span>
                 </div>
                 <div class="flex-grow min-w-0">
-                  <h4 class="font-headline-sm text-on-surface">Waybill Agent</h4>
+                  <div class="flex items-center gap-1.5">
+                    <h4 class="font-headline-sm text-on-surface text-sm">Waybill Agent</h4>
+                    <span class="material-symbols-outlined text-outline/40 hover:text-outline text-[13px] cursor-help" title="Processes waybill PDFs, classifies pages, stitches seal stickers, and compiles master print batches. Uploads to Google Drive.">info</span>
+                  </div>
                   <p class="text-[10px] font-data-mono text-outline">PDF Logistics</p>
                 </div>
                 <div class="flex flex-col items-end gap-0.5 flex-shrink-0">
@@ -1717,19 +1714,21 @@
                   <span class="font-data-mono text-[9px] text-outline" id="agents-hb-waybill-time">—</span>
                 </div>
               </div>
-              <p class="text-xs text-on-surface-variant/70 leading-relaxed relative z-10 flex-grow">Processes waybill PDFs, classifies pages, stitches seal stickers, and compiles master print batches. Uploads to Google Drive.</p>
-              <button class="w-full py-2 bg-[#ffaa6b]/10 hover:bg-[#ffaa6b]/20 border border-[#ffaa6b]/30 text-[#ffaa6b] rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-compile">Compile Batch</button>
+              <button class="w-full py-1.5 bg-[#ffaa6b]/10 hover:bg-[#ffaa6b]/20 border border-[#ffaa6b]/30 text-[#ffaa6b] rounded-lg font-label-caps text-[10.5px] font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-compile">Compile Batch</button>
             </div>
 
             <!-- SimplyPrint Sync -->
-            <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-[#7ea6e8] glow-hover-cyan relative overflow-hidden">
+            <div class="glass-panel rounded-xl p-3.5 flex flex-col gap-2.5 border-l-4 border-[#7ea6e8] glow-hover-cyan relative overflow-hidden">
               <div class="absolute inset-0 bg-[#7ea6e8]/[0.02] pointer-events-none"></div>
-              <div class="flex items-start gap-3 relative z-10">
-                <div class="w-10 h-10 rounded-xl bg-[#7ea6e8]/10 border border-[#7ea6e8]/20 flex items-center justify-center flex-shrink-0">
-                  <span class="material-symbols-outlined text-[#7ea6e8] text-xl select-none">sync</span>
+              <div class="flex items-start gap-2.5 relative z-10">
+                <div class="w-9 h-9 rounded-lg bg-[#7ea6e8]/10 border border-[#7ea6e8]/20 flex items-center justify-center flex-shrink-0">
+                  <span class="material-symbols-outlined text-[#7ea6e8] text-lg select-none">sync</span>
                 </div>
                 <div class="flex-grow min-w-0">
-                  <h4 class="font-headline-sm text-on-surface">SP Telemetry</h4>
+                  <div class="flex items-center gap-1.5">
+                    <h4 class="font-headline-sm text-on-surface text-sm">SP Telemetry</h4>
+                    <span class="material-symbols-outlined text-outline/40 hover:text-outline text-[13px] cursor-help" title="Syncs printer states, print queue, and job telemetry from SimplyPrint API into Supabase every 5 minutes.">info</span>
+                  </div>
                   <p class="text-[10px] font-data-mono text-outline">SimplyPrint Sync</p>
                 </div>
                 <div class="flex flex-col items-end gap-0.5 flex-shrink-0">
@@ -1740,8 +1739,54 @@
                   <span class="font-data-mono text-[9px] text-outline" id="agents-hb-spsync-time">—</span>
                 </div>
               </div>
-              <p class="text-xs text-on-surface-variant/70 leading-relaxed relative z-10 flex-grow">Syncs printer states, print queue, and job telemetry from SimplyPrint API into Supabase every 5 minutes.</p>
-              <button class="w-full py-2 bg-[#7ea6e8]/10 hover:bg-[#7ea6e8]/20 border border-[#7ea6e8]/30 text-[#7ea6e8] rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-sync-simplyprint">Sync Now</button>
+              <button class="w-full py-1.5 bg-[#7ea6e8]/10 hover:bg-[#7ea6e8]/20 border border-[#7ea6e8]/30 text-[#7ea6e8] rounded-lg font-label-caps text-[10.5px] font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-sync-simplyprint">Sync Now</button>
+            </div>
+          </div>
+
+          <!-- Gemini Quota Monitor (merged from former Agents tab) — the resource
+               these agents run on, so it belongs right next to their status
+               instead of buried after unrelated printer/job data further down. -->
+          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4">
+            <div class="flex justify-between items-center">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary">analytics</span> Gemini API · Daily Quota
+              </h3>
+              <span class="text-[10px] font-data-mono text-primary uppercase bg-primary/10 border border-primary/20 px-2 py-0.5 rounded">gemini-2.0-flash-lite</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="flex flex-col gap-2 bg-black/20 p-4 rounded-lg border border-outline-variant/10">
+                <div class="flex justify-between text-xs">
+                  <span class="text-outline">Daily Requests</span>
+                  <span class="font-data-mono font-bold text-on-surface" id="gemini-requests-count">0 / 1,500</span>
+                </div>
+                <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
+                  <div id="gemini-requests-bar" class="h-full bg-primary rounded-full transition-all duration-500 w-0"></div>
+                </div>
+                <div class="text-[10px] text-outline">15 RPM · 1,500 RPD</div>
+              </div>
+              <div class="flex flex-col gap-2 bg-black/20 p-4 rounded-lg border border-outline-variant/10">
+                <div class="flex justify-between text-xs">
+                  <span class="text-outline">Daily Tokens</span>
+                  <span class="font-data-mono font-bold text-on-surface" id="gemini-tokens-count">0 / 1,000,000</span>
+                </div>
+                <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
+                  <div id="gemini-tokens-bar" class="h-full bg-[#22d3ee] rounded-full transition-all duration-500 w-0"></div>
+                </div>
+                <div class="text-[10px] text-outline">Safety cap: 1M tokens/day</div>
+              </div>
+              <div class="flex flex-col justify-between bg-black/20 p-4 rounded-lg border border-outline-variant/10">
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-outline">Est. Cost (USD)</span>
+                  <span class="font-data-mono font-bold text-primary text-base" id="gemini-cost-est">$0.00</span>
+                </div>
+                <div class="flex justify-between text-[10px] text-outline mt-2 pt-2 border-t border-outline-variant/10">
+                  <span>In: <span class="font-data-mono text-on-surface" id="gemini-input-tokens">0</span></span>
+                  <span>Out: <span class="font-data-mono text-on-surface" id="gemini-output-tokens">0</span></span>
+                </div>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-4 text-[10px] text-outline border-t border-outline-variant/10 pt-3" id="gemini-breakdown-list">
+              <span class="text-outline/50">No requests today.</span>
             </div>
           </div>
 
@@ -1828,51 +1873,6 @@
                 <span class="material-symbols-outlined animate-spin text-xl mb-1 block">autorenew</span>
                 Loading print jobs...
               </div>
-            </div>
-          </div>
-
-          <!-- Gemini Quota Monitor (merged from former Agents tab) -->
-          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 mt-6">
-            <div class="flex justify-between items-center">
-              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
-                <span class="material-symbols-outlined text-primary">analytics</span> Gemini API · Daily Quota
-              </h3>
-              <span class="text-[10px] font-data-mono text-primary uppercase bg-primary/10 border border-primary/20 px-2 py-0.5 rounded">gemini-2.0-flash-lite</span>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div class="flex flex-col gap-2 bg-black/20 p-4 rounded-lg border border-outline-variant/10">
-                <div class="flex justify-between text-xs">
-                  <span class="text-outline">Daily Requests</span>
-                  <span class="font-data-mono font-bold text-on-surface" id="gemini-requests-count">0 / 1,500</span>
-                </div>
-                <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
-                  <div id="gemini-requests-bar" class="h-full bg-primary rounded-full transition-all duration-500 w-0"></div>
-                </div>
-                <div class="text-[10px] text-outline">15 RPM · 1,500 RPD</div>
-              </div>
-              <div class="flex flex-col gap-2 bg-black/20 p-4 rounded-lg border border-outline-variant/10">
-                <div class="flex justify-between text-xs">
-                  <span class="text-outline">Daily Tokens</span>
-                  <span class="font-data-mono font-bold text-on-surface" id="gemini-tokens-count">0 / 1,000,000</span>
-                </div>
-                <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
-                  <div id="gemini-tokens-bar" class="h-full bg-[#22d3ee] rounded-full transition-all duration-500 w-0"></div>
-                </div>
-                <div class="text-[10px] text-outline">Safety cap: 1M tokens/day</div>
-              </div>
-              <div class="flex flex-col justify-between bg-black/20 p-4 rounded-lg border border-outline-variant/10">
-                <div class="flex justify-between items-center text-xs">
-                  <span class="text-outline">Est. Cost (USD)</span>
-                  <span class="font-data-mono font-bold text-primary text-base" id="gemini-cost-est">$0.00</span>
-                </div>
-                <div class="flex justify-between text-[10px] text-outline mt-2 pt-2 border-t border-outline-variant/10">
-                  <span>In: <span class="font-data-mono text-on-surface" id="gemini-input-tokens">0</span></span>
-                  <span>Out: <span class="font-data-mono text-on-surface" id="gemini-output-tokens">0</span></span>
-                </div>
-              </div>
-            </div>
-            <div class="flex flex-wrap gap-4 text-[10px] text-outline border-t border-outline-variant/10 pt-3" id="gemini-breakdown-list">
-              <span class="text-outline/50">No requests today.</span>
             </div>
           </div>
 

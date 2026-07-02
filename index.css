@@ -2197,7 +2197,7 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
 /* Operations: condensed health strip */
 .ops-health-strip {
   display: grid;
-  grid-template-columns: 1.15fr 1fr 1.35fr;
+  grid-template-columns: 1fr 1.4fr;
   gap: 14px;
 }
 .ops-health-panel {
