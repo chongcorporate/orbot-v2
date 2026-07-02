@@ -5359,6 +5359,12 @@ function initLaunchTab() {
   document.getElementById('launch-scrape-url')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') doLaunchScrape();
   });
+  document.getElementById('launch-clean-btn')?.addEventListener('click', () => {
+    const pending = _launchImages.filter(f => !f._cleaned && !f._cleaning);
+    if (!pending.length) { setLaunchStatus('error', 'No images to clean — add some first.'); return; }
+    setLaunchStatus('success', `Removing logos from ${pending.length} image(s)…`);
+    cleanLaunchImages(pending);
+  });
 }
 
 function renderLaunchImageGrid() {
@@ -5459,7 +5465,8 @@ async function doLaunchScrape() {
     const files = (data.images || []).map((img, i) => b64ToFile(img.image_b64, `scraped_${i + 1}.jpg`));
     if (files.length) addLaunchImages(files);
 
-    setLaunchStatus('success', `Fetched "${data.product_name}" — ${files.length} image(s). Removing logos…`);
+    setLaunchStatus('success', `Fetched "${data.product_name}"` +
+      (data.note ? `. ${data.note}` : ` — ${files.length} image(s). Removing logos…`));
     logAction('scrape_product', 'info', { url, images: files.length });
 
     if (files.length) await cleanLaunchImages(files.filter(f => _launchImages.includes(f)));
@@ -5475,6 +5482,7 @@ async function doLaunchScrape() {
 // to the cleaned version as it lands. Files the user removed mid-flight are skipped.
 async function cleanLaunchImages(files) {
   const backendUrl = localStorage.getItem('orbot_backend_url') || '';
+  let lastReason = null;
   await Promise.all(files.map(async (file) => {
     file._cleaning = true;
     renderLaunchImageGrid();
@@ -5490,16 +5498,23 @@ async function cleanLaunchImages(files) {
         const cleanedFile = b64ToFile(data.image_b64, file.name.replace('.jpg', '_clean.jpg'));
         cleanedFile._cleaned = true;
         _launchImages[idx] = cleanedFile;
+      } else if (data.reason) {
+        lastReason = data.reason;
       }
     } catch (e) {
       console.error('clean-image failed:', e);
+      lastReason = e.message;
     } finally {
       file._cleaning = false;
       renderLaunchImageGrid();
     }
   }));
   const cleanedCount = _launchImages.filter(f => f._cleaned).length;
-  setLaunchStatus('success', `Logo removal done — ${cleanedCount}/${_launchImages.length} image(s) cleaned. Review images, then Preview Listing.`);
+  if (cleanedCount === 0 && files.length > 0) {
+    setLaunchStatus('error', `Logo removal failed — images kept as-is. ${lastReason || ''}`);
+  } else {
+    setLaunchStatus('success', `Logo removal done — ${cleanedCount}/${_launchImages.length} image(s) cleaned. Review images, then Preview Listing.`);
+  }
   logAction('clean_images', 'info', { cleaned: cleanedCount, total: _launchImages.length });
 }
 

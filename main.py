@@ -9,6 +9,8 @@ import re
 import json
 import base64
 import logging
+import mimetypes
+import tempfile
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
@@ -24,6 +26,7 @@ import numpy as np
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from google import genai
+from google.genai import types as genai_types
 from pydantic import BaseModel, Field, field_validator
 
 # FastAPI imports
@@ -2192,17 +2195,64 @@ def get_or_create_folder(service, folder_name, parent_id=None):
         print(f"[-] Error in get_or_create_folder for '{folder_name}': {e}")
         return None
 
-def upload_to_drive(service, local_path, name, parent_folder_id):
+# Products root folder in Drive, resolved once per process. Env var wins; otherwise
+# walk up from an existing variant's Pictures folder so new product folders land
+# alongside the current structure ({root}/{Product}/Pictures).
+_product_parent_folder_cache = None
+
+def get_product_parent_folder_id(service):
+    global _product_parent_folder_cache
+    if _product_parent_folder_cache:
+        return _product_parent_folder_cache
+    env_id = os.environ.get("PRODUCT_PARENT_FOLDER_ID")
+    if env_id:
+        _product_parent_folder_cache = env_id
+        return env_id
+    try:
+        res = supabase.table('variants').select('pictures_gdrive_url') \
+            .like('pictures_gdrive_url', 'http%').limit(10).execute()
+        for row in (res.data or []):
+            fid = extract_gdrive_id(row.get('pictures_gdrive_url') or '')
+            if not fid:
+                continue
+            try:
+                info = service.files().get(fileId=fid, fields='name, parents').execute()
+            except Exception:
+                continue
+            parents = info.get('parents') or []
+            if not parents:
+                continue
+            if 'picture' in (info.get('name') or '').lower():
+                # URL points at a Pictures subfolder — its grandparent is the products root
+                try:
+                    prod = service.files().get(fileId=parents[0], fields='parents').execute()
+                    grandparent = (prod.get('parents') or [None])[0]
+                    if grandparent:
+                        _product_parent_folder_cache = grandparent
+                        return grandparent
+                except Exception:
+                    continue
+            else:
+                # URL points at the product folder itself — its parent is the root
+                _product_parent_folder_cache = parents[0]
+                return parents[0]
+    except Exception as e:
+        print(f"[-] get_product_parent_folder_id failed: {e}")
+    return None
+
+def upload_to_drive(service, local_path, name, parent_folder_id, mimetype=None):
     try:
         date_suffix = datetime.now().strftime("%Y-%m-%d")
         base, ext = os.path.splitext(name)
         new_name = f"{base}_{date_suffix}{ext}"
-        
+
         file_metadata = {
             'name': new_name,
             'parents': [parent_folder_id]
         }
-        media = MediaFileUpload(local_path, mimetype='application/pdf')
+        if mimetype is None:
+            mimetype = mimetypes.guess_type(name)[0] or 'application/octet-stream'
+        media = MediaFileUpload(local_path, mimetype=mimetype)
         file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         file_id = file.get('id')
         
@@ -3884,6 +3934,225 @@ def _launch_process_image(raw: bytes, size: int = 2000) -> bytes:
         quality -= 10
 
 
+# ─── Product Intake from Link ─────────────────────────────────────────────────
+# Paste a marketplace URL (MakerWorld/Printables/Cults3D/Etsy) → scrape name,
+# description, set number, theme and product photos → prefill the Launch tab.
+
+_SCRAPE_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+class ProductScrapeExtract(BaseModel):
+    """Structured fields Gemini extracts from a marketplace product page."""
+    product_name: str = Field(description="The product/model name as shown on the page, without site branding or designer name.")
+    description: str = Field(description="A faithful plain-text summary of the product description on the page, 100-250 words. No markdown.")
+    set_name: Optional[str] = Field(default=None, description="If the product relates to a LEGO set: the set name only (e.g. 'Ferrari SF-24 F1 Car'). Null otherwise.")
+    set_number: Optional[str] = Field(default=None, description="If a LEGO set number appears (4-6 digits, e.g. '77243'), that number as a string. Null otherwise.")
+    theme_code: Optional[str] = Field(default=None, description="Best-matching LEGO theme code from the list given in the prompt, or null if none fits.")
+    image_urls: List[str] = Field(default_factory=list, description="Absolute URLs of the distinct PRODUCT photos on the page, highest-resolution variant available, in display order. Exclude avatars, site logos, icons, banners and related-product thumbnails.")
+
+
+def _condense_product_html(html_text: str, base_url: str) -> str:
+    """Boil a product page down to what the LLM needs: meta tags, JSON-LD,
+    candidate image URLs, and visible text. Keeps token usage sane on JS-heavy pages."""
+    from urllib.parse import urljoin
+    import html as html_module
+
+    # JSON blobs (Next.js et al.) escape slashes — normalise so URL regexes hit
+    html_text = html_text.replace('\\u002F', '/').replace('\\/', '/')
+
+    chunks = []
+    metas = re.findall(r'<meta[^>]+(?:property|name)=["\'](?:og:|twitter:|description)[^>]*>', html_text, re.I)
+    if metas:
+        chunks.append("META TAGS:\n" + "\n".join(metas[:30]))
+    for m in re.finditer(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html_text, re.I | re.S):
+        chunks.append("JSON-LD:\n" + m.group(1).strip()[:20000])
+
+    img_urls = []
+    for m in re.finditer(r'<img[^>]+(?:src|data-src|data-original)=["\']([^"\']+)["\']', html_text, re.I):
+        u = urljoin(base_url, html_module.unescape(m.group(1)))
+        if u.startswith('http') and u not in img_urls:
+            img_urls.append(u)
+    # image URLs buried in JSON blobs (MakerWorld/Printables render client-side)
+    for m in re.finditer(r'https?://[^\s"\'<>\\]+\.(?:jpe?g|png|webp)(?:\?[^\s"\'<>\\]*)?', html_text, re.I):
+        u = m.group(0)
+        if u not in img_urls:
+            img_urls.append(u)
+    if img_urls:
+        chunks.append("CANDIDATE IMAGE URLS:\n" + "\n".join(img_urls[:100]))
+
+    text = re.sub(r'<(script|style|svg|noscript)[^>]*>.*?</\1>', ' ', html_text, flags=re.S | re.I)
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = html_module.unescape(text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    chunks.append("PAGE TEXT:\n" + text[:12000])
+    return "\n\n".join(chunks)
+
+
+@app.post("/catalog/scrape-product")
+async def catalog_scrape_product(request: Request):
+    """Fetch a product page, extract name/description/set/theme/photos via Gemini,
+    download + square-process the photos. No DB writes."""
+    body = await request.json()
+    url = str(body.get("url", "")).strip()
+    if not re.match(r'^https?://', url):
+        raise HTTPException(status_code=400, detail="A valid http(s) URL is required.")
+
+    def _do_scrape():
+        # Tier 1: fetch the page ourselves (works for Printables, Cults3D, ...).
+        # Tier 2: TLS-fingerprint blockers (MakerWorld/Cloudflare) 403 any non-browser
+        # client, so let Google fetch it via Gemini's url_context tool — that recovers
+        # the text fields but not image URLs (the fetcher strips markup).
+        html_text = None
+        try:
+            page = http_session.get(url, headers=_SCRAPE_HEADERS, timeout=30)
+            page.raise_for_status()
+            if len(page.text) >= 500 and not re.search(
+                    r'captcha|access denied|are you a robot|unusual traffic', page.text[:5000], re.I):
+                html_text = page.text
+        except Exception:
+            pass
+
+        theme_list = ", ".join(f"{code} = {name}" for code, name in _THEME_CODES.items())
+        extraction, last_err, blocked_site = None, None, html_text is None
+
+        if html_text:
+            condensed = _condense_product_html(html_text, url)
+            prompt = (
+                "Below is condensed content from a 3D-model marketplace product page "
+                f"({url}).\n"
+                "Extract the product details. For image_urls, choose only the distinct product photos "
+                "(gallery images), preferring the highest-resolution URL when the same photo appears at "
+                "several sizes. Do not invent URLs — only use URLs present in the content.\n"
+                f"LEGO theme codes: {theme_list}\n\n"
+                f"{condensed}"
+            )
+            for model in ('gemini-2.5-flash', 'gemini-2.5-pro'):
+                try:
+                    response = ai_client.models.generate_content(
+                        model=model,
+                        contents=prompt,
+                        config={'response_mime_type': 'application/json',
+                                'response_schema': ProductScrapeExtract,
+                                'temperature': 0.1,
+                                'http_options': {'timeout': 60000}},
+                    )
+                    log_gemini_usage("Product Intake", model, response)
+                    extraction = ProductScrapeExtract(**json.loads(response.text))
+                    break
+                except Exception as e:
+                    last_err = e
+        else:
+            # url_context can't be combined with a response_schema — describe the JSON
+            # in the prompt and parse it out of the reply instead.
+            prompt = (
+                f"Read this 3D-model marketplace product page: {url}\n"
+                "Then return ONLY a JSON object with exactly these keys:\n"
+                '{"product_name": "...", "description": "...", "set_name": null, "set_number": null, '
+                '"theme_code": null, "image_urls": []}\n'
+                "- product_name: the product/model name, without site branding or designer name.\n"
+                "- description: faithful plain-text summary of the product description, 100-250 words.\n"
+                "- set_name: if the product relates to a LEGO set, the set name only; else null.\n"
+                "- set_number: LEGO set number (4-6 digits) as a string if one appears; else null.\n"
+                f"- theme_code: best-matching code from [{theme_list}] or null.\n"
+                "- image_urls: always [].\n"
+                "Return ONLY the JSON, no extra text."
+            )
+            for model in ('gemini-2.5-flash', 'gemini-2.5-pro'):
+                try:
+                    response = ai_client.models.generate_content(
+                        model=model,
+                        contents=prompt,
+                        config={'tools': [{'url_context': {}}],
+                                'http_options': {'timeout': 60000}},
+                    )
+                    log_gemini_usage("Product Intake", model, response)
+                    m = re.search(r'\{.*\}', response.text, re.S)
+                    extraction = ProductScrapeExtract(**json.loads(m.group(0)))
+                    extraction.image_urls = []
+                    break
+                except Exception as e:
+                    last_err = e
+        if extraction is None:
+            raise HTTPException(status_code=502, detail=f"Couldn't read this page ({last_err}). Try another link or fill the form manually.")
+
+        images = []
+        for img_url in extraction.image_urls[:9]:  # Shopee allows max 9 listing images
+            try:
+                r = http_session.get(img_url, headers={**_SCRAPE_HEADERS, "Referer": url}, timeout=30)
+                r.raise_for_status()
+                data = _launch_process_image(r.content)
+                images.append({"source_url": img_url, "image_b64": base64.b64encode(data).decode()})
+            except Exception as ie:
+                log_system("warning", f"Product intake: image download failed ({img_url}): {ie}",
+                           agent_name="Product Intake")
+
+        log_system("info",
+                   f"Product intake: scraped '{extraction.product_name}' — {len(images)} image(s) from {url}"
+                   + (" (blocked site, text-only via url_context)" if blocked_site else ""),
+                   agent_name="Product Intake")
+        return {
+            "source_url":   url,
+            "product_name": extraction.product_name,
+            "description":  extraction.description,
+            "set_name":     extraction.set_name,
+            "set_number":   extraction.set_number,
+            "theme_code":   extraction.theme_code if extraction.theme_code in _THEME_CODES else None,
+            "images":       images,
+            "note":         ("This site blocks image downloads — add the product photos manually, "
+                             "then use Remove Logos.") if blocked_site else None,
+        }
+
+    return await asyncio.to_thread(_do_scrape)
+
+
+@app.post("/catalog/clean-image")
+async def catalog_clean_image(request: Request):
+    """Remove logos/watermarks from one image via Gemini image editing.
+    Always returns an image — falls back to the original with cleaned=false."""
+    body = await request.json()
+    img_b64 = body.get("image_b64") or ""
+    try:
+        raw = base64.b64decode(img_b64)
+        PILImage.open(BytesIO(raw)).verify()
+    except Exception:
+        raise HTTPException(status_code=400, detail="image_b64 must be a valid base64-encoded image.")
+
+    def _do_clean():
+        prompt = ("Remove any logos, watermarks, brand marks, usernames or overlaid text from this "
+                  "product photo, reconstructing the background naturally where they were. "
+                  "Change absolutely nothing else — keep the product, colours, lighting and "
+                  "composition identical. If there is no logo or watermark, return the image unchanged.")
+        try:
+            response = ai_client.models.generate_content(
+                model='gemini-2.5-flash-image',
+                contents=[genai_types.Part.from_bytes(data=raw, mime_type='image/jpeg'), prompt],
+                config={'http_options': {'timeout': 120000}},
+            )
+            log_gemini_usage("Product Intake", "gemini-2.5-flash-image", response)
+            for part in (response.candidates[0].content.parts or []):
+                inline = getattr(part, 'inline_data', None)
+                if inline and inline.data:
+                    cleaned = _launch_process_image(inline.data)
+                    return {"cleaned": True, "image_b64": base64.b64encode(cleaned).decode()}
+            return {"cleaned": False, "image_b64": img_b64, "reason": "Model returned no image."}
+        except Exception as e:
+            log_system("warning", f"Product intake: logo clean failed: {e}", agent_name="Product Intake")
+            reason = str(e)
+            if 'RESOURCE_EXHAUSTED' in reason or '429' in reason:
+                reason = ("Gemini image editing quota exhausted — the image model needs a paid-tier "
+                          "API key (free tier has no image-editing quota).")
+            return {"cleaned": False, "image_b64": img_b64, "reason": reason[:300]}
+
+    return await asyncio.to_thread(_do_clean)
+
+# ─── End Product Intake from Link ─────────────────────────────────────────────
+
+
 @app.post("/catalog/preview-product")
 async def catalog_preview_product(request: Request):
     """Generate listing copy via Gemini — no DB writes, no images needed."""
@@ -3943,6 +4212,8 @@ async def catalog_launch_product(request: Request):
     shopee_ph        = str(form.get("shopee_ph", "")).strip() or None
     shopee_th        = str(form.get("shopee_th", "")).strip() or None
     lazada_my        = str(form.get("lazada_my", "")).strip() or None
+    source_url         = str(form.get("source_url", "")).strip() or None
+    source_description = str(form.get("source_description", "")).strip() or None
     variant_details  = json.loads(form.get("variant_details", "[]"))
     # keyed by SKU for O(1) lookup
     vd_by_sku        = {vd["sku"]: vd for vd in variant_details}
@@ -3996,6 +4267,7 @@ async def catalog_launch_product(request: Request):
             var_data["adobe_express_url"] = vd["adobe_express_url"]
         var_res = supabase.table("variants").upsert(var_data, on_conflict="variant_sku").execute()
         v["variant_id"] = var_res.data[0]["id"]
+        v["existing_pictures_url"] = var_res.data[0].get("pictures_gdrive_url")
 
     # ── listings + listing_variations upsert ──────────────────────────────
     listing_data = {
@@ -4046,6 +4318,54 @@ async def catalog_launch_product(request: Request):
             except Exception as ie:
                 log_system("warning", f"Image {i+1} processing failed: {ie}", agent_name="Product Launch")
 
+    # ── Google Drive folders + asset upload ───────────────────────────────
+    # Creates {products root}/{Product}/Pictures|Print Files|Seal Stickers,
+    # uploads the processed images + description.txt, and fills the variant
+    # folder-URL columns. Never fails the launch — Drive errors just log a warning.
+    drive_folder_url = None
+    try:
+        if any(not v.get("existing_pictures_url") for v in variants):
+            service   = get_drive_service()
+            parent_id = get_product_parent_folder_id(service)
+            if not parent_id:
+                raise RuntimeError("No products parent folder found — set PRODUCT_PARENT_FOLDER_ID.")
+            product_folder_id = get_or_create_folder(service, product_base_name, parent_id)
+            pics_id  = get_or_create_folder(service, "Pictures", product_folder_id)
+            files_id = get_or_create_folder(service, "Print Files", product_folder_id)
+            seals_id = get_or_create_folder(service, "Seal Stickers", product_folder_id)
+            if not all([product_folder_id, pics_id, files_id, seals_id]):
+                raise RuntimeError("Drive folder creation failed.")
+
+            _folder_url = lambda fid: f"https://drive.google.com/drive/folders/{fid}"
+            with tempfile.TemporaryDirectory() as tmpd:
+                desc_path = os.path.join(tmpd, "description.txt")
+                with open(desc_path, "w") as f:
+                    f.write(f"{listing_title}\n\n{description}\n"
+                            + (f"\n--- Original product description ---\n{source_description}\n" if source_description else "")
+                            + (f"\nSource: {source_url}\n" if source_url else ""))
+                upload_to_drive(service, desc_path, "description.txt", pics_id)
+                for idx, data in processed_imgs:
+                    img_path = os.path.join(tmpd, f"{idx:02d}.jpg")
+                    with open(img_path, "wb") as f:
+                        f.write(data)
+                    upload_to_drive(service, img_path, f"{idx:02d}.jpg", pics_id)
+
+            for v in variants:
+                if v.get("existing_pictures_url"):
+                    continue  # never overwrite folder links that already exist
+                supabase.table("variants").update({
+                    "pictures_gdrive_url":     _folder_url(pics_id),
+                    "print_files_gdrive_url":  _folder_url(files_id),
+                    "seal_sticker_gdrive_url": _folder_url(seals_id),
+                }).eq("id", v["variant_id"]).execute()
+
+            drive_folder_url = _folder_url(product_folder_id)
+            log_system("info", f"Product launch: Drive folders created for {master_sku}: {drive_folder_url}",
+                       agent_name="Product Launch")
+    except Exception as de:
+        log_system("warning", f"Product launch: Drive folder step failed for {master_sku}: {de}",
+                   agent_name="Product Launch")
+
     # ── build ZIP ──────────────────────────────────────────────────────────
     zip_buf = BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -4073,6 +4393,7 @@ async def catalog_launch_product(request: Request):
                     f"Product: {product_base_name}  (master_sku: {master_sku}  id: {product_id})\n\n"
                     "Variants:\n" +
                     "\n".join(f"  {v['sku']}  (id: {v['variant_id']})" for v in variants) +
+                    (f"\n\nDrive folder: {drive_folder_url}" if drive_folder_url else "") +
                     f"\n\nNOTE: print_files rows not created — add after uploading gcode to SimplyPrint.\n")
 
     zip_buf.seek(0)
