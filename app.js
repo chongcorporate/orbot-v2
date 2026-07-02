@@ -59,7 +59,7 @@ function showToast(message, type = "info") {
     success: { bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.4)", text: "#10b981", icon: "check_circle" },
     error:   { bg: "rgba(239,68,68,0.12)",  border: "rgba(239,68,68,0.4)",  text: "#ef4444", icon: "error" },
     warning: { bg: "rgba(234,179,8,0.12)",  border: "rgba(234,179,8,0.4)",  text: "#eab308", icon: "warning" },
-    info:    { bg: "rgba(164,232,68,0.12)", border: "rgba(164,232,68,0.4)", text: "#a4e844", icon: "info" },
+    info:    { bg: "rgba(139,124,246,0.12)", border: "rgba(139,124,246,0.4)", text: "#8b7cf6", icon: "info" },
   };
   const c = palette[type] || palette.info;
   const toast = document.createElement("div");
@@ -80,7 +80,7 @@ async function logAction(message, level = "info", meta = {}) {
       agent_name: "dashboard",
       log_level: level,
       log_message: message,
-      log_data: Object.keys(meta).length ? meta : null
+      additional_details: Object.keys(meta).length ? meta : null
     });
   } catch (_) {}
 }
@@ -260,9 +260,11 @@ function passesShopScope(shopId) {
 function onShopChange() {
   fetchSummaryStats();
   fetchAndRenderOrders();
-  if (currentTab === "waybills") fetchAndRenderWaybillsArchive();
-  if (currentTab === "catalog") renderCatalogFromCache();
-  if (currentTab === "listings") renderListingsFromCache();
+  if (currentTab === "orders") fetchAndRenderWaybillsArchive();
+  if (currentTab === "products") {
+    renderCatalogFromCache();
+    renderListingsFromCache();
+  }
   if (currentTab === "overview") {
     fetchAndRenderOverviewJobs();
     fetchAndRenderOverviewLogs();
@@ -1706,17 +1708,10 @@ function setupTabs() {
       if (globalSearch) {
         if (tabId === "orders") {
           globalSearch.value = orderSearchQuery;
-        } else if (tabId === "catalog") {
+        } else if (tabId === "products") {
           const catalogSearch = document.getElementById("catalog-search");
           globalSearch.value = catalogSearch ? catalogSearch.value : "";
-        } else if (tabId === "listings") {
-          const listingsSearch = document.getElementById("listings-search");
-          globalSearch.value = listingsSearch ? listingsSearch.value : "";
-        } else if (tabId === "waybills") {
-          globalSearch.value = waybillSearchQuery;
-          const waybillSearch = document.getElementById("waybill-search-input");
-          if (waybillSearch) waybillSearch.value = waybillSearchQuery;
-        } else if (tabId === "agents") {
+        } else if (tabId === "operations") {
           globalSearch.value = jobsSearchQuery;
           const jobsSearch = document.getElementById("jobs-search-input");
           if (jobsSearch) jobsSearch.value = jobsSearchQuery;
@@ -1733,22 +1728,25 @@ function setupTabs() {
         fetchSummaryStats();
         fetchAndRenderPrintersAndQueue();
       }
-      if (tabId === "orders") fetchAndRenderOrders();
-      if (tabId === "logs") { fetchAndRenderLogs(); }
-      if (tabId === "catalog") fetchAndRenderCatalog();
-      if (tabId === "listings") fetchAndRenderListings();
-      if (tabId === "waybills") {
+      if (tabId === "orders") {
+        // Merged Orders + Waybills tab
+        fetchAndRenderOrders();
         fetchAgentHeartbeats();
         fetchAndRenderWaybillsArchive();
       }
-      if (tabId === "agents") {
+      if (tabId === "logs") { fetchAndRenderLogs(); }
+      if (tabId === "products") {
+        // Merged Catalog + Listings tab
+        fetchAndRenderCatalog();
+        fetchAndRenderListings();
+      }
+      if (tabId === "operations") {
+        // Merged Printers + Agents tab
+        fetchAndRenderPrintersAndQueue();
+        fetchAndRenderPrintJobs();
         fetchAgentHeartbeats();
         fetchAndRenderJobs();
         fetchAndRenderGeminiUsage();
-      }
-      if (tabId === "printers") {
-        fetchAndRenderPrintersAndQueue();
-        fetchAndRenderPrintJobs();
       }
       if (tabId === "launch") {
         initLaunchTab();
@@ -1770,20 +1768,11 @@ function setupGlobalSearch() {
       if (ordersSearch) ordersSearch.value = query;
       orderSearchQuery = query.trim();
       fetchAndRenderOrders(false); // Filter from cache
-    } else if (currentTab === "catalog") {
+    } else if (currentTab === "products") {
       const catalogSearch = document.getElementById("catalog-search");
       if (catalogSearch) catalogSearch.value = query;
       fetchAndRenderCatalog(); // Filter from cache
-    } else if (currentTab === "listings") {
-      const listingsSearch = document.getElementById("listings-search");
-      if (listingsSearch) listingsSearch.value = query;
-      renderListingsFromCache();
-    } else if (currentTab === "waybills") {
-      const waybillSearch = document.getElementById("waybill-search-input");
-      if (waybillSearch) waybillSearch.value = query;
-      waybillSearchQuery = query.trim();
-      fetchAndRenderWaybillsArchive();
-    } else if (currentTab === "agents") {
+    } else if (currentTab === "operations") {
       const jobsSearch = document.getElementById("jobs-search-input");
       if (jobsSearch) jobsSearch.value = query;
       jobsSearchQuery = query.trim();
@@ -1829,15 +1818,20 @@ function setupSettings() {
     // Re-initialize
     if (initSupabase()) {
       fetchSummaryStats();
-      if (currentTab === "orders") fetchAndRenderOrders();
+      if (currentTab === "orders") {
+        fetchAndRenderOrders();
+        fetchAndRenderWaybillsArchive();
+      }
       if (currentTab === "logs") fetchAndRenderLogs();
-      if (currentTab === "catalog") {
+      if (currentTab === "products") {
         cachedVariants = [];
         fetchAndRenderCatalog();
+        fetchAndRenderListings();
       }
-      if (currentTab === "agents") {
+      if (currentTab === "operations") {
         fetchAgentHeartbeats();
         fetchAndRenderJobs();
+        fetchAndRenderPrintersAndQueue();
       }
     }
   });
@@ -1991,9 +1985,9 @@ async function fetchAgentHeartbeats() {
 
     // --- Agents page cards ---
     const agentConfigs = [
-      { name: "orbot_service", threshold: 120000, color: "#a4e844", dotId: "agents-hb-service-dot", textId: "agents-hb-service-text", timeId: "agents-hb-service-time" },
+      { name: "orbot_service", threshold: 120000, color: "#8b7cf6", dotId: "agents-hb-service-dot", textId: "agents-hb-service-text", timeId: "agents-hb-service-time" },
       { name: "scout",         threshold: 600000, color: "#22d3ee", dotId: "agents-hb-scout-dot",   textId: "agents-hb-scout-text",   timeId: "agents-hb-scout-time" },
-      { name: "orbot_service", threshold: 120000, color: "#a4e844", dotId: "agents-hb-foreman-dot", textId: "agents-hb-foreman-text", timeId: "agents-hb-foreman-time" },
+      { name: "orbot_service", threshold: 120000, color: "#8b7cf6", dotId: "agents-hb-foreman-dot", textId: "agents-hb-foreman-text", timeId: "agents-hb-foreman-time" },
       { name: "waybill_agent", threshold: 600000, color: "#ffaa6b", dotId: "agents-hb-waybill-dot",  textId: "agents-hb-waybill-text",  timeId: "agents-hb-waybill-time" },
       { name: "orbot_service", threshold: 120000, color: "#7ea6e8", dotId: "agents-hb-spsync-dot",  textId: "agents-hb-spsync-text",  timeId: "agents-hb-spsync-time" },
     ];
@@ -2162,7 +2156,7 @@ function setupCatalogModal() {
         if (!brand || !masterSku || !baseName) {
           showToast("Please fill in Brand Name, Master SKU, and Product Base Name.", "warning");
           saveBtn.disabled = false;
-          saveBtn.innerHTML = "Add Variant";
+          saveBtn.innerHTML = "Add Product";
           return;
         }
 
@@ -2184,7 +2178,7 @@ function setupCatalogModal() {
         if (!productId) {
           showToast("Please select a product.", "warning");
           saveBtn.disabled = false;
-          saveBtn.innerHTML = "Add Variant";
+          saveBtn.innerHTML = "Add Product";
           return;
         }
       }
@@ -2211,7 +2205,7 @@ function setupCatalogModal() {
       showToast("Failed to add catalog item: " + err.message, "error");
     } finally {
       saveBtn.disabled = false;
-      saveBtn.innerHTML = "Add Variant";
+      saveBtn.innerHTML = "Add Product";
     }
   });
 }
@@ -2387,7 +2381,7 @@ function setupWaybillProcessing() {
             writeWaybillConsole(`[${current}/${total}] [SUCCESS] Waybill Ingestion complete!`, "info");
             fetchSummaryStats();
             if (currentTab === "orders") fetchAndRenderOrders();
-            if (currentTab === "waybills") fetchAndRenderWaybillsArchive();
+            if (currentTab === "orders") fetchAndRenderWaybillsArchive();
             resolve();
           },
           (errMsg) => {
@@ -2430,8 +2424,8 @@ function setupWaybillProcessing() {
           writeWaybillConsole(`[SUCCESS] Scout Gmail scan completed.`, "info");
           fetchSummaryStats();
           if (currentTab === "orders") fetchAndRenderOrders();
-          if (currentTab === "agents") fetchAndRenderJobs();
-          if (currentTab === "waybills") fetchAndRenderWaybillsArchive();
+          if (currentTab === "operations") fetchAndRenderJobs();
+          if (currentTab === "orders") fetchAndRenderWaybillsArchive();
           if (currentTab === "overview") {
             fetchAndRenderOverviewJobs();
             fetchAndRenderOverviewLogs();
@@ -2440,7 +2434,7 @@ function setupWaybillProcessing() {
         (errMsg) => {
           setButtonsDisabled("ctrl-trigger-scout", "waybill-ctrl-trigger-scout", "overview-ctrl-trigger-scout", false);
           writeWaybillConsole(`[ERROR] Scout scan failed: ${errMsg}`, "error");
-          if (currentTab === "agents") fetchAndRenderJobs();
+          if (currentTab === "operations") fetchAndRenderJobs();
           if (currentTab === "overview") {
             fetchAndRenderOverviewJobs();
             fetchAndRenderOverviewLogs();
@@ -2482,7 +2476,7 @@ function setupWaybillProcessing() {
       logAction(`Foreman dispatch triggered manually`, "info", { dispatched: resData.files_dispatched, processed: resData.processed_items_count });
       setTimeout(() => {
         fetchSummaryStats();
-        if (currentTab === "waybills") fetchAndRenderWaybillsArchive();
+        if (currentTab === "orders") fetchAndRenderWaybillsArchive();
         if (currentTab === "overview") {
           fetchAndRenderOverviewJobs();
           fetchAndRenderOverviewLogs();
@@ -2530,8 +2524,8 @@ function setupWaybillProcessing() {
           }
           fetchSummaryStats();
           if (currentTab === "orders") fetchAndRenderOrders();
-          if (currentTab === "agents") fetchAndRenderJobs();
-          if (currentTab === "waybills") {
+          if (currentTab === "operations") fetchAndRenderJobs();
+          if (currentTab === "orders") {
             fetchAndRenderWaybillsArchive();
             fetchAndRenderMasterPDFs();
             document.getElementById("waybill-tab-pdfs")?.click();
@@ -2544,7 +2538,7 @@ function setupWaybillProcessing() {
         (errMsg) => {
           setButtonsDisabled("ctrl-trigger-compile", "waybill-ctrl-trigger-compile", "overview-ctrl-trigger-compile", false);
           writeWaybillConsole(`[ERROR] Batch compilation failed: ${errMsg}`, "error");
-          if (currentTab === "agents") fetchAndRenderJobs();
+          if (currentTab === "operations") fetchAndRenderJobs();
           if (currentTab === "overview") {
             fetchAndRenderOverviewJobs();
             fetchAndRenderOverviewLogs();
@@ -2624,7 +2618,7 @@ async function fetchAndRenderJobs() {
         if (j.result.error) {
           resultStr = `<span style="color: var(--error-color); font-weight: 500;">Error: ${j.result.error}</span>`;
         } else if (j.result.url) {
-          resultStr = `<a href="${j.result.url}" target="_blank" class="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-[#a4e844] rounded border border-primary/30 transition-all duration-150 inline-flex items-center gap-1.5 select-none no-underline text-[10px] font-semibold"><span class="material-symbols-outlined text-[12px] select-none">download</span> Download Batch</a>`;
+          resultStr = `<a href="${j.result.url}" target="_blank" class="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-[#8b7cf6] rounded border border-primary/30 transition-all duration-150 inline-flex items-center gap-1.5 select-none no-underline text-[10px] font-semibold"><span class="material-symbols-outlined text-[12px] select-none">download</span> Download Batch</a>`;
         } else {
           resultStr = JSON.stringify(j.result);
         }
@@ -2694,7 +2688,7 @@ function setupAgentControls() {
             if (btnSync1) btnSync1.disabled = false;
             if (btnSync3) btnSync3.disabled = false;
             writeWaybillConsole(`[SUCCESS] SimplyPrint mapping sync completed.`, "info");
-            if (currentTab === "agents") fetchAndRenderJobs();
+            if (currentTab === "operations") fetchAndRenderJobs();
             if (currentTab === "overview") {
               fetchAndRenderOverviewJobs();
               fetchAndRenderOverviewLogs();
@@ -2704,7 +2698,7 @@ function setupAgentControls() {
             if (btnSync1) btnSync1.disabled = false;
             if (btnSync3) btnSync3.disabled = false;
             writeWaybillConsole(`[ERROR] Sync failed: ${errMsg}`, "error");
-            if (currentTab === "agents") fetchAndRenderJobs();
+            if (currentTab === "operations") fetchAndRenderJobs();
             if (currentTab === "overview") {
               fetchAndRenderOverviewJobs();
               fetchAndRenderOverviewLogs();
@@ -3127,11 +3121,13 @@ window.addEventListener("DOMContentLoaded", () => {
     // Poll stats and heartbeats
     setInterval(fetchSummaryStats, 300000);
     setInterval(() => {
-      if (currentTab === "agents") {
+      if (currentTab === "operations") {
         fetchAgentHeartbeats();
         fetchAndRenderJobs();
         fetchAndRenderGeminiUsage();
-      } else if (currentTab === "waybills") {
+        fetchAndRenderPrintersAndQueue();
+        fetchAndRenderPrintJobs();
+      } else if (currentTab === "orders") {
         fetchAgentHeartbeats();
         fetchAndRenderWaybillsArchive();
       } else if (currentTab === "overview") {
@@ -3140,9 +3136,6 @@ window.addEventListener("DOMContentLoaded", () => {
         fetchAndRenderOverviewLogs();
         fetchAndRenderPrintersAndQueue();
         fetchAndRenderOrders();
-      } else if (currentTab === "printers") {
-        fetchAndRenderPrintersAndQueue();
-        fetchAndRenderPrintJobs();
       }
     }, 300000);
 
@@ -3293,7 +3286,7 @@ function renderGanttChart(printers, queue, jobs) {
       const su = sku.toUpperCase();
       if (block.type === 'active') {
         const pct = block.percent || 0;
-        bgStyle = `background:linear-gradient(to right,rgba(164,232,68,.28) ${pct}%,rgba(164,232,68,.07) ${pct}%);`;
+        bgStyle = `background:linear-gradient(to right,rgba(139,124,246,.28) ${pct}%,rgba(139,124,246,.07) ${pct}%);`;
         cls = 'gantt-block-active';
       } else if (su.includes('-DS') && !su.includes('-DS-NP')) {
         cls = 'gantt-block-queued-ds';
@@ -3679,7 +3672,7 @@ function setupPrinterControls() {
       if (error) throw error;
 
       if (currentTab === "overview") fetchAndRenderOverviewJobs();
-      if (currentTab === "agents") fetchAndRenderJobs();
+      if (currentTab === "operations") fetchAndRenderJobs();
       
       setTimeout(fetchAndRenderPrintersAndQueue, 1500);
     } catch (err) {
@@ -4659,7 +4652,7 @@ function initLaunchTab() {
 
   // Image grid: drag & drop on the panel
   const panel = document.getElementById('launch-image-panel');
-  panel?.addEventListener('dragover', (e) => { e.preventDefault(); panel.style.boxShadow = '0 0 0 1px #a4e844'; });
+  panel?.addEventListener('dragover', (e) => { e.preventDefault(); panel.style.boxShadow = '0 0 0 1px #8b7cf6'; });
   panel?.addEventListener('dragleave', () => { panel.style.boxShadow = ''; });
   panel?.addEventListener('drop', (e) => {
     e.preventDefault(); panel.style.boxShadow = '';
@@ -4699,7 +4692,7 @@ function renderLaunchImageGrid() {
   });
   for (let i = _launchImages.length; i < MAX; i++) {
     const slot = document.createElement('div');
-    slot.className = 'aspect-square rounded-lg border border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#a4e844]/60 transition-colors';
+    slot.className = 'aspect-square rounded-lg border border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#8b7cf6]/60 transition-colors';
     slot.setAttribute('data-empty', '');
     slot.innerHTML = `<span class="material-symbols-outlined text-[#4b5563]" style="font-size:20px">add_photo_alternate</span>`;
     grid.appendChild(slot);
@@ -4740,7 +4733,7 @@ function getLaunchFormData() {
 function setLaunchStatus(type, msg) {
   const el = document.getElementById('launch-status');
   if (!el) return;
-  el.className = `glass-panel px-5 py-3 text-sm ${type === 'error' ? 'text-red-400 border border-red-500/20' : 'text-[#a4e844]'}`;
+  el.className = `glass-panel px-5 py-3 text-sm ${type === 'error' ? 'text-red-400 border border-red-500/20' : 'text-[#8b7cf6]'}`;
   el.textContent = msg;
   el.classList.remove('hidden');
 }
@@ -4776,7 +4769,7 @@ async function doLaunchPreview() {
     const tbody = document.getElementById('launch-variants-body');
     tbody.innerHTML = data.variants.map(v => `
       <tr>
-        <td class="py-2 pr-6 text-[#a4e844]">${v.sku}</td>
+        <td class="py-2 pr-6 text-[#8b7cf6]">${v.sku}</td>
         <td class="py-2 pr-6 text-[#9ca3af]">${v.platform_variation_name}</td>
         <td class="py-2 text-right text-white">${v.price_myr ? 'MYR ' + Number(v.price_myr).toFixed(2) : '—'}</td>
       </tr>`).join('');
@@ -4784,7 +4777,7 @@ async function doLaunchPreview() {
     const detailsTbody = document.getElementById('launch-variant-details-body');
     detailsTbody.innerHTML = data.variants.map((v, i) => `
       <tr>
-        <td class="py-2 pr-4 text-[#a4e844] font-mono text-xs">${v.sku}</td>
+        <td class="py-2 pr-4 text-[#8b7cf6] font-mono text-xs">${v.sku}</td>
         <td class="py-2 pr-3"><input id="lv-${i}-stock" type="number" value="0" min="0" class="w-16 text-center" style="padding:0.25rem 0.375rem !important" /></td>
         <td class="py-2 pr-3"><input id="lv-${i}-seal" type="text" placeholder="https://drive.google.com/…" class="w-full" style="padding:0.25rem 0.5rem !important; font-size:0.7rem" /></td>
         <td class="py-2 pr-3"><input id="lv-${i}-files" type="text" placeholder="https://drive.google.com/…" class="w-full" style="padding:0.25rem 0.5rem !important; font-size:0.7rem" /></td>
@@ -4858,7 +4851,7 @@ async function doLaunchDownload() {
     URL.revokeObjectURL(url);
 
     setLaunchStatus('success', `Done. ${product_types.length} variant type(s) inserted into DB. Package downloaded.`);
-    logAction('launch_product', { master_sku: `BLO-${theme}-${set_number}`, product_types, platforms });
+    logAction('launch_product', "info", { master_sku: `BLO-${theme}-${set_number}`, product_types, platforms });
   } catch (e) {
     setLaunchStatus('error', `Launch failed: ${e.message}`);
   } finally {
@@ -4983,7 +4976,7 @@ function renderListingsFromCache() {
     const unmappedVars = vars.filter(v => !v.variant_id).length;
 
     const platformCount = LISTING_PLATFORMS.filter(p => !!l[p.key]).length;
-    const coverageColor = platformCount === 5 ? "#a4e844" : platformCount >= 3 ? "#eab308" : "#ef4444";
+    const coverageColor = platformCount === 5 ? "#8b7cf6" : platformCount >= 3 ? "#eab308" : "#ef4444";
 
     const platformDots = LISTING_PLATFORMS.map(p =>
       `<div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${l[p.key] ? p.color : "rgba(100,116,139,0.2)"}" title="${p.label}: ${l[p.key] ? escapeHtml(l[p.key]) : "not listed"}"></div>`
@@ -5010,7 +5003,7 @@ function renderListingsFromCache() {
         <button class="btn-copy-platform-id opacity-0 group-hover:opacity-100 p-0.5 rounded text-outline/60 hover:text-primary transition-all" data-id="${escapeHtml(id)}" data-label="${escapeHtml(p.label)}" type="button" title="Copy ${p.label} ID">
           <span class="material-symbols-outlined text-[14px] pointer-events-none">content_copy</span>
         </button>
-        <a href="${p.url}" target="_blank" rel="noopener noreferrer" class="opacity-0 group-hover:opacity-100 p-0.5 rounded text-outline/60 hover:text-[#a4e844] transition-all" title="Open ${p.label}" onclick="event.stopPropagation()">
+        <a href="${p.url}" target="_blank" rel="noopener noreferrer" class="opacity-0 group-hover:opacity-100 p-0.5 rounded text-outline/60 hover:text-[#8b7cf6] transition-all" title="Open ${p.label}" onclick="event.stopPropagation()">
           <span class="material-symbols-outlined text-[14px]">open_in_new</span>
         </a>
       </div>`;

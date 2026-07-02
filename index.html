@@ -24,14 +24,14 @@
             "on-primary-fixed": "#002022",
             "background": "#030712",
             "secondary-fixed": "#f8d8ff",
-            "primary": "#a4e844",
+            "primary": "#8b7cf6",
             "on-secondary": "#520072",
             "on-surface-variant": "#cbd5e1",
             "outline-variant": "#334155",
             "on-tertiary-container": "#924e00",
             "secondary-container": "#b600f8",
             "on-tertiary-fixed-variant": "#6e3900",
-            "primary-fixed": "#a4e844",
+            "primary-fixed": "#8b7cf6",
             "surface-container-high": "#1e293b",
             "on-background": "#f8fafc",
             "error-container": "#93000a",
@@ -43,11 +43,11 @@
             "tertiary-container": "#ffd2b1",
             "on-primary-container": "#006a71",
             "tertiary-fixed-dim": "#ffb77d",
-            "surface-tint": "#a4e844",
+            "surface-tint": "#8b7cf6",
             "surface-container-low": "#0b0f19",
             "on-secondary-container": "#fff6fc",
             "outline": "#64748b",
-            "primary-fixed-dim": "#a4e844",
+            "primary-fixed-dim": "#8b7cf6",
             "tertiary-fixed": "#ffdcc3",
             "surface-dim": "#090d16",
             "on-secondary-fixed": "#320047",
@@ -58,7 +58,7 @@
             "on-primary": "#00363a",
             "tertiary": "#fff5f0",
             "on-tertiary-fixed": "#2f1500",
-            "primary-container": "#a4e844",
+            "primary-container": "#8b7cf6",
             "on-primary-fixed-variant": "#004f54",
             "surface-variant": "#334155",
             "inverse-surface": "#f8fafc",
@@ -111,14 +111,14 @@
     /* Custom Scrollbar */
     ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(164, 232, 68, 0.5); border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(164, 232, 68, 0.8); }
+    ::-webkit-scrollbar-thumb { background: rgba(139, 124, 246, 0.5); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(139, 124, 246, 0.8); }
 
     /* Neon Pulse Animations */
     @keyframes pulse-neon {
-      0% { box-shadow: 0 0 0 0 rgba(164, 232, 68, 0.4); }
-      70% { box-shadow: 0 0 0 10px rgba(164, 232, 68, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(164, 232, 68, 0); }
+      0% { box-shadow: 0 0 0 0 rgba(139, 124, 246, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(139, 124, 246, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(139, 124, 246, 0); }
     }
     .pulse-live { animation: pulse-neon 2s infinite; }
 
@@ -143,24 +143,24 @@
     }
     .pulse-error { animation: pulse-neon-red 2s infinite; }
 
-    /* Glassmorphic Panel Design Utilities */
+    /* Glassmorphic Panel Design Utilities (Aurora Pro refined glass) */
     .glass-panel {
-      background: rgba(32, 31, 31, 0.65);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 0.5px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.045);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
-    
+
     .glass-panel-gradient {
-      background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 100%), rgba(32, 31, 31, 0.65);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 0.5px solid rgba(255, 255, 255, 0.08);
+      background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 100%), rgba(255, 255, 255, 0.045);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
 
     .neon-focus:focus-within {
-      border-color: rgba(164, 232, 68, 0.5);
-      box-shadow: 0 0 15px rgba(164, 232, 68, 0.2);
+      border-color: rgba(139, 124, 246, 0.5);
+      box-shadow: 0 0 15px rgba(139, 124, 246, 0.2);
     }
 
     /* Tab View Panes Toggle Logic mapping (from app.js class toggles) */
@@ -188,15 +188,17 @@
     }
 
     .tab-btn:hover {
-      background-color: #2a2a2a;
+      background-color: rgba(255, 255, 255, 0.04);
       opacity: 1;
     }
 
     .tab-btn.active {
-      background-color: #a4e844 !important;
-      color: #000000 !important;
-      box-shadow: 0 4px 15px rgba(164, 232, 68, 0.4) !important;
-      border-color: #a4e844 !important;
+      background: linear-gradient(135deg, rgba(139,124,246,0.18), rgba(95,180,255,0.12)) !important;
+      color: #f2f3f7 !important;
+      box-shadow: 0 4px 16px rgba(139, 124, 246, 0.12) !important;
+      border-color: rgba(139, 124, 246, 0.3) !important;
+      border-width: 1px !important;
+      border-style: solid !important;
       border-radius: 9999px !important;
       opacity: 1;
     }
@@ -207,6 +209,7 @@
 
     .tab-btn.active .material-symbols-outlined {
       font-variation-settings: "FILL" 1;
+      color: #5fb4ff;
     }
 
     /* Override input borders & focus states dynamically */
@@ -220,8 +223,8 @@
       transition: all 0.2s ease !important;
     }
     input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
-      border-color: #a4e844 !important;
-      box-shadow: 0 0 8px rgba(164, 232, 68, 0.35) !important;
+      border-color: #8b7cf6 !important;
+      box-shadow: 0 0 8px rgba(139, 124, 246, 0.35) !important;
     }
     select option {
       background-color: #1c1b1b !important;
@@ -263,24 +266,29 @@
       background-size: 0.75em !important;
     }
     .badge.pending {
-      background-color: rgba(255, 140, 0, 0.12) !important;
-      color: #ff8c00 !important;
-      border: 1px solid rgba(255, 140, 0, 0.2) !important;
+      background-color: rgba(245, 185, 66, 0.14) !important;
+      color: #f5b942 !important;
+      border: 1px solid rgba(245, 185, 66, 0.25) !important;
     }
     .badge.printing {
-      background-color: rgba(164, 232, 68, 0.12) !important;
-      color: #a4e844 !important;
-      border: 1px solid rgba(164, 232, 68, 0.2) !important;
+      background-color: rgba(95, 180, 255, 0.14) !important;
+      color: #5fb4ff !important;
+      border: 1px solid rgba(95, 180, 255, 0.25) !important;
+    }
+    .badge.printed {
+      background-color: rgba(139, 124, 246, 0.14) !important;
+      color: #8b7cf6 !important;
+      border: 1px solid rgba(139, 124, 246, 0.25) !important;
     }
     .badge.completed {
-      background-color: rgba(16, 185, 129, 0.12) !important;
-      color: #10b981 !important;
-      border: 1px solid rgba(16, 185, 129, 0.2) !important;
+      background-color: rgba(61, 220, 151, 0.14) !important;
+      color: #3ddc97 !important;
+      border: 1px solid rgba(61, 220, 151, 0.25) !important;
     }
     .badge.hold, .badge.failed {
-      background-color: rgba(255, 82, 82, 0.12) !important;
-      color: #ff5252 !important;
-      border: 1px solid rgba(255, 82, 82, 0.2) !important;
+      background-color: rgba(242, 101, 122, 0.14) !important;
+      color: #f2657a !important;
+      border: 1px solid rgba(242, 101, 122, 0.25) !important;
     }
 
     /* Gantt Chart Styles */
@@ -295,9 +303,9 @@
       color: #e5e2e1 !important;
     }
     .gantt-zoom-btn.active {
-      background: rgba(164, 232, 68, 0.15) !important;
-      border-color: #a4e844 !important;
-      color: #a4e844 !important;
+      background: rgba(139, 124, 246, 0.15) !important;
+      border-color: #8b7cf6 !important;
+      color: #8b7cf6 !important;
     }
 
     .gantt-row {
@@ -356,10 +364,10 @@
       font-family: 'JetBrains Mono', monospace;
     }
     .gantt-block-active {
-      background: rgba(164, 232, 68, 0.15);
-      border: 1px solid #a4e844;
-      color: #a4e844;
-      box-shadow: 0 0 8px rgba(164, 232, 68, 0.1);
+      background: rgba(139, 124, 246, 0.15);
+      border: 1px solid #8b7cf6;
+      color: #8b7cf6;
+      box-shadow: 0 0 8px rgba(139, 124, 246, 0.1);
       animation: gantt-active-pulse 2.5s infinite ease-in-out;
     }
     .gantt-block-queued-ds {
@@ -384,8 +392,8 @@
     }
 
     @keyframes gantt-active-pulse {
-      0%, 100% { border-color: #a4e844; box-shadow: 0 0 8px rgba(164, 232, 68, 0.1); }
-      50% { border-color: rgba(164, 232, 68, 0.5); box-shadow: 0 0 12px rgba(164, 232, 68, 0.25); }
+      0%, 100% { border-color: #8b7cf6; box-shadow: 0 0 8px rgba(139, 124, 246, 0.1); }
+      50% { border-color: rgba(139, 124, 246, 0.5); box-shadow: 0 0 12px rgba(139, 124, 246, 0.25); }
     }
 
     .gantt-grid-lines {
@@ -445,7 +453,7 @@
 <body class="bg-background text-on-surface font-body-md antialiased overflow-hidden w-full h-screen flex flex-col selection:bg-primary-container/30 selection:text-primary">
 
   <!-- TopAppBar -->
-  <header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-desktop h-16 bg-surface-container/80 backdrop-blur-md shadow-[0_0_15px_rgba(164,232,68,0.1)] border-b border-outline-variant/20">
+  <header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-desktop h-16 bg-surface-container/80 backdrop-blur-md shadow-[0_0_15px_rgba(139,124,246,0.1)] border-b border-outline-variant/20">
     <div class="flex items-center gap-4">
       <span class="material-symbols-outlined text-surface-tint text-[28px]" style="font-variation-settings: 'FILL' 1;">sync</span>
       <h1 class="font-headline-md text-headline-md font-bold text-surface-tint tracking-tight">Orbot V2.0</h1>
@@ -508,29 +516,17 @@
           <span class="material-symbols-outlined">dashboard</span>
           <span class="font-headline-sm text-headline-sm">Overview</span>
         </button>
-        <button class="tab-btn" data-tab="printers">
-          <span class="material-symbols-outlined">print</span>
-          <span class="font-headline-sm text-headline-sm">Printers</span>
-        </button>
         <button class="tab-btn" data-tab="orders">
           <span class="material-symbols-outlined">receipt_long</span>
           <span class="font-headline-sm text-headline-sm">Orders</span>
         </button>
-        <button class="tab-btn" data-tab="waybills">
-          <span class="material-symbols-outlined">local_shipping</span>
-          <span class="font-headline-sm text-headline-sm">Waybills</span>
+        <button class="tab-btn" data-tab="operations">
+          <span class="material-symbols-outlined">hub</span>
+          <span class="font-headline-sm text-headline-sm">Operations</span>
         </button>
-        <button class="tab-btn" data-tab="agents">
-          <span class="material-symbols-outlined">robot_2</span>
-          <span class="font-headline-sm text-headline-sm">Agents</span>
-        </button>
-        <button class="tab-btn" data-tab="catalog">
+        <button class="tab-btn" data-tab="products">
           <span class="material-symbols-outlined">inventory_2</span>
-          <span class="font-headline-sm text-headline-sm">Catalog</span>
-        </button>
-        <button class="tab-btn" data-tab="listings">
-          <span class="material-symbols-outlined">storefront</span>
-          <span class="font-headline-sm text-headline-sm">Listings</span>
+          <span class="font-headline-sm text-headline-sm">Products</span>
         </button>
         <button class="tab-btn" data-tab="launch">
           <span class="material-symbols-outlined">rocket_launch</span>
@@ -589,7 +585,7 @@
                 <span class="material-symbols-outlined text-[13px] text-outline opacity-0 group-hover:opacity-60 transition-opacity">arrow_forward</span>
               </div>
               <div class="flex items-baseline justify-between mt-auto pt-2">
-                <span class="font-headline-md text-display-lg text-primary drop-shadow-[0_0_12px_rgba(164,232,68,0.2)]" id="stats-queue-depth">-</span>
+                <span class="font-headline-md text-display-lg text-primary drop-shadow-[0_0_12px_rgba(139,124,246,0.2)]" id="stats-queue-depth">-</span>
                 <span class="font-data-mono text-[11px] text-outline" id="stats-queue-time">0m</span>
               </div>
             </div>
@@ -624,7 +620,7 @@
                 <a href="https://simplyprint.io/panel/printers" target="_blank" class="px-2 py-1 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-[10px] font-semibold inline-flex items-center gap-1 no-underline" title="SimplyPrint Portal">
                   <span class="material-symbols-outlined text-xs">open_in_new</span>
                 </a>
-                <button class="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-[10px] font-semibold flex items-center gap-1" id="overview-printers-btn-sync" title="Sync API">
+                <button class="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-[#8b7cf6] border border-primary/30 rounded-lg text-[10px] font-semibold flex items-center gap-1" id="overview-printers-btn-sync" title="Sync API">
                   <span class="material-symbols-outlined text-xs">sync</span> Sync
                 </button>
                 <button class="px-2 py-1 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-[10px] font-semibold flex items-center gap-1" id="overview-printers-btn-ready-all" title="Ready All">
@@ -701,7 +697,7 @@
                 </button>
 
                 <!-- Compile Batch Button -->
-                <button class="bg-primary/5 hover:bg-primary/15 border border-primary/30 hover:border-primary/50 rounded-xl flex flex-col items-center justify-center p-3 text-center transition-all duration-300 shadow-[0_0_12px_rgba(164,232,68,0.02)] hover:shadow-[0_0_20px_rgba(164,232,68,0.12)] group relative overflow-hidden h-[85px] cursor-pointer" id="overview-ctrl-trigger-compile">
+                <button class="bg-primary/5 hover:bg-primary/15 border border-primary/30 hover:border-primary/50 rounded-xl flex flex-col items-center justify-center p-3 text-center transition-all duration-300 shadow-[0_0_12px_rgba(139,124,246,0.02)] hover:shadow-[0_0_20px_rgba(139,124,246,0.12)] group relative overflow-hidden h-[85px] cursor-pointer" id="overview-ctrl-trigger-compile">
                   <div class="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/5 to-primary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-out"></div>
                   <div class="flex flex-col items-center gap-1.5 relative z-10">
                     <div class="w-7 h-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
@@ -777,7 +773,7 @@
               <span class="material-symbols-outlined text-primary">shopping_cart</span>
               <span>Pending Orders</span>
             </h3>
-            <button class="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="overview-orders-btn-refresh">
+            <button class="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-[#8b7cf6] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="overview-orders-btn-refresh">
               <span class="material-symbols-outlined text-sm">refresh</span> Refresh Orders
             </button>
           </div>
@@ -818,10 +814,13 @@
       </section>
 
       <!-- 1. Orders & Print Jobs Pane -->
-      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-orders">
+      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-5" id="pane-orders">
         <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
           <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4">
-            <h2 class="font-headline-md text-headline-md text-on-surface">Ingested Orders List</h2>
+            <div>
+              <h2 class="font-headline-md text-headline-md text-on-surface">Orders</h2>
+              <p class="text-[11px] font-data-mono text-outline mt-0.5">Order fulfillment &amp; waybill pipeline, unified</p>
+            </div>
             <div class="flex items-center gap-2">
               <button class="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/25 border border-emerald-500/30 hover:border-emerald-500/50 rounded flex items-center gap-2 font-label-caps transition-all text-xs font-bold text-emerald-400" id="orders-btn-complete-all">
                 <span class="material-symbols-outlined text-sm">done_all</span> Complete All
@@ -829,6 +828,34 @@
               <button class="px-4 py-2 bg-surface-container-highest border border-outline-variant/50 hover:bg-surface-container-highest/80 rounded flex items-center gap-2 font-label-caps transition-all text-xs" id="refresh-orders-btn">
                 <span class="material-symbols-outlined text-sm">refresh</span> Refresh
               </button>
+            </div>
+          </div>
+
+          <!-- Waybill Pipeline Tools (merged from former Waybills tab) -->
+          <div class="rounded-xl px-4 py-3 flex flex-wrap items-center gap-3" style="background: rgba(95,180,255,0.045); border: 1px solid rgba(95,180,255,0.18);">
+            <div class="flex items-center gap-1.5 text-[9px] font-bold font-data-mono uppercase tracking-wider text-[#5fb4ff] pr-3 border-r border-[#5fb4ff]/20 flex-shrink-0">
+              <span class="material-symbols-outlined text-sm">local_shipping</span> Waybills
+            </div>
+            <div class="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-lg border border-outline-variant/15 flex-shrink-0">
+              <div class="w-1.5 h-1.5 rounded-full bg-error" id="waybill-hb-orbot_service-dot"></div>
+              <span class="text-[9px] font-data-mono uppercase tracking-wider text-outline" id="waybill-hb-orbot_service-text">Offline</span>
+            </div>
+            <button class="px-3 py-1.5 bg-[#22d3ee]/10 hover:bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] rounded-lg text-xs font-label-caps font-bold flex items-center gap-1.5 transition-all active:scale-95" id="waybill-ctrl-trigger-scout">
+              <span class="material-symbols-outlined text-sm pointer-events-none">mail</span> Scan Gmail
+            </button>
+            <button class="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg text-xs font-label-caps font-bold flex items-center gap-1.5 transition-all active:scale-95" id="waybill-ctrl-trigger-foreman">
+              <span class="material-symbols-outlined text-sm pointer-events-none">print</span> Dispatch Prints
+            </button>
+            <button class="px-4 py-1.5 bg-[#ffaa6b]/15 hover:bg-[#ffaa6b]/25 border border-[#ffaa6b]/40 text-[#ffaa6b] rounded-lg text-xs font-label-caps font-bold flex items-center gap-1.5 transition-all active:scale-95 ml-auto" id="waybill-ctrl-trigger-compile">
+              <span class="material-symbols-outlined text-sm pointer-events-none">picture_as_pdf</span> Compile Batch PDF
+            </button>
+            <!-- Batch ready notification (hidden until compile completes) -->
+            <div class="hidden items-center gap-3 bg-[#ffaa6b]/10 border border-[#ffaa6b]/30 rounded-lg px-3 py-1.5" id="batch-output-box">
+              <span class="material-symbols-outlined text-[#ffaa6b] text-base">picture_as_pdf</span>
+              <span class="text-xs text-on-surface font-semibold">Master PDF ready</span>
+              <a href="#" target="_blank" class="px-3 py-1 bg-[#ffaa6b]/20 hover:bg-[#ffaa6b]/30 border border-[#ffaa6b]/40 text-[#ffaa6b] rounded text-xs font-bold flex items-center gap-1 no-underline transition-all" id="batch-download-link">
+                <span class="material-symbols-outlined text-sm">download</span> Download
+              </a>
             </div>
           </div>
 
@@ -884,38 +911,13 @@
             </div>
           </div>
         </div>
-      </section>
 
-      <!-- 2. Waybill Ingestion Pane -->
-      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-4" id="pane-waybills">
-
-        <!-- Top Action Bar -->
-        <div class="glass-panel rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
-          <!-- Service status -->
-          <div class="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-lg border border-outline-variant/15 flex-shrink-0">
-            <div class="w-1.5 h-1.5 rounded-full bg-error" id="waybill-hb-orbot_service-dot"></div>
-            <span class="text-[9px] font-data-mono uppercase tracking-wider text-outline" id="waybill-hb-orbot_service-text">Offline</span>
-          </div>
-          <div class="h-5 w-px bg-outline-variant/20 hidden md:block flex-shrink-0"></div>
-          <!-- Agent triggers -->
-          <button class="px-3 py-1.5 bg-[#22d3ee]/10 hover:bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] rounded-lg text-xs font-label-caps font-bold flex items-center gap-1.5 transition-all active:scale-95" id="waybill-ctrl-trigger-scout">
-            <span class="material-symbols-outlined text-sm pointer-events-none">mail</span> Scan Gmail
-          </button>
-          <button class="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg text-xs font-label-caps font-bold flex items-center gap-1.5 transition-all active:scale-95" id="waybill-ctrl-trigger-foreman">
-            <span class="material-symbols-outlined text-sm pointer-events-none">print</span> Dispatch Prints
-          </button>
-          <button class="px-4 py-1.5 bg-[#ffaa6b]/15 hover:bg-[#ffaa6b]/25 border border-[#ffaa6b]/40 text-[#ffaa6b] rounded-lg text-xs font-label-caps font-bold flex items-center gap-1.5 transition-all active:scale-95 ml-auto" id="waybill-ctrl-trigger-compile">
-            <span class="material-symbols-outlined text-sm pointer-events-none">picture_as_pdf</span> Compile Batch PDF
-          </button>
-          <!-- Batch ready notification (hidden until compile completes) -->
-          <div class="hidden items-center gap-3 bg-[#ffaa6b]/10 border border-[#ffaa6b]/30 rounded-lg px-3 py-1.5" id="batch-output-box">
-            <span class="material-symbols-outlined text-[#ffaa6b] text-base">picture_as_pdf</span>
-            <span class="text-xs text-on-surface font-semibold">Master PDF ready</span>
-            <a href="#" target="_blank" class="px-3 py-1 bg-[#ffaa6b]/20 hover:bg-[#ffaa6b]/30 border border-[#ffaa6b]/40 text-[#ffaa6b] rounded text-xs font-bold flex items-center gap-1 no-underline transition-all" id="batch-download-link">
-              <span class="material-symbols-outlined text-sm">download</span> Download
-            </a>
-          </div>
-        </div>
+        <!-- Waybill Documents (merged from former Waybills tab) -->
+        <div class="glass-panel rounded-xl p-5 flex flex-col gap-4">
+          <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 border-b border-outline-variant/10 pb-3">
+            <span class="material-symbols-outlined text-[#5fb4ff]">description</span>
+            Waybill Documents
+          </h3>
 
         <!-- Main 2-column layout -->
         <div class="grid grid-cols-12 gap-4 items-start">
@@ -1055,286 +1057,28 @@
 
           </div>
         </div>
-
-      </section>
-
-      <!-- 3. Agent Controls Pane -->
-      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-5" id="pane-agents">
-
-        <!-- Service Health Banner -->
-        <div class="glass-panel rounded-xl px-5 py-3 flex items-center justify-between gap-4">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-              <span class="material-symbols-outlined text-primary text-xl select-none">settings_applications</span>
-            </div>
-            <div>
-              <h2 class="font-headline-sm text-on-surface leading-tight">Orbot Service</h2>
-              <p class="text-[10px] font-data-mono text-outline">Unified Background Daemon · Railway</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-5">
-            <div class="hidden md:flex flex-col items-end">
-              <span class="text-[9px] font-label-caps text-outline uppercase tracking-wider">Last Heartbeat</span>
-              <span class="font-data-mono text-xs text-on-surface-variant" id="agents-hb-service-time">—</span>
-            </div>
-            <div class="flex items-center gap-2 bg-black/20 px-4 py-2 rounded-lg border border-outline-variant/15">
-              <div class="status-light-offline" id="hb-orbot_service-dot"></div>
-              <span class="font-data-mono font-bold text-sm" id="hb-orbot_service-text">Offline</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Agent Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-
-          <!-- Scout -->
-          <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-[#22d3ee] glow-hover-cyan relative overflow-hidden">
-            <div class="absolute inset-0 bg-[#22d3ee]/[0.02] pointer-events-none"></div>
-            <div class="flex items-start gap-3 relative z-10">
-              <div class="w-10 h-10 rounded-xl bg-[#22d3ee]/10 border border-[#22d3ee]/20 flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-[#22d3ee] text-xl select-none">mail</span>
-              </div>
-              <div class="flex-grow min-w-0">
-                <h4 class="font-headline-sm text-on-surface">Scout</h4>
-                <p class="text-[10px] font-data-mono text-outline">Gmail Order Poller</p>
-              </div>
-              <div class="flex flex-col items-end gap-0.5 flex-shrink-0">
-                <div class="flex items-center gap-1.5">
-                  <div class="w-2 h-2 rounded-full bg-error" id="agents-hb-scout-dot"></div>
-                  <span class="font-data-mono text-[11px] font-bold" id="agents-hb-scout-text" style="color:#ff5252">Offline</span>
-                </div>
-                <span class="font-data-mono text-[9px] text-outline" id="agents-hb-scout-time">—</span>
-              </div>
-            </div>
-            <p class="text-xs text-on-surface-variant/70 leading-relaxed relative z-10 flex-grow">Polls <span class="font-data-mono text-[#22d3ee]/80">orders@gmail.com</span> every 5 min. Parses Shopee/Lazada "Time to Ship" emails with Gemini and ingests orders automatically.</p>
-            <button class="w-full py-2 bg-[#22d3ee]/10 hover:bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-scout">Trigger Scan</button>
-          </div>
-
-          <!-- Foreman -->
-          <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-primary glow-hover-cyan relative overflow-hidden">
-            <div class="absolute inset-0 bg-primary/[0.02] pointer-events-none"></div>
-            <div class="flex items-start gap-3 relative z-10">
-              <div class="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-primary text-xl select-none">print</span>
-              </div>
-              <div class="flex-grow min-w-0">
-                <h4 class="font-headline-sm text-on-surface">Foreman</h4>
-                <p class="text-[10px] font-data-mono text-outline">Print Dispatch</p>
-              </div>
-              <div class="flex flex-col items-end gap-0.5 flex-shrink-0">
-                <div class="flex items-center gap-1.5">
-                  <div class="w-2 h-2 rounded-full bg-error" id="agents-hb-foreman-dot"></div>
-                  <span class="font-data-mono text-[11px] font-bold" id="agents-hb-foreman-text" style="color:#ff5252">Offline</span>
-                </div>
-                <span class="font-data-mono text-[9px] text-outline" id="agents-hb-foreman-time">—</span>
-              </div>
-            </div>
-            <p class="text-xs text-on-surface-variant/70 leading-relaxed relative z-10 flex-grow">Resolves pending order items to print files and dispatches them to the correct printer group via SimplyPrint queue.</p>
-            <button class="w-full py-2 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-foreman">Trigger Dispatch</button>
-          </div>
-
-          <!-- Waybill Agent -->
-          <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-[#ffaa6b] glow-hover-orange relative overflow-hidden">
-            <div class="absolute inset-0 bg-[#ffaa6b]/[0.02] pointer-events-none"></div>
-            <div class="flex items-start gap-3 relative z-10">
-              <div class="w-10 h-10 rounded-xl bg-[#ffaa6b]/10 border border-[#ffaa6b]/20 flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-[#ffaa6b] text-xl select-none">local_shipping</span>
-              </div>
-              <div class="flex-grow min-w-0">
-                <h4 class="font-headline-sm text-on-surface">Waybill Agent</h4>
-                <p class="text-[10px] font-data-mono text-outline">PDF Logistics</p>
-              </div>
-              <div class="flex flex-col items-end gap-0.5 flex-shrink-0">
-                <div class="flex items-center gap-1.5">
-                  <div class="w-2 h-2 rounded-full bg-error" id="agents-hb-waybill-dot"></div>
-                  <span class="font-data-mono text-[11px] font-bold" id="agents-hb-waybill-text" style="color:#ff5252">Offline</span>
-                </div>
-                <span class="font-data-mono text-[9px] text-outline" id="agents-hb-waybill-time">—</span>
-              </div>
-            </div>
-            <p class="text-xs text-on-surface-variant/70 leading-relaxed relative z-10 flex-grow">Processes waybill PDFs, classifies pages, stitches seal stickers, and compiles master print batches. Uploads to Google Drive.</p>
-            <button class="w-full py-2 bg-[#ffaa6b]/10 hover:bg-[#ffaa6b]/20 border border-[#ffaa6b]/30 text-[#ffaa6b] rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-compile">Compile Batch</button>
-          </div>
-
-          <!-- SimplyPrint Sync -->
-          <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-[#7ea6e8] glow-hover-cyan relative overflow-hidden">
-            <div class="absolute inset-0 bg-[#7ea6e8]/[0.02] pointer-events-none"></div>
-            <div class="flex items-start gap-3 relative z-10">
-              <div class="w-10 h-10 rounded-xl bg-[#7ea6e8]/10 border border-[#7ea6e8]/20 flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-[#7ea6e8] text-xl select-none">sync</span>
-              </div>
-              <div class="flex-grow min-w-0">
-                <h4 class="font-headline-sm text-on-surface">SP Telemetry</h4>
-                <p class="text-[10px] font-data-mono text-outline">SimplyPrint Sync</p>
-              </div>
-              <div class="flex flex-col items-end gap-0.5 flex-shrink-0">
-                <div class="flex items-center gap-1.5">
-                  <div class="w-2 h-2 rounded-full" id="agents-hb-spsync-dot" style="background:#7ea6e8"></div>
-                  <span class="font-data-mono text-[11px] font-bold" id="agents-hb-spsync-text" style="color:#7ea6e8">Every 5m</span>
-                </div>
-                <span class="font-data-mono text-[9px] text-outline" id="agents-hb-spsync-time">—</span>
-              </div>
-            </div>
-            <p class="text-xs text-on-surface-variant/70 leading-relaxed relative z-10 flex-grow">Syncs printer states, print queue, and job telemetry from SimplyPrint API into Supabase every 5 minutes.</p>
-            <button class="w-full py-2 bg-[#7ea6e8]/10 hover:bg-[#7ea6e8]/20 border border-[#7ea6e8]/30 text-[#7ea6e8] rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-sync-simplyprint">Sync Now</button>
-          </div>
-        </div>
-
-        <!-- Gemini Quota Monitor -->
-        <div class="glass-panel rounded-xl p-5 flex flex-col gap-4">
-          <div class="flex justify-between items-center">
-            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
-              <span class="material-symbols-outlined text-primary">analytics</span> Gemini API · Daily Quota
-            </h3>
-            <span class="text-[10px] font-data-mono text-primary uppercase bg-primary/10 border border-primary/20 px-2 py-0.5 rounded">gemini-2.0-flash-lite</span>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="flex flex-col gap-2 bg-black/20 p-4 rounded-lg border border-outline-variant/10">
-              <div class="flex justify-between text-xs">
-                <span class="text-outline">Daily Requests</span>
-                <span class="font-data-mono font-bold text-on-surface" id="gemini-requests-count">0 / 1,500</span>
-              </div>
-              <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
-                <div id="gemini-requests-bar" class="h-full bg-primary rounded-full transition-all duration-500 w-0"></div>
-              </div>
-              <div class="text-[10px] text-outline">15 RPM · 1,500 RPD</div>
-            </div>
-            <div class="flex flex-col gap-2 bg-black/20 p-4 rounded-lg border border-outline-variant/10">
-              <div class="flex justify-between text-xs">
-                <span class="text-outline">Daily Tokens</span>
-                <span class="font-data-mono font-bold text-on-surface" id="gemini-tokens-count">0 / 1,000,000</span>
-              </div>
-              <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
-                <div id="gemini-tokens-bar" class="h-full bg-[#22d3ee] rounded-full transition-all duration-500 w-0"></div>
-              </div>
-              <div class="text-[10px] text-outline">Safety cap: 1M tokens/day</div>
-            </div>
-            <div class="flex flex-col justify-between bg-black/20 p-4 rounded-lg border border-outline-variant/10">
-              <div class="flex justify-between items-center text-xs">
-                <span class="text-outline">Est. Cost (USD)</span>
-                <span class="font-data-mono font-bold text-primary text-base" id="gemini-cost-est">$0.00</span>
-              </div>
-              <div class="flex justify-between text-[10px] text-outline mt-2 pt-2 border-t border-outline-variant/10">
-                <span>In: <span class="font-data-mono text-on-surface" id="gemini-input-tokens">0</span></span>
-                <span>Out: <span class="font-data-mono text-on-surface" id="gemini-output-tokens">0</span></span>
-              </div>
-            </div>
-          </div>
-          <div class="flex flex-wrap gap-4 text-[10px] text-outline border-t border-outline-variant/10 pt-3" id="gemini-breakdown-list">
-            <span class="text-outline/50">No requests today.</span>
-          </div>
-        </div>
-
-        <!-- Job Queue -->
-        <div class="glass-panel rounded-xl p-5 flex flex-col gap-4">
-          <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
-              <span class="material-symbols-outlined text-surface-tint">history</span> Agent Activity &amp; Job Queue
-            </h3>
-            <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-              <div class="relative flex items-center">
-                <span class="material-symbols-outlined absolute left-3 text-on-surface-variant/50 text-sm select-none">search</span>
-                <input type="text" id="jobs-search-input" placeholder="Search payload, result..." class="pl-9 pr-4 py-1.5 w-52 bg-black/30 border border-outline-variant/20 rounded-lg text-xs text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-primary/50 transition-all font-data-mono">
-              </div>
-              <select id="jobs-filter-status" class="bg-black/30 border border-outline-variant/20 text-on-surface rounded-lg px-3 py-1.5 text-xs focus:border-primary/50 outline-none transition-all">
-                <option value="all">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="processing">Processing</option>
-                <option value="completed">Completed</option>
-                <option value="failed">Failed</option>
-              </select>
-              <select id="jobs-filter-type" class="bg-black/30 border border-outline-variant/20 text-on-surface rounded-lg px-3 py-1.5 text-xs focus:border-primary/50 outline-none transition-all">
-                <option value="all">All Types</option>
-                <option value="waybill_ingest">Ingestion</option>
-                <option value="waybill_batch_print">Batch Print</option>
-                <option value="scout_gmail_scan">Gmail Scan</option>
-                <option value="sync_simplyprint_ids">SP Sync</option>
-              </select>
-            </div>
-          </div>
-          <div class="overflow-y-auto rounded-lg border border-outline-variant/15 bg-black/10 h-[360px]">
-            <table class="min-w-full text-left border-separate border-spacing-y-1.5">
-              <thead class="sticky top-0 z-10">
-                <tr>
-                  <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Job ID</th>
-                  <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Type</th>
-                  <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Status</th>
-                  <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Payload</th>
-                  <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Result</th>
-                  <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Created</th>
-                </tr>
-              </thead>
-              <tbody id="jobs-tbody" class="text-sm">
-                <tr><td colspan="6" class="px-6 py-10 text-center text-outline font-data-mono text-xs">No jobs monitored yet.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Bottom Row: Manual Ingestion + Danger Zone -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-
-          <!-- Manual Ingestion -->
-          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 border-l-4 border-secondary/40">
-            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
-              <span class="material-symbols-outlined text-secondary">input</span> Manual Order Ingestion
-            </h3>
-            <p class="text-xs text-on-surface-variant/70 leading-relaxed">Paste a raw Shopee/Lazada "Time to Ship" email body to manually ingest an order and trigger print dispatch.</p>
-            <textarea id="email-body-input" rows="5" class="w-full bg-black/30 border border-outline-variant/20 text-on-surface rounded-lg p-3 font-data-mono text-xs focus:outline-none focus:border-secondary/50 transition-all placeholder:text-on-surface-variant/30 flex-grow resize-none" placeholder="Paste order email body here..."></textarea>
-            <div class="flex gap-3 items-stretch">
-              <button class="px-4 py-2 bg-secondary/15 hover:bg-secondary/25 border border-secondary/40 text-secondary rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-all whitespace-nowrap flex-shrink-0" id="ingest-submit-btn">Ingest Email</button>
-              <div class="flex-grow bg-black/40 border border-outline-variant/15 rounded-lg p-2.5 font-data-mono text-[10px] text-on-surface-variant min-h-[60px] max-h-[120px] overflow-y-auto space-y-0.5" id="ingest-console">
-                <div class="text-outline">> System ready.</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Danger Zone -->
-          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 border-l-4 border-error/60">
-            <h3 class="font-headline-sm text-headline-sm text-error flex items-center gap-2">
-              <span class="material-symbols-outlined">warning</span> Danger Zone
-            </h3>
-            <p class="text-xs text-on-surface-variant/70 leading-relaxed">Destructive operations on the database. These actions cannot be undone.</p>
-            <div class="flex flex-col gap-3 mt-auto">
-              <div class="flex items-center justify-between bg-black/20 border border-outline-variant/10 rounded-lg px-4 py-3">
-                <div>
-                  <div class="text-xs font-semibold text-on-surface">Purge Job Queue</div>
-                  <div class="text-[10px] text-outline mt-0.5">Remove all active/failed waybill jobs.</div>
-                </div>
-                <button class="px-3 py-1.5 btn-outlined-red rounded font-label-caps text-xs flex items-center gap-1.5 flex-shrink-0 ml-4" id="ctrl-purge-jobs">
-                  <span class="material-symbols-outlined text-sm">clear_all</span> Purge
-                </button>
-              </div>
-              <div class="flex items-center justify-between bg-error/5 border border-error/20 rounded-lg px-4 py-3">
-                <div>
-                  <div class="text-xs font-semibold text-error">Clear Database</div>
-                  <div class="text-[10px] text-outline mt-0.5">Wipes all orders, jobs, and catalog data.</div>
-                </div>
-                <button class="px-3 py-1.5 btn-red rounded font-label-caps text-xs flex items-center gap-1.5 flex-shrink-0 ml-4" id="clear-db-btn">
-                  <span class="material-symbols-outlined text-sm">delete</span> Clear
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
 
       </section>
 
       <!-- 6. Product Catalog Pane -->
-      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-catalog">
+      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-5" id="pane-products">
         <div class="glass-panel rounded-xl p-5 flex flex-col gap-5">
           <div class="flex justify-between items-center flex-wrap gap-4 border-b border-outline-variant/10 pb-4">
-            <h2 class="font-headline-md text-headline-md text-on-surface">Product Catalog &amp; Print Slices</h2>
-            
+            <div>
+              <h2 class="font-headline-md text-headline-md text-on-surface">Products</h2>
+              <p class="text-[11px] font-data-mono text-outline mt-0.5">Catalog + platform listings, unified</p>
+            </div>
+
             <div class="flex items-center gap-3 w-full md:w-auto justify-end">
               <!-- Styled search input matching details -->
               <div class="relative w-full md:w-64">
                 <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm select-none">search</span>
                 <input class="w-full bg-surface-container/30 border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/40 rounded-lg pl-9 pr-4 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all font-body-md text-sm" placeholder="Search by SKU or Name..." id="catalog-search" type="text">
               </div>
-              <!-- Premium Add Variant Action -->
-              <button class="px-5 py-2.5 btn-primary rounded-lg flex items-center gap-1.5 font-label-caps tracking-wider transition-all duration-200 active:scale-95 shadow-[0_0_12px_rgba(164,232,68,0.25)]" id="add-catalog-item-btn">
-                <span class="material-symbols-outlined text-sm">add</span> Add Variant
+              <!-- Premium Add Product Action -->
+              <button class="px-5 py-2.5 btn-primary rounded-lg flex items-center gap-1.5 font-label-caps tracking-wider transition-all duration-200 active:scale-95 shadow-[0_0_12px_rgba(139,124,246,0.25)]" id="add-catalog-item-btn">
+                <span class="material-symbols-outlined text-sm">add_box</span> Add Product
               </button>
             </div>
           </div>
@@ -1377,14 +1121,15 @@
             </div>
           </div>
         </div>
-      </section>
 
-      <!-- 7. Listings Pane -->
-      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-4" id="pane-listings">
+        <!-- Platform Listings (merged from former Listings tab) -->
         <div class="glass-panel rounded-xl p-5 flex flex-col gap-5">
           <!-- Header -->
           <div class="flex justify-between items-center flex-wrap gap-4 border-b border-outline-variant/10 pb-4">
-            <h2 class="font-headline-md text-headline-md text-on-surface">Platform Listings</h2>
+            <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">
+              <span class="material-symbols-outlined text-[#5fb4ff]">storefront</span>
+              Platform Listings
+            </h2>
             <div class="flex items-center gap-3 w-full md:w-auto justify-end">
               <button id="btn-add-listing" type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 transition-all active:scale-95 flex-shrink-0 font-medium text-sm">
                 <span class="material-symbols-outlined text-[18px]">add</span>
@@ -1454,7 +1199,7 @@
         <!-- Header bar -->
         <div class="glass-panel px-5 py-3 flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-[#a4e844]" style="font-size:20px">rocket_launch</span>
+            <span class="material-symbols-outlined text-[#8b7cf6]" style="font-size:20px">rocket_launch</span>
             <span class="text-white font-medium">Product Launch</span>
             <span class="text-xs text-[#6b7280] font-mono">Build listings &amp; DB records for a new product</span>
           </div>
@@ -1528,11 +1273,11 @@
                   <label class="text-xs text-[#9ca3af] block mb-1">Platforms</label>
                   <div class="flex gap-4 pt-1">
                     <label class="flex items-center gap-2 cursor-pointer select-none">
-                      <input type="checkbox" id="launch-plat-shopee" checked style="accent-color:#a4e844" />
+                      <input type="checkbox" id="launch-plat-shopee" checked style="accent-color:#8b7cf6" />
                       <span class="text-sm text-white">Shopee</span>
                     </label>
                     <label class="flex items-center gap-2 cursor-pointer select-none">
-                      <input type="checkbox" id="launch-plat-lazada" checked style="accent-color:#a4e844" />
+                      <input type="checkbox" id="launch-plat-lazada" checked style="accent-color:#8b7cf6" />
                       <span class="text-sm text-white">Lazada</span>
                     </label>
                   </div>
@@ -1546,7 +1291,7 @@
               <div class="space-y-3">
                 <div class="flex items-center justify-between">
                   <label class="flex items-center gap-3 cursor-pointer select-none">
-                    <input type="checkbox" id="launch-type-ds" style="accent-color:#a4e844" />
+                    <input type="checkbox" id="launch-type-ds" style="accent-color:#8b7cf6" />
                     <span class="text-sm text-white font-medium">DS</span>
                     <span class="text-xs text-[#6b7280]">Display Stand with Nameplate</span>
                   </label>
@@ -1556,17 +1301,17 @@
                   </div>
                 </div>
                 <label class="flex items-center gap-3 cursor-pointer select-none">
-                  <input type="checkbox" id="launch-type-dsnp" style="accent-color:#a4e844" />
+                  <input type="checkbox" id="launch-type-dsnp" style="accent-color:#8b7cf6" />
                   <span class="text-sm text-white font-medium">DS-NP</span>
                   <span class="text-xs text-[#6b7280]">Display Stand, No Nameplate</span>
                 </label>
                 <label class="flex items-center gap-3 cursor-pointer select-none">
-                  <input type="checkbox" id="launch-type-wm" style="accent-color:#a4e844" />
+                  <input type="checkbox" id="launch-type-wm" style="accent-color:#8b7cf6" />
                   <span class="text-sm text-white font-medium">WM</span>
                   <span class="text-xs text-[#6b7280]">Wall Mount</span>
                 </label>
                 <label class="flex items-center gap-3 cursor-pointer select-none">
-                  <input type="checkbox" id="launch-type-fwm" style="accent-color:#a4e844" />
+                  <input type="checkbox" id="launch-type-fwm" style="accent-color:#8b7cf6" />
                   <span class="text-sm text-white font-medium">FWM</span>
                   <span class="text-xs text-[#6b7280]">Full Wall Mount</span>
                 </label>
@@ -1595,7 +1340,7 @@
           <div class="glass-panel p-5 space-y-4">
             <div class="flex items-center gap-3 mb-1">
               <p class="text-xs text-[#6b7280] uppercase tracking-widest">Generated Listing</p>
-              <span class="text-xs text-[#a4e844]">— edit as needed before downloading</span>
+              <span class="text-xs text-[#8b7cf6]">— edit as needed before downloading</span>
             </div>
             <div>
               <label class="text-xs text-[#9ca3af] block mb-1">Listing Title</label>
@@ -1705,7 +1450,7 @@
               </div>
               <!-- System logs actions -->
               <div id="logs-actions-system" class="flex items-center gap-2">
-                <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-logs-btn">
+                <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#8b7cf6] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-logs-btn">
                   <span class="material-symbols-outlined text-sm">sync</span> Refresh
                 </button>
                 <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-logs-btn">
@@ -1714,7 +1459,7 @@
               </div>
               <!-- Print jobs actions (hidden by default) -->
               <div id="logs-actions-printjobs" class="hidden flex items-center gap-2">
-                <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-print-jobs-btn">
+                <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#8b7cf6] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-print-jobs-btn">
                   <span class="material-symbols-outlined text-sm">sync</span> Refresh
                 </button>
                 <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-print-jobs-btn">
@@ -1759,18 +1504,21 @@
       </section>
 
       <!-- 7. Printers Pane -->
-      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-printers">
+      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-5" id="pane-operations">
         <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
           <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 flex-wrap gap-4">
-            <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">
-              <span class="material-symbols-outlined text-primary">print</span>
-              <span>3D Printers Telemetry</span>
-            </h2>
+            <div>
+              <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">
+                <span class="material-symbols-outlined text-primary">hub</span>
+                <span>Operations</span>
+              </h2>
+              <p class="text-[11px] font-data-mono text-outline mt-0.5 pl-8">Printer fleet &amp; automation agents, unified</p>
+            </div>
             <div class="flex items-center gap-2 flex-wrap">
               <a href="https://simplyprint.io/panel/printers" target="_blank" class="px-3 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 no-underline">
                 <span class="material-symbols-outlined text-sm">open_in_new</span> SimplyPrint Portal
               </a>
-              <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#a4e844] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="printers-btn-sync">
+              <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#8b7cf6] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="printers-btn-sync">
                 <span class="material-symbols-outlined text-sm">sync</span> Sync API
               </button>
               <button class="px-3 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="printers-btn-ready-all">
@@ -1782,6 +1530,125 @@
               <button class="px-3 py-2 bg-error/15 hover:bg-error/25 text-error border border-error/40 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-[0_0_12px_rgba(255,82,82,0.15)] animate-pulse" id="printers-btn-estop-all">
                 <span class="material-symbols-outlined text-sm font-bold">emergency_home</span> E-STOP ALL
               </button>
+            </div>
+          </div>
+
+          <!-- Service Health Banner (merged from former Agents tab) -->
+          <div class="glass-panel rounded-xl px-5 py-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+                <span class="material-symbols-outlined text-primary text-xl select-none">settings_applications</span>
+              </div>
+              <div>
+                <h2 class="font-headline-sm text-on-surface leading-tight">Orbot Service</h2>
+                <p class="text-[10px] font-data-mono text-outline">Unified Background Daemon · Railway</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-5">
+              <div class="hidden md:flex flex-col items-end">
+                <span class="text-[9px] font-label-caps text-outline uppercase tracking-wider">Last Heartbeat</span>
+                <span class="font-data-mono text-xs text-on-surface-variant" id="agents-hb-service-time">—</span>
+              </div>
+              <div class="flex items-center gap-2 bg-black/20 px-4 py-2 rounded-lg border border-outline-variant/15">
+                <div class="status-light-offline" id="hb-orbot_service-dot"></div>
+                <span class="font-data-mono font-bold text-sm" id="hb-orbot_service-text">Offline</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Agent Cards (merged from former Agents tab) -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+
+            <!-- Scout -->
+            <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-[#22d3ee] glow-hover-cyan relative overflow-hidden">
+              <div class="absolute inset-0 bg-[#22d3ee]/[0.02] pointer-events-none"></div>
+              <div class="flex items-start gap-3 relative z-10">
+                <div class="w-10 h-10 rounded-xl bg-[#22d3ee]/10 border border-[#22d3ee]/20 flex items-center justify-center flex-shrink-0">
+                  <span class="material-symbols-outlined text-[#22d3ee] text-xl select-none">mail</span>
+                </div>
+                <div class="flex-grow min-w-0">
+                  <h4 class="font-headline-sm text-on-surface">Scout</h4>
+                  <p class="text-[10px] font-data-mono text-outline">Gmail Order Poller</p>
+                </div>
+                <div class="flex flex-col items-end gap-0.5 flex-shrink-0">
+                  <div class="flex items-center gap-1.5">
+                    <div class="w-2 h-2 rounded-full bg-error" id="agents-hb-scout-dot"></div>
+                    <span class="font-data-mono text-[11px] font-bold" id="agents-hb-scout-text" style="color:#ff5252">Offline</span>
+                  </div>
+                  <span class="font-data-mono text-[9px] text-outline" id="agents-hb-scout-time">—</span>
+                </div>
+              </div>
+              <p class="text-xs text-on-surface-variant/70 leading-relaxed relative z-10 flex-grow">Polls <span class="font-data-mono text-[#22d3ee]/80">orders@gmail.com</span> every 5 min. Parses Shopee/Lazada "Time to Ship" emails with Gemini and ingests orders automatically.</p>
+              <button class="w-full py-2 bg-[#22d3ee]/10 hover:bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-scout">Trigger Scan</button>
+            </div>
+
+            <!-- Foreman -->
+            <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-primary glow-hover-cyan relative overflow-hidden">
+              <div class="absolute inset-0 bg-primary/[0.02] pointer-events-none"></div>
+              <div class="flex items-start gap-3 relative z-10">
+                <div class="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+                  <span class="material-symbols-outlined text-primary text-xl select-none">print</span>
+                </div>
+                <div class="flex-grow min-w-0">
+                  <h4 class="font-headline-sm text-on-surface">Foreman</h4>
+                  <p class="text-[10px] font-data-mono text-outline">Print Dispatch</p>
+                </div>
+                <div class="flex flex-col items-end gap-0.5 flex-shrink-0">
+                  <div class="flex items-center gap-1.5">
+                    <div class="w-2 h-2 rounded-full bg-error" id="agents-hb-foreman-dot"></div>
+                    <span class="font-data-mono text-[11px] font-bold" id="agents-hb-foreman-text" style="color:#ff5252">Offline</span>
+                  </div>
+                  <span class="font-data-mono text-[9px] text-outline" id="agents-hb-foreman-time">—</span>
+                </div>
+              </div>
+              <p class="text-xs text-on-surface-variant/70 leading-relaxed relative z-10 flex-grow">Resolves pending order items to print files and dispatches them to the correct printer group via SimplyPrint queue.</p>
+              <button class="w-full py-2 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-foreman">Trigger Dispatch</button>
+            </div>
+
+            <!-- Waybill Agent -->
+            <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-[#ffaa6b] glow-hover-orange relative overflow-hidden">
+              <div class="absolute inset-0 bg-[#ffaa6b]/[0.02] pointer-events-none"></div>
+              <div class="flex items-start gap-3 relative z-10">
+                <div class="w-10 h-10 rounded-xl bg-[#ffaa6b]/10 border border-[#ffaa6b]/20 flex items-center justify-center flex-shrink-0">
+                  <span class="material-symbols-outlined text-[#ffaa6b] text-xl select-none">local_shipping</span>
+                </div>
+                <div class="flex-grow min-w-0">
+                  <h4 class="font-headline-sm text-on-surface">Waybill Agent</h4>
+                  <p class="text-[10px] font-data-mono text-outline">PDF Logistics</p>
+                </div>
+                <div class="flex flex-col items-end gap-0.5 flex-shrink-0">
+                  <div class="flex items-center gap-1.5">
+                    <div class="w-2 h-2 rounded-full bg-error" id="agents-hb-waybill-dot"></div>
+                    <span class="font-data-mono text-[11px] font-bold" id="agents-hb-waybill-text" style="color:#ff5252">Offline</span>
+                  </div>
+                  <span class="font-data-mono text-[9px] text-outline" id="agents-hb-waybill-time">—</span>
+                </div>
+              </div>
+              <p class="text-xs text-on-surface-variant/70 leading-relaxed relative z-10 flex-grow">Processes waybill PDFs, classifies pages, stitches seal stickers, and compiles master print batches. Uploads to Google Drive.</p>
+              <button class="w-full py-2 bg-[#ffaa6b]/10 hover:bg-[#ffaa6b]/20 border border-[#ffaa6b]/30 text-[#ffaa6b] rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-compile">Compile Batch</button>
+            </div>
+
+            <!-- SimplyPrint Sync -->
+            <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 border-l-4 border-[#7ea6e8] glow-hover-cyan relative overflow-hidden">
+              <div class="absolute inset-0 bg-[#7ea6e8]/[0.02] pointer-events-none"></div>
+              <div class="flex items-start gap-3 relative z-10">
+                <div class="w-10 h-10 rounded-xl bg-[#7ea6e8]/10 border border-[#7ea6e8]/20 flex items-center justify-center flex-shrink-0">
+                  <span class="material-symbols-outlined text-[#7ea6e8] text-xl select-none">sync</span>
+                </div>
+                <div class="flex-grow min-w-0">
+                  <h4 class="font-headline-sm text-on-surface">SP Telemetry</h4>
+                  <p class="text-[10px] font-data-mono text-outline">SimplyPrint Sync</p>
+                </div>
+                <div class="flex flex-col items-end gap-0.5 flex-shrink-0">
+                  <div class="flex items-center gap-1.5">
+                    <div class="w-2 h-2 rounded-full" id="agents-hb-spsync-dot" style="background:#7ea6e8"></div>
+                    <span class="font-data-mono text-[11px] font-bold" id="agents-hb-spsync-text" style="color:#7ea6e8">Every 5m</span>
+                  </div>
+                  <span class="font-data-mono text-[9px] text-outline" id="agents-hb-spsync-time">—</span>
+                </div>
+              </div>
+              <p class="text-xs text-on-surface-variant/70 leading-relaxed relative z-10 flex-grow">Syncs printer states, print queue, and job telemetry from SimplyPrint API into Supabase every 5 minutes.</p>
+              <button class="w-full py-2 bg-[#7ea6e8]/10 hover:bg-[#7ea6e8]/20 border border-[#7ea6e8]/30 text-[#7ea6e8] rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all relative z-10" id="ctrl-trigger-sync-simplyprint">Sync Now</button>
             </div>
           </div>
 
@@ -1870,6 +1737,144 @@
               </div>
             </div>
           </div>
+
+          <!-- Gemini Quota Monitor (merged from former Agents tab) -->
+          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 mt-6">
+            <div class="flex justify-between items-center">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary">analytics</span> Gemini API · Daily Quota
+              </h3>
+              <span class="text-[10px] font-data-mono text-primary uppercase bg-primary/10 border border-primary/20 px-2 py-0.5 rounded">gemini-2.0-flash-lite</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="flex flex-col gap-2 bg-black/20 p-4 rounded-lg border border-outline-variant/10">
+                <div class="flex justify-between text-xs">
+                  <span class="text-outline">Daily Requests</span>
+                  <span class="font-data-mono font-bold text-on-surface" id="gemini-requests-count">0 / 1,500</span>
+                </div>
+                <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
+                  <div id="gemini-requests-bar" class="h-full bg-primary rounded-full transition-all duration-500 w-0"></div>
+                </div>
+                <div class="text-[10px] text-outline">15 RPM · 1,500 RPD</div>
+              </div>
+              <div class="flex flex-col gap-2 bg-black/20 p-4 rounded-lg border border-outline-variant/10">
+                <div class="flex justify-between text-xs">
+                  <span class="text-outline">Daily Tokens</span>
+                  <span class="font-data-mono font-bold text-on-surface" id="gemini-tokens-count">0 / 1,000,000</span>
+                </div>
+                <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
+                  <div id="gemini-tokens-bar" class="h-full bg-[#22d3ee] rounded-full transition-all duration-500 w-0"></div>
+                </div>
+                <div class="text-[10px] text-outline">Safety cap: 1M tokens/day</div>
+              </div>
+              <div class="flex flex-col justify-between bg-black/20 p-4 rounded-lg border border-outline-variant/10">
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-outline">Est. Cost (USD)</span>
+                  <span class="font-data-mono font-bold text-primary text-base" id="gemini-cost-est">$0.00</span>
+                </div>
+                <div class="flex justify-between text-[10px] text-outline mt-2 pt-2 border-t border-outline-variant/10">
+                  <span>In: <span class="font-data-mono text-on-surface" id="gemini-input-tokens">0</span></span>
+                  <span>Out: <span class="font-data-mono text-on-surface" id="gemini-output-tokens">0</span></span>
+                </div>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-4 text-[10px] text-outline border-t border-outline-variant/10 pt-3" id="gemini-breakdown-list">
+              <span class="text-outline/50">No requests today.</span>
+            </div>
+          </div>
+
+          <!-- Job Queue (merged from former Agents tab) -->
+          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 mt-6">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+                <span class="material-symbols-outlined text-surface-tint">history</span> Agent Activity &amp; Job Queue
+              </h3>
+              <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+                <div class="relative flex items-center">
+                  <span class="material-symbols-outlined absolute left-3 text-on-surface-variant/50 text-sm select-none">search</span>
+                  <input type="text" id="jobs-search-input" placeholder="Search payload, result..." class="pl-9 pr-4 py-1.5 w-52 bg-black/30 border border-outline-variant/20 rounded-lg text-xs text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-primary/50 transition-all font-data-mono">
+                </div>
+                <select id="jobs-filter-status" class="bg-black/30 border border-outline-variant/20 text-on-surface rounded-lg px-3 py-1.5 text-xs focus:border-primary/50 outline-none transition-all">
+                  <option value="all">All Statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="processing">Processing</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                </select>
+                <select id="jobs-filter-type" class="bg-black/30 border border-outline-variant/20 text-on-surface rounded-lg px-3 py-1.5 text-xs focus:border-primary/50 outline-none transition-all">
+                  <option value="all">All Types</option>
+                  <option value="waybill_ingest">Ingestion</option>
+                  <option value="waybill_batch_print">Batch Print</option>
+                  <option value="scout_gmail_scan">Gmail Scan</option>
+                  <option value="sync_simplyprint_ids">SP Sync</option>
+                </select>
+              </div>
+            </div>
+            <div class="overflow-y-auto rounded-lg border border-outline-variant/15 bg-black/10 h-[360px]">
+              <table class="min-w-full text-left border-separate border-spacing-y-1.5">
+                <thead class="sticky top-0 z-10">
+                  <tr>
+                    <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Job ID</th>
+                    <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Type</th>
+                    <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Status</th>
+                    <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Payload</th>
+                    <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Result</th>
+                    <th class="px-4 py-2.5 text-[10px] font-bold tracking-widest text-outline uppercase bg-surface-container-low">Created</th>
+                  </tr>
+                </thead>
+                <tbody id="jobs-tbody" class="text-sm">
+                  <tr><td colspan="6" class="px-6 py-10 text-center text-outline font-data-mono text-xs">No jobs monitored yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Manual Ingestion + Danger Zone (merged from former Agents tab) -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mt-6">
+
+            <!-- Manual Ingestion -->
+            <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 border-l-4 border-secondary/40">
+              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+                <span class="material-symbols-outlined text-secondary">input</span> Manual Order Ingestion
+              </h3>
+              <p class="text-xs text-on-surface-variant/70 leading-relaxed">Paste a raw Shopee/Lazada "Time to Ship" email body to manually ingest an order and trigger print dispatch.</p>
+              <textarea id="email-body-input" rows="5" class="w-full bg-black/30 border border-outline-variant/20 text-on-surface rounded-lg p-3 font-data-mono text-xs focus:outline-none focus:border-secondary/50 transition-all placeholder:text-on-surface-variant/30 flex-grow resize-none" placeholder="Paste order email body here..."></textarea>
+              <div class="flex gap-3 items-stretch">
+                <button class="px-4 py-2 bg-secondary/15 hover:bg-secondary/25 border border-secondary/40 text-secondary rounded-lg font-label-caps text-xs font-bold tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-all whitespace-nowrap flex-shrink-0" id="ingest-submit-btn">Ingest Email</button>
+                <div class="flex-grow bg-black/40 border border-outline-variant/15 rounded-lg p-2.5 font-data-mono text-[10px] text-on-surface-variant min-h-[60px] max-h-[120px] overflow-y-auto space-y-0.5" id="ingest-console">
+                  <div class="text-outline">> System ready.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 border-l-4 border-error/60">
+              <h3 class="font-headline-sm text-headline-sm text-error flex items-center gap-2">
+                <span class="material-symbols-outlined">warning</span> Danger Zone
+              </h3>
+              <p class="text-xs text-on-surface-variant/70 leading-relaxed">Destructive operations on the database. These actions cannot be undone.</p>
+              <div class="flex flex-col gap-3 mt-auto">
+                <div class="flex items-center justify-between bg-black/20 border border-outline-variant/10 rounded-lg px-4 py-3">
+                  <div>
+                    <div class="text-xs font-semibold text-on-surface">Purge Job Queue</div>
+                    <div class="text-[10px] text-outline mt-0.5">Remove all active/failed waybill jobs.</div>
+                  </div>
+                  <button class="px-3 py-1.5 btn-outlined-red rounded font-label-caps text-xs flex items-center gap-1.5 flex-shrink-0 ml-4" id="ctrl-purge-jobs">
+                    <span class="material-symbols-outlined text-sm">clear_all</span> Purge
+                  </button>
+                </div>
+                <div class="flex items-center justify-between bg-error/5 border border-error/20 rounded-lg px-4 py-3">
+                  <div>
+                    <div class="text-xs font-semibold text-error">Clear Database</div>
+                    <div class="text-[10px] text-outline mt-0.5">Wipes all orders, jobs, and catalog data.</div>
+                  </div>
+                  <button class="px-3 py-1.5 btn-red rounded font-label-caps text-xs flex items-center gap-1.5 flex-shrink-0 ml-4" id="clear-db-btn">
+                    <span class="material-symbols-outlined text-sm">delete</span> Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1880,17 +1885,21 @@
   <div class="modal-overlay" id="add-catalog-modal">
     <!-- Target dialog element styled cleanly -->
     <div class="modal glass-panel w-full max-w-lg rounded-2xl p-6 flex flex-col gap-4 relative">
-      <div class="flex justify-between items-center border-b border-outline-variant/10 pb-3">
-        <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
-          <span class="material-symbols-outlined text-surface-tint">add_box</span> Add Product &amp; Variant
-        </h3>
+      <div class="flex items-start gap-3 border-b border-outline-variant/10 pb-3">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style="background:linear-gradient(135deg,#8b7cf6,#5fb4ff);">
+          <span class="material-symbols-outlined" style="color:#0a0a10; font-size:19px;">add_box</span>
+        </div>
+        <div class="flex-1">
+          <h3 class="font-headline-sm text-headline-sm text-on-surface">Add Product</h3>
+          <p class="text-[11px] font-data-mono text-outline mt-0.5">Create a new product, or add a variant to one that already exists</p>
+        </div>
         <button class="text-2xl text-on-surface-variant hover:text-on-surface line-none active:scale-90" id="add-catalog-close-btn">&times;</button>
       </div>
-      
+
       <!-- Selection of Existing vs New Base -->
-      <div class="flex gap-2 border-b border-outline-variant/10 pb-3">
+      <div class="flex gap-1.5 bg-black/20 p-1 rounded-lg" id="add-catalog-mode-toggle">
         <!-- Target tab option chips -->
-        <button class="flex-1 py-1.5 rounded-md text-xs font-label-caps transition-all bg-primary/10 text-primary border border-primary/20" id="modal-tab-existing-product">Under Existing Product</button>
+        <button class="flex-1 py-1.5 rounded-md text-xs font-label-caps transition-all bg-primary/15 text-primary" id="modal-tab-existing-product">Under Existing Product</button>
         <button class="flex-1 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" id="modal-tab-new-product">With New Product</button>
       </div>
 
@@ -1962,7 +1971,7 @@
 
       <div class="flex justify-end gap-3 border-t border-outline-variant/10 pt-4">
         <button class="px-4 py-2 bg-surface-container-highest border border-outline-variant/50 rounded-lg font-label-caps" id="add-catalog-cancel-btn">Cancel</button>
-        <button class="px-5 py-2 bg-primary text-on-primary hover:bg-primary/95 rounded-lg font-label-caps shadow-[0_0_10px_rgba(164,232,68,0.25)]" id="add-catalog-save-btn">Add Variant</button>
+        <button class="px-5 py-2 btn-primary rounded-lg font-label-caps flex items-center gap-1.5" id="add-catalog-save-btn"><span class="material-symbols-outlined text-sm">add_box</span> Add Product</button>
       </div>
     </div>
   </div>
@@ -2006,7 +2015,7 @@
       </div>
       <div class="flex justify-end gap-3 border-t border-outline-variant/10 pt-4">
         <button class="px-4 py-2 bg-surface-container-highest border border-outline-variant/50 rounded-lg font-label-caps" id="settings-cancel-btn">Cancel</button>
-        <button class="px-5 py-2 bg-primary text-on-primary hover:bg-primary/95 rounded-lg font-label-caps shadow-[0_0_10px_rgba(164,232,68,0.25)]" id="settings-save-btn">Save Changes</button>
+        <button class="px-5 py-2 btn-primary rounded-lg font-label-caps" id="settings-save-btn">Save Changes</button>
       </div>
     </div>
   </div>
@@ -2143,7 +2152,7 @@
       </div>
       <div class="flex justify-end gap-3 p-5 border-t border-outline-variant/10 flex-shrink-0">
         <button id="edit-listing-cancel-btn" class="px-4 py-2 bg-white/5 hover:bg-white/10 border border-outline-variant/30 rounded-lg text-sm text-on-surface-variant transition-all">Cancel</button>
-        <button id="edit-listing-save-btn" class="px-4 py-2 bg-primary text-[#020617] rounded-lg text-sm font-bold font-display-lg flex items-center gap-2 transition-all active:scale-95 hover:brightness-110">
+        <button id="edit-listing-save-btn" class="px-4 py-2 btn-primary rounded-lg text-sm flex items-center gap-2 transition-all active:scale-95">
           <span class="material-symbols-outlined text-sm">save</span> Save Changes
         </button>
       </div>
@@ -2178,7 +2187,7 @@
       </div>
       <div class="flex justify-end gap-3 p-5 border-t border-outline-variant/10">
         <button id="edit-variation-cancel-btn" class="px-4 py-2 bg-white/5 hover:bg-white/10 border border-outline-variant/30 rounded-lg text-sm text-on-surface-variant transition-all">Cancel</button>
-        <button id="edit-variation-save-btn" class="px-4 py-2 bg-primary text-[#020617] rounded-lg text-sm font-bold font-display-lg flex items-center gap-2 transition-all active:scale-95 hover:brightness-110">
+        <button id="edit-variation-save-btn" class="px-4 py-2 btn-primary rounded-lg text-sm flex items-center gap-2 transition-all active:scale-95">
           <span class="material-symbols-outlined text-sm">save</span> Save
         </button>
       </div>
@@ -2188,10 +2197,13 @@
   <!-- Add Listing Modal -->
   <div class="modal-overlay" id="add-listing-modal">
     <div class="glass-panel rounded-2xl w-full max-w-2xl mx-4 flex flex-col" style="max-height:90vh;">
-      <div class="flex items-center justify-between p-5 border-b border-outline-variant/10 flex-shrink-0">
-        <div class="flex items-center gap-2">
-          <span class="material-symbols-outlined text-primary" style="font-size:20px">add_circle</span>
-          <h3 class="font-headline-sm text-on-surface uppercase tracking-widest text-sm">New Listing</h3>
+      <div class="flex items-start gap-3 p-5 border-b border-outline-variant/10 flex-shrink-0">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style="background:linear-gradient(135deg,#8b7cf6,#5fb4ff);">
+          <span class="material-symbols-outlined" style="color:#0a0a10; font-size:19px;">storefront</span>
+        </div>
+        <div class="flex-1">
+          <h3 class="font-headline-sm text-on-surface">Add Listing</h3>
+          <p class="text-[11px] font-data-mono text-outline mt-0.5">List a catalog product across Shopee &amp; Lazada storefronts</p>
         </div>
         <button id="add-listing-close-btn" class="p-1.5 rounded-full hover:bg-white/10 text-outline hover:text-on-surface transition-all" type="button">
           <span class="material-symbols-outlined text-xl">close</span>
@@ -2219,7 +2231,7 @@
           </div>
           <div class="flex flex-col items-center gap-1.5 flex-shrink-0 pt-1">
             <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Active</label>
-            <input type="checkbox" id="add-listing-is-active" checked class="w-4 h-4 mt-1.5 accent-[#a4e844] cursor-pointer">
+            <input type="checkbox" id="add-listing-is-active" checked class="w-4 h-4 mt-1.5 accent-[#8b7cf6] cursor-pointer">
           </div>
         </div>
 
@@ -2280,13 +2292,13 @@
 
       <div class="flex justify-end gap-3 p-5 border-t border-outline-variant/10 flex-shrink-0">
         <button id="add-listing-cancel-btn" type="button" class="px-4 py-2 bg-white/5 hover:bg-white/10 border border-outline-variant/30 rounded-lg text-sm text-on-surface-variant transition-all">Cancel</button>
-        <button id="add-listing-save-btn" type="button" class="px-4 py-2 bg-primary text-[#020617] rounded-lg text-sm font-bold font-display-lg flex items-center gap-2 transition-all active:scale-95 hover:brightness-110">
+        <button id="add-listing-save-btn" type="button" class="px-4 py-2 btn-primary rounded-lg text-sm flex items-center gap-2 transition-all active:scale-95">
           <span class="material-symbols-outlined text-sm">add</span> Create Listing
         </button>
       </div>
     </div>
   </div>
 
-  <script src="app.js?v=1.7.2"></script>
+  <script src="app.js?v=1.7.3"></script>
 </body>
 </html>
