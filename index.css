@@ -2209,27 +2209,4 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
   align-items: center;
   gap: 13px;
 }
-.ops-agent-pills { display: flex; gap: 8px; width: 100%; }
-.ops-apill {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 6px 3px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--glass-border);
-}
-.ops-apill .ad { width: 6px; height: 6px; border-radius: 50%; }
-.ops-apill .an { font-size: 9px; font-weight: 700; color: var(--text-secondary); letter-spacing: 0.02em; }
-.ops-apill.ok .ad { background: var(--success-color); box-shadow: 0 0 5px rgba(61, 220, 151, 0.7); }
-.ops-apill.warn .ad { background: var(--warning-color); box-shadow: 0 0 5px rgba(245, 185, 66, 0.7); }
-.ops-apill.off .ad { background: var(--error-color); box-shadow: 0 0 5px rgba(242, 101, 122, 0.7); }
-.ops-gem { width: 100%; display: flex; flex-direction: column; gap: 8px; }
-.ops-gem .grow { display: flex; align-items: center; gap: 10px; }
-.ops-gem .glabel { font-size: 9px; color: var(--text-muted); width: 60px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 700; }
-.ops-gem .gbar { flex: 1; height: 5px; border-radius: 100px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
-.ops-gem .gbar i { display: block; height: 100%; border-radius: 100px; }
-.ops-gem .gval { font-size: 9.5px; font-family: var(--font-mono); color: var(--text-secondary); flex-shrink: 0; }
 

@@ -2301,69 +2301,6 @@ function bindProductDetailPanelEvents(product) {
   });
 }
 
-// Ingestion handling
-async function runManualIngestion() {
-  const emailBody = document.getElementById("email-body-input").value.trim();
-  const consoleEl = document.getElementById("ingest-console");
-
-  if (!emailBody) {
-    showToast("Please paste an email body first.", "warning");
-    return;
-  }
-
-  // Helper to log to console
-  const writeConsole = (text, type = "") => {
-    const line = document.createElement("div");
-    line.className = `terminal-line ${type}`;
-    line.innerText = `[${new Date().toLocaleTimeString()}] ${text}`;
-    consoleEl.appendChild(line);
-    consoleEl.scrollTop = consoleEl.scrollHeight;
-  };
-
-  writeConsole("Starting manual ingestion...", "info");
-  
-  const supabaseUrl = document.getElementById("setting-supabase-url").value.trim();
-  const supabaseKey = document.getElementById("setting-supabase-key").value.trim();
-
-  const backendUrl = (localStorage.getItem("orbot_backend_url") || "").replace(/\/$/, "");
-  if (!backendUrl) {
-    writeConsole("Backend URL not set. Add your Railway URL in Settings.", "error");
-    return;
-  }
-
-  try {
-    writeConsole("Contacting backend at /scout/ingest-email...", "info");
-
-    const response = await fetch(`${backendUrl}/scout/ingest-email`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email_body: emailBody })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Backend returned HTTP ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    writeConsole(`Success! Response: ${data.status || JSON.stringify(data)}`, "info");
-    writeConsole("Order ingestion complete. Foreman has been triggered to dispatch print files.", "info");
-    
-    // Clean up input
-    document.getElementById("email-body-input").value = "";
-    
-    // Refresh stats and orders
-    setTimeout(() => {
-      fetchSummaryStats();
-      if (currentTab === "orders") fetchAndRenderOrders();
-    }, 1500);
-
-  } catch (err) {
-    writeConsole(`Ingestion Error: ${err.message}`, "error");
-    showToast(`Ingestion failed: ${err.message}`, "error");
-  }
-}
-
 // Clear Database tables
 async function clearDatabase() {
   if (!await showConfirmModal("Clear All Data", "Are you sure you want to clear all orders, order items, print jobs, and logs? This is irreversible!", "Clear All")) {
@@ -2728,13 +2665,13 @@ async function fetchAgentHeartbeats() {
 
     // --- Agents page cards ---
     const agentConfigs = [
-      { name: "orbot_service", threshold: 120000, color: "#8b7cf6", dotId: "agents-hb-service-dot", textId: "agents-hb-service-text", timeId: "agents-hb-service-time", pillId: null, fleetId: null },
-      { name: "scout",         threshold: 600000, color: "#22d3ee", dotId: "agents-hb-scout-dot",   textId: "agents-hb-scout-text",   timeId: "agents-hb-scout-time",   pillId: "ops-pill-scout",   fleetId: "overview-fleet-scout" },
-      { name: "orbot_service", threshold: 120000, color: "#8b7cf6", dotId: "agents-hb-foreman-dot", textId: "agents-hb-foreman-text", timeId: "agents-hb-foreman-time", pillId: "ops-pill-foreman", fleetId: "overview-fleet-foreman" },
-      { name: "waybill_agent", threshold: 600000, color: "#ffaa6b", dotId: "agents-hb-waybill-dot",  textId: "agents-hb-waybill-text",  timeId: "agents-hb-waybill-time", pillId: "ops-pill-waybill", fleetId: "overview-fleet-waybill" },
-      { name: "orbot_service", threshold: 120000, color: "#7ea6e8", dotId: "agents-hb-spsync-dot",  textId: "agents-hb-spsync-text",  timeId: "agents-hb-spsync-time", pillId: "ops-pill-spsync", fleetId: "overview-fleet-spsync" },
+      { name: "orbot_service", threshold: 120000, color: "#8b7cf6", dotId: "agents-hb-service-dot", textId: "agents-hb-service-text", timeId: "agents-hb-service-time", fleetId: null },
+      { name: "scout",         threshold: 600000, color: "#22d3ee", dotId: "agents-hb-scout-dot",   textId: "agents-hb-scout-text",   timeId: "agents-hb-scout-time",   fleetId: "overview-fleet-scout" },
+      { name: "orbot_service", threshold: 120000, color: "#8b7cf6", dotId: "agents-hb-foreman-dot", textId: "agents-hb-foreman-text", timeId: "agents-hb-foreman-time", fleetId: "overview-fleet-foreman" },
+      { name: "waybill_agent", threshold: 600000, color: "#ffaa6b", dotId: "agents-hb-waybill-dot",  textId: "agents-hb-waybill-text",  timeId: "agents-hb-waybill-time", fleetId: "overview-fleet-waybill" },
+      { name: "orbot_service", threshold: 120000, color: "#7ea6e8", dotId: "agents-hb-spsync-dot",  textId: "agents-hb-spsync-text",  timeId: "agents-hb-spsync-time", fleetId: "overview-fleet-spsync" },
     ];
-    agentConfigs.forEach(({ name, threshold, color, dotId, textId, timeId, pillId, fleetId }) => {
+    agentConfigs.forEach(({ name, threshold, color, dotId, textId, timeId, fleetId }) => {
       const hb = hbMap[name];
       const online = isOnline(hb?.last_heartbeat, threshold);
       const dotEl = document.getElementById(dotId);
@@ -2743,13 +2680,6 @@ async function fetchAgentHeartbeats() {
       if (dotEl) dotEl.style.background = online ? "#10b981" : "#ff5252";
       if (textEl) { textEl.innerText = online ? "Online" : "Offline"; textEl.style.color = online ? "#10b981" : "#ff5252"; }
       if (timeEl) timeEl.innerText = timeAgo(hb?.last_heartbeat);
-
-      // Condensed health-strip pill (Operations page) — same online/offline signal,
-      // shown as a compact colored dot instead of a full card.
-      if (pillId) {
-        const pillEl = document.getElementById(pillId);
-        if (pillEl) pillEl.className = `ops-apill ${online ? "ok" : "off"}`;
-      }
 
       // Overview dashboard's Agent Fleet summary — same signal again, list form.
       if (fleetId) {
@@ -4607,9 +4537,6 @@ function setupPrinterControls() {
   const clearDbBtn = document.getElementById("clear-db-btn");
   if (clearDbBtn) clearDbBtn.addEventListener("click", clearDatabase);
 
-  const ingestSubmitBtn = document.getElementById("ingest-submit-btn");
-  if (ingestSubmitBtn) ingestSubmitBtn.addEventListener("click", runManualIngestion);
-
   const refreshLogsBtn = document.getElementById("refresh-logs-btn");
   if (refreshLogsBtn) refreshLogsBtn.addEventListener("click", fetchAndRenderLogs);
 
@@ -5427,6 +5354,11 @@ function initLaunchTab() {
 
   document.getElementById('launch-preview-btn')?.addEventListener('click', doLaunchPreview);
   document.getElementById('launch-download-btn')?.addEventListener('click', doLaunchDownload);
+
+  document.getElementById('launch-scrape-btn')?.addEventListener('click', doLaunchScrape);
+  document.getElementById('launch-scrape-url')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doLaunchScrape();
+  });
 }
 
 function renderLaunchImageGrid() {
@@ -5443,7 +5375,14 @@ function renderLaunchImageGrid() {
       <button class="launch-img-rm absolute top-1 right-1 bg-black/70 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" data-idx="${i}">
         <span class="material-symbols-outlined text-white" style="font-size:13px">close</span>
       </button>
-      <span class="absolute bottom-1 left-1 text-[10px] text-white/50 font-mono bg-black/40 px-1 rounded">${i + 1}</span>`;
+      <span class="absolute bottom-1 left-1 text-[10px] text-white/50 font-mono bg-black/40 px-1 rounded">${i + 1}</span>
+      ${file._cleaning ? `<div class="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1">
+        <span class="material-symbols-outlined text-[#8b7cf6]" style="font-size:18px;animation:spin 1s linear infinite">sync</span>
+        <span class="text-[9px] text-white/60">removing logos</span>
+      </div>` : ''}
+      ${file._cleaned ? `<span class="absolute top-1 left-1 bg-black/60 rounded-full p-0.5" title="Logos removed">
+        <span class="material-symbols-outlined text-emerald-400" style="font-size:12px">auto_fix_high</span>
+      </span>` : ''}`;
     slot.querySelector('.launch-img-rm').addEventListener('click', (e) => {
       e.stopPropagation();
       _launchImages.splice(parseInt(e.currentTarget.dataset.idx), 1);
@@ -5464,6 +5403,104 @@ function addLaunchImages(files) {
   const slots = 9 - _launchImages.length;
   _launchImages = [..._launchImages, ...files.filter(f => f.type.startsWith('image/')).slice(0, slots)];
   renderLaunchImageGrid();
+}
+
+// ─── Import from Link (scrape + logo removal) ────────────────────────────────
+
+let _launchSourceUrl = null;
+let _launchScrapedDescription = null;
+
+function b64ToFile(b64, name) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], name, { type: 'image/jpeg' });
+}
+
+function fileToB64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function doLaunchScrape() {
+  const url = document.getElementById('launch-scrape-url')?.value.trim();
+  if (!/^https?:\/\//.test(url || '')) {
+    setLaunchStatus('error', 'Paste a full product link (https://…).');
+    return;
+  }
+
+  const btn = document.getElementById('launch-scrape-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined text-base" style="animation:spin 1s linear infinite">sync</span> Fetching...';
+  document.getElementById('launch-status')?.classList.add('hidden');
+
+  try {
+    const backendUrl = localStorage.getItem('orbot_backend_url') || '';
+    const res = await fetch(`${backendUrl}/catalog/scrape-product`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = JSON.parse(await res.text());
+    if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+
+    _launchSourceUrl = data.source_url || url;
+    _launchScrapedDescription = data.description || null;
+
+    const setIf = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+    setIf('launch-set-name', data.set_name || data.product_name);
+    setIf('launch-set-number', data.set_number);
+    setIf('launch-theme', data.theme_code);
+
+    const files = (data.images || []).map((img, i) => b64ToFile(img.image_b64, `scraped_${i + 1}.jpg`));
+    if (files.length) addLaunchImages(files);
+
+    setLaunchStatus('success', `Fetched "${data.product_name}" — ${files.length} image(s). Removing logos…`);
+    logAction('scrape_product', 'info', { url, images: files.length });
+
+    if (files.length) await cleanLaunchImages(files.filter(f => _launchImages.includes(f)));
+  } catch (e) {
+    setLaunchStatus('error', `Fetch failed: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined text-base">travel_explore</span> Fetch from Link';
+  }
+}
+
+// Runs one /catalog/clean-image call per file in parallel; swaps each grid tile
+// to the cleaned version as it lands. Files the user removed mid-flight are skipped.
+async function cleanLaunchImages(files) {
+  const backendUrl = localStorage.getItem('orbot_backend_url') || '';
+  await Promise.all(files.map(async (file) => {
+    file._cleaning = true;
+    renderLaunchImageGrid();
+    try {
+      const res = await fetch(`${backendUrl}/catalog/clean-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_b64: await fileToB64(file) }),
+      });
+      const data = JSON.parse(await res.text());
+      const idx = _launchImages.indexOf(file);
+      if (res.ok && data.cleaned && idx !== -1) {
+        const cleanedFile = b64ToFile(data.image_b64, file.name.replace('.jpg', '_clean.jpg'));
+        cleanedFile._cleaned = true;
+        _launchImages[idx] = cleanedFile;
+      }
+    } catch (e) {
+      console.error('clean-image failed:', e);
+    } finally {
+      file._cleaning = false;
+      renderLaunchImageGrid();
+    }
+  }));
+  const cleanedCount = _launchImages.filter(f => f._cleaned).length;
+  setLaunchStatus('success', `Logo removal done — ${cleanedCount}/${_launchImages.length} image(s) cleaned. Review images, then Preview Listing.`);
+  logAction('clean_images', 'info', { cleaned: cleanedCount, total: _launchImages.length });
 }
 
 let _launchVariants = [];
@@ -5597,6 +5634,8 @@ async function doLaunchDownload() {
     fd.append('shopee_ph', document.getElementById('launch-shopee-ph')?.value.trim() || '');
     fd.append('shopee_th', document.getElementById('launch-shopee-th')?.value.trim() || '');
     fd.append('lazada_my', document.getElementById('launch-lazada-my')?.value.trim() || '');
+    if (_launchSourceUrl) fd.append('source_url', _launchSourceUrl);
+    if (_launchScrapedDescription) fd.append('source_description', _launchScrapedDescription);
     _launchImages.forEach(f => fd.append('images', f));
 
     const res = await fetch(`${backendUrl}/catalog/launch-product`, { method: 'POST', body: fd });
