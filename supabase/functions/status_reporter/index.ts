@@ -13,7 +13,7 @@ serve(async (req) => {
   try {
     const payload = await req.json();
     const logEntry = payload.record;
-    
+
     if (!logEntry || !logEntry.log_level || !logEntry.log_message) {
       throw new Error("Invalid webhook payload for system_logs");
     }
@@ -23,29 +23,55 @@ serve(async (req) => {
       return new Response("ok", { headers: corsHeaders, status: 200 });
     }
 
-    const telegramBotToken = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
-    const telegramChatId = Deno.env.get("TELEGRAM_CHAT_ID") ?? "";
+    const discordWebhookUrl = Deno.env.get("DISCORD_WEBHOOK_URL") ?? "";
 
-    if (!telegramBotToken || !telegramChatId) {
-      throw new Error("Missing Telegram configuration");
+    if (!discordWebhookUrl) {
+      throw new Error("Missing Discord configuration");
     }
 
-    const icon = logEntry.log_level === 'error' ? "🚨" : "⚠️";
-    const textMessage = `${icon} *Orbot Alert: ${logEntry.agent_name}*\n\n*Level:* ${logEntry.log_level.toUpperCase()}\n*Message:* ${logEntry.log_message}\n*Time:* ${new Date(logEntry.created_at).toLocaleString()}`;
+    const isError = logEntry.log_level === 'error';
+    const isFuzzyMatch = Boolean(logEntry.additional_details?.fuzzy_match);
 
-    const tgUrl = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
-    const tgResponse = await fetch(tgUrl, {
+    let icon = isError ? "🚨" : "⚠️";
+    let color = isError ? 0xe74c3c : 0xf1c40f; // red for error, yellow for warning
+    let title = `${icon} Orbot Alert: ${logEntry.agent_name ?? "Unknown"}`;
+
+    if (isFuzzyMatch) {
+      // Fuzzy-matched orders aren't failures, but they're a silent SKU-mismatch risk —
+      // give them their own look so they never blend in with routine warnings.
+      icon = "🔶";
+      color = 0xe67e22; // orange, distinct from both error-red and warning-yellow
+      title = "🔶🔶 FUZZY MATCH — VERIFY SKU BEFORE PRINTING 🔶🔶";
+    }
+
+    const fields = [
+      { name: "Agent", value: String(logEntry.agent_name ?? "Unknown"), inline: true },
+      { name: "Level", value: logEntry.log_level.toUpperCase(), inline: true },
+    ];
+
+    if (logEntry.additional_details) {
+      const details = typeof logEntry.additional_details === "string"
+        ? logEntry.additional_details
+        : JSON.stringify(logEntry.additional_details, null, 2);
+      fields.push({ name: "Details", value: "```json\n" + details.slice(0, 1000) + "\n```", inline: false });
+    }
+
+    const discordRes = await fetch(discordWebhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: telegramChatId,
-        text: textMessage,
-        parse_mode: "Markdown"
-      })
+        embeds: [{
+          title,
+          description: logEntry.log_message,
+          color,
+          fields,
+          timestamp: logEntry.created_at ?? new Date().toISOString(),
+        }],
+      }),
     });
 
-    if (!tgResponse.ok) {
-      throw new Error("Failed to send Telegram message");
+    if (!discordRes.ok) {
+      throw new Error(`Failed to send Discord message: ${discordRes.status} ${await discordRes.text()}`);
     }
 
     return new Response(JSON.stringify({ status: "success" }), {

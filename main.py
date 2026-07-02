@@ -478,11 +478,16 @@ def extract_variant_intent(norm_var: str, listing_title: str = '') -> dict:
     Returns dict with keys: variant_type (str), plaque_count (int|None), set_number_override (str|None)."""
     combined = f"{norm_var} {listing_title}".lower()
 
-    # Wall / flush wall mount
-    if re.search(r'\b(fwm|flush)\b', norm_var) or 'flush' in listing_title.lower():
+    # Wall / flush wall mount. The variation name (what the customer actually picked)
+    # takes priority over the listing title — a listing titled "Flush Wall Mount ..."
+    # can still offer a plain "Wall Mount" variation alongside flush ones, and the
+    # title-level "flush" must not override that explicit per-variation signal.
+    if re.search(r'\b(fwm|flush)\b', norm_var):
         return {"variant_type": "FWM", "plaque_count": None, "set_number_override": None}
     if re.search(r'\b(wall|mount|wm)\b', norm_var):
         return {"variant_type": "WM", "plaque_count": None, "set_number_override": None}
+    if 'flush' in listing_title.lower():
+        return {"variant_type": "FWM", "plaque_count": None, "set_number_override": None}
 
     # Plaque count: "base - plaque,N" or "plaque,N"
     m = re.search(r'plaque,(\d+)', norm_var)
@@ -1779,7 +1784,7 @@ class ScoutAgent:
         has_matching_failure = False
         has_fuzzy_match = False
         missing_item_details = ""
-        fuzzy_item_details = ""
+        fuzzy_items = []
         item_index = 0
         
         for item in order_details.items:
@@ -1808,10 +1813,6 @@ class ScoutAgent:
                     missing_item_details += f"Listing: '{listing_title}' (Var: '{variation_name}'); "
                     continue
                 
-                if is_fuzzy:
-                    has_fuzzy_match = True
-                    fuzzy_item_details += f"Listing: '{listing_title}' (Var: '{variation_name}'); "
-
                 # Prefer the variant columns the resolver already fetched (avoids an extra
                 # round-trip per item); fall back to a lookup only if they weren't returned.
                 if variant_row:
@@ -1823,6 +1824,14 @@ class ScoutAgent:
                     v_sku         = var_info.data[0]["variant_sku"]    if var_info.data else None
                     v_name        = var_info.data[0]["variant_name"]   if var_info.data else None
                     v_plaque_count = var_info.data[0].get("plaque_count") if var_info.data else None
+
+                if is_fuzzy:
+                    has_fuzzy_match = True
+                    fuzzy_items.append({
+                        "listing_title": listing_title,
+                        "variation_name": variation_name,
+                        "matched_sku": v_sku,
+                    })
 
                 # Sanity-check: if the variation expects a specific plaque count, the matched
                 # variant must have the same plaque_count. Mismatches mean bad DB data —
@@ -1891,9 +1900,21 @@ class ScoutAgent:
                 logger.error(f"Failed to set order status to hold: {e}")
 
         if has_fuzzy_match and not has_matching_failure:
-            warning_msg = f"Order {order_details.platform_order_id} ingested with fuzzy/fallback matching: {fuzzy_item_details}"
+            item_lines = "; ".join(
+                f"Listing: '{fi['listing_title']}' (Var: '{fi['variation_name']}') -> matched SKU '{fi['matched_sku']}'"
+                for fi in fuzzy_items
+            )
+            warning_msg = (
+                f"❗️ FUZZY MATCH — VERIFY SKU ❗️ Order {order_details.platform_order_id} "
+                f"was NOT matched by exact listing/variation lookup — a fallback rule guessed the SKU. "
+                f"Double-check before this prints: {item_lines}"
+            )
             logger.warning(warning_msg)
-            self.log_to_db("warning", warning_msg, {"platform_order_id": order_details.platform_order_id})
+            self.log_to_db("warning", warning_msg, {
+                "platform_order_id": order_details.platform_order_id,
+                "fuzzy_match": True,
+                "fuzzy_items": fuzzy_items,
+            })
 
         if has_matching_failure:
             raise Exception(f"Order {order_details.platform_order_id} ingested with missing items: {missing_item_details}")
