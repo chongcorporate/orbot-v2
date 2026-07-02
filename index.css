@@ -2194,19 +2194,3 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
 .pcard-idle { border-left: 3px solid var(--text-muted) !important; }
 .pcard-error { border-left: 3px solid var(--error-color) !important; }
 
-/* Operations: condensed health strip */
-.ops-health-strip {
-  display: grid;
-  grid-template-columns: 1fr 1.4fr;
-  gap: 14px;
-}
-.ops-health-panel {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  padding: 12px 15px;
-  display: flex;
-  align-items: center;
-  gap: 13px;
-}
-
