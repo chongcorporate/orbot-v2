@@ -1895,8 +1895,33 @@ div[popover="hint"] {
 /* Orders-specific list column widths */
 .omd-list-head.omd-orders-cols,
 .omd-row.omd-orders-cols {
-  grid-template-columns: 1.2fr 1fr 1.4fr 0.7fr 0.8fr 0.8fr;
+  grid-template-columns: 22px 1.2fr 1fr 1.4fr 0.7fr 0.8fr 0.8fr;
   gap: 10px;
+  align-items: center;
+}
+.omd-cb {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1.5px solid var(--glass-border);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.omd-cb.checked {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  position: relative;
+}
+.omd-cb.checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #0a0a10;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 .omd-oid-cell .omd-oid-num {
   font-size: 12px;

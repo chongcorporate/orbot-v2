@@ -15,6 +15,7 @@ let waybillsDateSortDirection = "desc"; // "desc" or "asc"
 let catalogSortOrder = "asc"; // "asc" or "desc"
 let cachedOrders = [];
 let selectedOrderId = null; // Master-detail: which order's detail panel is showing
+let bulkSelectedOrderIds = new Set(); // Orders list: checkbox-selected rows for bulk actions
 let selectedProductId = null; // Master-detail: which product's detail panel is showing
 let cachedVariants = [];
 let cachedProducts = [];
@@ -945,6 +946,18 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
 // Orders Master-Detail (Aurora Pro): compact list + persistent detail panel
 // ==========================================================================
 
+// Keeps the header action button in sync with checkbox selection: "Complete
+// All" when nothing is checked (original behavior, untouched), "Complete
+// Selected (N)" once the employee checks specific rows for a targeted action.
+function updateBulkCompleteButton() {
+  const btn = document.getElementById("orders-btn-complete-all");
+  if (!btn) return;
+  const n = bulkSelectedOrderIds.size;
+  btn.innerHTML = n > 0
+    ? `<span class="material-symbols-outlined text-sm">done_all</span> Complete Selected (${n})`
+    : `<span class="material-symbols-outlined text-sm">done_all</span> Complete All`;
+}
+
 function renderOrdersMasterDetail(filtered) {
   const headEl = document.getElementById("orders-list-head");
   const rowsEl = document.getElementById("orders-list");
@@ -952,7 +965,12 @@ function renderOrdersMasterDetail(filtered) {
   if (!headEl || !rowsEl || !panel) return;
 
   headEl.className = "omd-list-head omd-orders-cols";
-  headEl.innerHTML = `<span>Order</span><span>Customer</span><span>Items</span><span>Subtotal</span><span>Status</span><span>Waybill</span>`;
+  headEl.innerHTML = `<span></span><span>Order</span><span>Customer</span><span>Items</span><span>Subtotal</span><span>Status</span><span>Waybill</span>`;
+
+  // Bulk-select checkboxes reset on every render (search/filter/refresh) so a
+  // stale hidden selection can never get bulk-completed by accident.
+  bulkSelectedOrderIds.clear();
+  updateBulkCompleteButton();
 
   if (filtered.length === 0) {
     rowsEl.innerHTML = emptyDiv("No matching orders found.", "receipt_long");
@@ -993,6 +1011,7 @@ function renderOrdersMasterDetail(filtered) {
 
     return `
       <div class="omd-row omd-orders-cols${isSelected ? " selected" : ""}" data-order-id="${order.id}">
+        <div class="omd-cb" data-order-id="${order.id}"></div>
         <div class="omd-oid-cell">
           <div class="omd-oid-num truncate" title="${escapeHtml(order.platform_order_id)}">${escapeHtml(order.platform_order_id)}</div>
           <span class="omd-plat ${platformBadgeClass}">${escapeHtml(order.sales_platform || "")}</span>
@@ -1005,6 +1024,21 @@ function renderOrdersMasterDetail(filtered) {
       </div>
     `;
   }).join("");
+
+  rowsEl.querySelectorAll(".omd-cb").forEach(cb => {
+    cb.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const orderId = cb.getAttribute("data-order-id");
+      if (bulkSelectedOrderIds.has(orderId)) {
+        bulkSelectedOrderIds.delete(orderId);
+        cb.classList.remove("checked");
+      } else {
+        bulkSelectedOrderIds.add(orderId);
+        cb.classList.add("checked");
+      }
+      updateBulkCompleteButton();
+    });
+  });
 
   rowsEl.querySelectorAll(".omd-row").forEach(row => {
     row.addEventListener("click", () => {
@@ -1440,22 +1474,31 @@ function setupOrderFilters() {
   if (completeAllOrdersBtn) {
     completeAllOrdersBtn.addEventListener("click", async () => {
       if (!supabaseClient) return;
-      if (!await showConfirmModal("Complete All Orders", "Are you sure you want to mark all orders as completed? This cannot be undone.", "Complete All")) return;
+
+      const bulkIds = Array.from(bulkSelectedOrderIds);
+      const isBulk = bulkIds.length > 0;
+
+      const confirmed = isBulk
+        ? await showConfirmModal("Complete Selected Orders", `Are you sure you want to mark ${bulkIds.length} selected order${bulkIds.length > 1 ? "s" : ""} as completed? This cannot be undone.`, "Complete Selected")
+        : await showConfirmModal("Complete All Orders", "Are you sure you want to mark all orders as completed? This cannot be undone.", "Complete All");
+      if (!confirmed) return;
+
       try {
         completeAllOrdersBtn.disabled = true;
-        
-        const { error } = await supabaseClient
-          .from("orders")
-          .update({ overall_order_status: "completed" })
-          .neq("id", "00000000-0000-0000-0000-000000000000");
-          
+
+        const query = supabaseClient.from("orders").update({ overall_order_status: "completed" });
+        const { error } = isBulk
+          ? await query.in("id", bulkIds)
+          : await query.neq("id", "00000000-0000-0000-0000-000000000000");
+
         if (error) throw error;
-        
-        showToast("All orders marked as completed.", "success");
+
+        showToast(isBulk ? `${bulkIds.length} order${bulkIds.length > 1 ? "s" : ""} marked as completed.` : "All orders marked as completed.", "success");
+        bulkSelectedOrderIds.clear();
         fetchSummaryStats();
         fetchAndRenderOrders();
       } catch (err) {
-        showToast(`Failed to complete all orders: ${err.message}`, "error");
+        showToast(`Failed to complete order(s): ${err.message}`, "error");
       } finally {
         completeAllOrdersBtn.disabled = false;
       }
