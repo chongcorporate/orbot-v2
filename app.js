@@ -547,6 +547,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         <tr class="bg-surface-container-low border-b border-outline-variant/20 sticky top-0 z-20">
           <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10 w-8 text-center"></th>
           <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10">Order ID</th>
+          ${currentShop === "all" ? `<th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10">Brand</th>` : ""}
           <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10">Platform</th>
           <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10 cursor-pointer select-none hover:bg-surface-container-high transition-colors" id="${prefix}sort-date-col">
             <span class="flex items-center gap-1 justify-between">
@@ -775,10 +776,11 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         <td class="py-2.5 px-3 border-r border-outline-variant/10 text-center select-none">
           <span class="material-symbols-outlined text-outline text-base transition-transform duration-250 toggle-icon">expand_more</span>
         </td>
-        <td class="py-2.5 px-3 border-r border-outline-variant/10 font-data-mono font-bold text-on-surface select-all max-w-[200px] truncate" title="${escapeHtml(order.platform_order_id)}">
-          ${escapeHtml(order.platform_order_id)}
-          ${currentShop === "all" ? `<span class="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-body-md font-bold uppercase tracking-wide ${order.shop_id ? 'bg-surface-tint/15 text-surface-tint border border-surface-tint/25' : 'bg-amber-500/15 text-amber-400 border border-amber-500/25'}" title="Shop">${escapeHtml(shopName(order.shop_id))}</span>` : ""}
-        </td>
+        <td class="py-2.5 px-3 border-r border-outline-variant/10 font-data-mono font-bold text-on-surface select-all max-w-[200px] truncate" title="${escapeHtml(order.platform_order_id)}">${escapeHtml(order.platform_order_id)}</td>
+        ${currentShop === "all" ? `
+        <td class="py-2.5 px-3 border-r border-outline-variant/10">
+          <span class="px-1.5 py-0.5 rounded text-[9px] font-body-md font-bold uppercase tracking-wide ${order.shop_id ? 'bg-surface-tint/15 text-surface-tint border border-surface-tint/25' : 'bg-amber-500/15 text-amber-400 border border-amber-500/25'}">${escapeHtml(shopName(order.shop_id))}</span>
+        </td>` : ""}
         <td class="py-2.5 px-3 border-r border-outline-variant/10">
           <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wide ${platformBadgeClass}">${escapeHtml(order.sales_platform)}</span>
         </td>
@@ -802,7 +804,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         </td>` : ""}
       </tr>
       <tr class="hidden border-b border-outline-variant/10 bg-black/10 order-details-row" id="${prefix}details-${order.id}">
-        <td colspan="${prefix === "" ? "10" : "9"}" class="p-3 border-r border-outline-variant/10">
+        <td colspan="${prefix === "" ? (currentShop === "all" ? "11" : "10") : (currentShop === "all" ? "10" : "9")}" class="p-3 border-r border-outline-variant/10">
           <div class="order-items-detail" id="${prefix}items-container-${order.id}">
             ${detailsHtml}
           </div>
