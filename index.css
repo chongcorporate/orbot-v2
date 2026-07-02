@@ -1719,6 +1719,17 @@ div[popover="hint"] {
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
+  overflow-x: hidden;
+  /* .omd-detail-panel is a grid item in .omd-split (fixed 1.6fr/1fr track);
+     without min-width:0 it defaults to min-width:auto and long unbroken
+     content (URLs, SKUs) inside it can force the whole panel wider than
+     its track. overflow-x:hidden is a hard backstop on top of that so
+     nothing — even content missed by a specific truncation rule — can
+     ever visually escape the box. */
+  min-width: 0;
+}
+.omd-detail-panel * {
+  min-width: 0;
 }
 .omd-empty-state {
   flex: 1;
@@ -2158,12 +2169,21 @@ div[popover="hint"] {
 .omd-pcard .plabel { font-size: 9.5px; font-weight: 700; color: var(--text-secondary); flex-shrink: 0; }
 .omd-pcard .pval { font-size: 9.5px; font-family: var(--font-mono); color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-table.omd-map-table { width: 100%; border-collapse: separate; border-spacing: 0 4px; }
+table.omd-map-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0 4px; }
 table.omd-map-table th {
   font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
   color: var(--text-muted); text-align: left; padding: 0 8px 4px;
 }
-table.omd-map-table td { font-size: 10px; padding: 6px 8px; background: rgba(255, 255, 255, 0.025); }
+table.omd-map-table th:first-child, table.omd-map-table td:first-child { width: 22px; }
+table.omd-map-table th:last-child, table.omd-map-table td:last-child { width: 40px; }
+table.omd-map-table td {
+  font-size: 10px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.025);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 table.omd-map-table tr.unmapped td { background: rgba(242, 101, 122, 0.08); }
 table.omd-map-table tr td:first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
 table.omd-map-table tr td:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; text-align: center; }

@@ -2167,9 +2167,9 @@ function buildProductDetailPanel(product) {
             data-variant-id="${lv.variant_id || ""}"
             title="Click to edit mapping">
             <td>${mapped ? `<span class="material-symbols-outlined" style="font-size:13px; color:var(--success-color);">check_circle</span>` : `<span class="material-symbols-outlined" style="font-size:13px; color:var(--error-color);">error</span>`}</td>
-            <td>${escapeHtml(lv.platform_variation_name || "—")}</td>
-            <td class="omd-sku-cell">${escapeHtml(sku)}</td>
-            <td>${escapeHtml(vtype)}</td>
+            <td title="${escapeHtml(lv.platform_variation_name || "—")}">${escapeHtml(lv.platform_variation_name || "—")}</td>
+            <td class="omd-sku-cell" title="${escapeHtml(sku)}">${escapeHtml(sku)}</td>
+            <td title="${escapeHtml(vtype)}">${escapeHtml(vtype)}</td>
           </tr>
         `;
       }).join("");
