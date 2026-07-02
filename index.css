@@ -1684,6 +1684,14 @@ div[popover="hint"] {
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
+/* Grid items default to min-width:auto, which lets long unbreakable text
+   (e.g. a long product name) blow past its track and visually overflow
+   into the next column. Force every cell to respect its track width so
+   truncate/ellipsis on the content inside actually takes effect. */
+.omd-row > *,
+.omd-list-head > * {
+  min-width: 0;
+}
 .omd-row:hover {
   background: rgba(255, 255, 255, 0.03);
 }
