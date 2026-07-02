@@ -1891,6 +1891,11 @@ div[popover="hint"] {
   font-size: 11.5px;
   cursor: pointer;
 }
+.omd-dp-footer-actions .off {
+  opacity: 0.35;
+  pointer-events: none;
+  cursor: default;
+}
 
 /* Orders-specific list column widths */
 .omd-list-head.omd-orders-cols,

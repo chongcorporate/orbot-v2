@@ -1119,10 +1119,25 @@
                 <input class="w-full bg-surface-container/30 border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/40 rounded-lg pl-9 pr-4 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all font-body-md text-sm" placeholder="Search by SKU or Name..." id="catalog-search" type="text">
               </div>
               <!-- Premium Add Product Action -->
-              <button class="px-5 py-2.5 btn-primary rounded-lg flex items-center gap-1.5 font-label-caps tracking-wider transition-all duration-200 active:scale-95 shadow-[0_0_12px_rgba(139,124,246,0.25)]" id="add-catalog-item-btn">
+              <button class="px-5 py-2.5 rounded-lg flex items-center gap-1.5 font-label-caps tracking-wider transition-all duration-200 active:scale-95 bg-white/5 border border-outline-variant/30 text-on-surface hover:bg-white/10" id="add-catalog-item-btn">
                 <span class="material-symbols-outlined text-sm">add_box</span> Add Product
               </button>
+              <button class="px-5 py-2.5 btn-primary rounded-lg flex items-center gap-1.5 font-label-caps tracking-wider transition-all duration-200 active:scale-95 shadow-[0_0_12px_rgba(139,124,246,0.25)]" id="add-listing-header-btn">
+                <span class="material-symbols-outlined text-sm">storefront</span> Add Listing
+              </button>
             </div>
+          </div>
+
+          <!-- Unmapped listing-variation alert (hidden when there's nothing to review) -->
+          <div id="products-unmapped-banner" class="hidden items-center gap-3.5 px-4.5 py-3 rounded-xl bg-warning/[0.08] border border-warning/25" style="align-items:center;">
+            <div class="w-8 h-8 rounded-lg bg-warning/15 flex items-center justify-center flex-shrink-0">
+              <span class="material-symbols-outlined text-warning text-[19px]">link_off</span>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-[13px] font-semibold text-on-surface" id="products-unmapped-banner-title"></div>
+              <div class="text-[11px] text-on-surface-variant/70 mt-0.5">Orders for these variations can't be auto-matched by Scout and will land on hold.</div>
+            </div>
+            <button id="products-unmapped-banner-btn" class="px-3.5 py-2 rounded-lg bg-warning/15 border border-warning/35 text-warning text-[11.5px] font-semibold whitespace-nowrap">Review Unmapped →</button>
           </div>
 
           <!-- Dynamic Brand & Category filter bar -->
@@ -1150,11 +1165,21 @@
                 </select>
               </div>
             </div>
-            
-            <!-- Clear filters button -->
-            <button id="catalog-clear-filters-btn" class="hidden text-xs text-primary/70 hover:text-primary transition-colors font-label-caps uppercase tracking-wider">Clear Filters</button>
+
+            <div class="flex items-center gap-3">
+              <!-- Clear filters button -->
+              <button id="catalog-clear-filters-btn" class="hidden text-xs text-primary/70 hover:text-primary transition-colors font-label-caps uppercase tracking-wider">Clear Filters</button>
+
+              <!-- Coverage/attention filter tabs -->
+              <div class="flex gap-1 p-0.5 bg-black/20 rounded-lg border border-outline-variant/15 flex-shrink-0">
+                <button class="catalog-attn-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all bg-primary/15 text-primary" data-attn="all">All <span class="font-data-mono opacity-70" id="catalog-attn-count-all"></span></button>
+                <button class="catalog-attn-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-attn="needs_attention">Needs Attention <span class="font-data-mono opacity-70" id="catalog-attn-count-needs_attention"></span></button>
+                <button class="catalog-attn-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-attn="full_coverage">Full Coverage <span class="font-data-mono opacity-70" id="catalog-attn-count-full_coverage"></span></button>
+                <button class="catalog-attn-btn px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5" data-attn="low_stock">Low Stock <span class="font-data-mono opacity-70" id="catalog-attn-count-low_stock"></span></button>
+              </div>
+            </div>
           </div>
-          
+
           <!-- Products Master-Detail: compact list (left) + persistent detail panel (right) -->
           <div class="omd-split">
             <div class="omd-list-panel">

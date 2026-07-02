@@ -17,6 +17,7 @@ let cachedOrders = [];
 let selectedOrderId = null; // Master-detail: which order's detail panel is showing
 let bulkSelectedOrderIds = new Set(); // Orders list: checkbox-selected rows for bulk actions
 let selectedProductId = null; // Master-detail: which product's detail panel is showing
+let catalogAttentionFilter = "all"; // "all" | "needs_attention" | "full_coverage" | "low_stock"
 let cachedVariants = [];
 let cachedProducts = [];
 let cachedFilteredWaybills = [];
@@ -1854,6 +1855,18 @@ async function fetchAndRenderCatalog() {
       return catalogSortOrder === "asc" ? cmp : -cmp;
     });
 
+    updateProductsAttentionUI(productsList);
+
+    if (catalogAttentionFilter !== "all") {
+      productsList = productsList.filter(p => {
+        const attn = computeProductAttention(p);
+        if (catalogAttentionFilter === "needs_attention") return attn.hasIssue;
+        if (catalogAttentionFilter === "full_coverage") return attn.platformCount === LISTING_PLATFORMS.length;
+        if (catalogAttentionFilter === "low_stock") return attn.isLowStock;
+        return true;
+      });
+    }
+
     if (productsList.length === 0) {
       tbody.innerHTML = emptyDiv("No catalog items found matching filters.", "inventory_2");
       const detailPanel = document.getElementById("product-detail-panel");
@@ -1882,6 +1895,57 @@ function findListingForProduct(productId) {
   return cachedListings.find(l => l.products?.id === productId) || null;
 }
 
+// Shared classification used by both list-row rendering and the
+// Needs Attention/Full Coverage/Low Stock filter tabs, so the tab counts
+// always match what actually shows up when a tab is clicked.
+function computeProductAttention(p) {
+  const listing = findListingForProduct(p.id);
+  const platformCount = listing ? LISTING_PLATFORMS.filter(pl => !!listing[pl.key]).length : 0;
+  const hasUnmapped = listing && (listing.listing_variations || []).some(lv => !lv.variant_id);
+  const hasIssue = hasUnmapped || !listing;
+  const isLowStock = p.variations.some(v => (v.stock_quantity || 0) <= 5);
+  return { listing, platformCount, hasUnmapped, hasIssue, isLowStock };
+}
+
+// Updates the unmapped-variations alert banner and the attention filter
+// tab counts. Called every time the (brand/category/search-filtered, but
+// not yet attention-filtered) product list is rebuilt.
+function updateProductsAttentionUI(productsList) {
+  const counts = { all: productsList.length, needs_attention: 0, full_coverage: 0, low_stock: 0 };
+  productsList.forEach(p => {
+    const attn = computeProductAttention(p);
+    if (attn.hasIssue) counts.needs_attention++;
+    if (attn.platformCount === LISTING_PLATFORMS.length) counts.full_coverage++;
+    if (attn.isLowStock) counts.low_stock++;
+  });
+
+  Object.keys(counts).forEach(key => {
+    const el = document.getElementById(`catalog-attn-count-${key}`);
+    if (el) el.textContent = counts[key];
+  });
+
+  document.querySelectorAll(".catalog-attn-btn").forEach(btn => {
+    const isActive = btn.getAttribute("data-attn") === catalogAttentionFilter;
+    btn.classList.toggle("bg-primary/15", isActive);
+    btn.classList.toggle("text-primary", isActive);
+    btn.classList.toggle("text-outline", !isActive);
+  });
+
+  const banner = document.getElementById("products-unmapped-banner");
+  const bannerTitle = document.getElementById("products-unmapped-banner-title");
+  if (banner && bannerTitle) {
+    const unmappedVars = cachedListings.reduce((s, l) => s + (l.listing_variations || []).filter(v => !v.variant_id).length, 0);
+    if (unmappedVars > 0) {
+      bannerTitle.textContent = `${unmappedVars} listing variation${unmappedVars !== 1 ? "s" : ""} ${unmappedVars !== 1 ? "aren't" : "isn't"} linked to a catalog SKU`;
+      banner.classList.remove("hidden");
+      banner.classList.add("flex");
+    } else {
+      banner.classList.add("hidden");
+      banner.classList.remove("flex");
+    }
+  }
+}
+
 function renderProductsMasterDetail(productsList) {
   const headEl = document.getElementById("catalog-list-head");
   const rowsEl = document.getElementById("catalog-tbody");
@@ -1892,14 +1956,12 @@ function renderProductsMasterDetail(productsList) {
   headEl.innerHTML = `<span>Product</span><span>Brand / Category</span><span>Variants</span><span>Platforms</span><span>Price</span><span></span>`;
 
   rowsEl.innerHTML = productsList.map(p => {
-    const listing = findListingForProduct(p.id);
-    const platformCount = listing ? LISTING_PLATFORMS.filter(pl => !!listing[pl.key]).length : 0;
+    const { listing, platformCount, hasIssue } = computeProductAttention(p);
     const dotsHtml = LISTING_PLATFORMS.map(pl =>
       `<div class="omd-pdot" style="${listing && listing[pl.key] ? `background:${pl.color}` : ""}" title="${pl.label}${listing && listing[pl.key] ? "" : ": not listed"}"></div>`
     ).join("");
     const priceText = listing && listing.price_myr != null ? `RM ${Number(listing.price_myr).toFixed(2)}` : "—";
-    const hasUnmapped = listing && (listing.listing_variations || []).some(lv => !lv.variant_id);
-    const issueIcon = (hasUnmapped || !listing)
+    const issueIcon = hasIssue
       ? `<span class="material-symbols-outlined" title="${!listing ? "Not listed on any platform" : "Has unmapped listing variations"}">warning</span>`
       : "";
 
@@ -1943,10 +2005,67 @@ function selectProductForDetail(productId, productsList) {
 
   panel.innerHTML = buildProductDetailPanel(product);
   bindProductDetailPanelEvents(product);
+  fetchRecentOrdersForProduct(product);
 
   document.querySelectorAll("#catalog-tbody .omd-row").forEach(r => {
     r.classList.toggle("selected", r.getAttribute("data-product-id") === productId);
   });
+}
+
+// Pulls the last few orders that include a variant belonging to this
+// product, using the real order_items.variant_id foreign key (no
+// fabricated data). Runs after the panel is already painted since it
+// needs its own DB round-trip; a stale-response guard drops the result
+// if the user has since selected a different product.
+async function fetchRecentOrdersForProduct(product) {
+  const container = document.getElementById("product-detail-recent-orders");
+  if (!container || !supabaseClient) return;
+
+  const variantIds = product.variations.map(v => v.id);
+  if (variantIds.length === 0) {
+    container.innerHTML = `<div class="omd-item-card" style="align-items:center; text-align:center; color:var(--text-muted); font-size:11px;">No variants yet.</div>`;
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseClient
+      .from("order_items")
+      .select("variant_sku, created_at, orders(platform_order_id, customer_name, overall_order_status, order_timestamp, created_at)")
+      .in("variant_id", variantIds)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (error) throw error;
+
+    if (selectedProductId !== product.id) return; // user moved on while this was in flight
+
+    if (!data || data.length === 0) {
+      container.innerHTML = `<div class="omd-item-card" style="align-items:center; text-align:center; color:var(--text-muted); font-size:11px;">No orders yet.</div>`;
+      return;
+    }
+
+    container.innerHTML = data.map(item => {
+      const order = item.orders;
+      if (!order) return "";
+      const statusLower = (order.overall_order_status || "").toLowerCase();
+      let statusClass = "completed";
+      if (statusLower === "printing") statusClass = "printing";
+      else if (statusLower === "printed") statusClass = "printed";
+      else if (statusLower === "pending") statusClass = "pending";
+      else if (statusLower === "hold" || statusLower === "on hold") statusClass = "hold";
+
+      return `
+        <div class="omd-variant-row" style="justify-content:space-between;">
+          <span class="omd-vsku" style="width:70px; flex-shrink:0;">${escapeHtml(order.platform_order_id || "—")}</span>
+          <span class="omd-vname" style="flex:1;">${escapeHtml(order.customer_name || "—")} · ${escapeHtml(item.variant_sku || "")}</span>
+          <span class="badge ${statusClass}" style="font-size:9px; padding:2px 8px; flex-shrink:0;">${escapeHtml(order.overall_order_status || "pending")}</span>
+          <span class="omd-vfile" style="width:70px; text-align:right; flex-shrink:0;">${relativeTime(order.order_timestamp || order.created_at)}</span>
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    if (selectedProductId !== product.id) return;
+    container.innerHTML = `<div class="omd-item-card" style="align-items:center; text-align:center; color:var(--error-color); font-size:11px;">Failed to load recent orders.</div>`;
+  }
 }
 
 function buildProductDetailPanel(product) {
@@ -2016,7 +2135,12 @@ function buildProductDetailPanel(product) {
         const sku = lv.variants?.variant_sku || "— unlinked";
         const vtype = lv.variants?.variant_type || "—";
         return `
-          <tr class="${mapped ? "" : "unmapped"}">
+          <tr class="${mapped ? "" : "unmapped"} btn-edit-mapping-row" style="cursor:pointer;"
+            data-variation-id="${lv.id}"
+            data-platform-name="${escapeHtml(lv.platform_variation_name || "")}"
+            data-normalized="${escapeHtml(lv.normalized_variation_name || "")}"
+            data-variant-id="${lv.variant_id || ""}"
+            title="Click to edit mapping">
             <td>${mapped ? `<span class="material-symbols-outlined" style="font-size:13px; color:var(--success-color);">check_circle</span>` : `<span class="material-symbols-outlined" style="font-size:13px; color:var(--error-color);">error</span>`}</td>
             <td>${escapeHtml(lv.platform_variation_name || "—")}</td>
             <td class="omd-sku-cell">${escapeHtml(sku)}</td>
@@ -2046,6 +2170,8 @@ function buildProductDetailPanel(product) {
     `;
   }
 
+  const hasUnmappedVars = listing && (listing.listing_variations || []).some(lv => !lv.variant_id);
+
   return `
     <div class="omd-dp-head">
       <div>
@@ -2053,9 +2179,14 @@ function buildProductDetailPanel(product) {
         <div class="omd-pname">${escapeHtml(product.product_base_name)}</div>
         <div class="omd-meta" style="margin-top:4px;">${escapeHtml(product.brand_name)} · ${escapeHtml(product.product_category)}</div>
       </div>
-      <button class="btn-catalog-edit p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center cursor-pointer flex-shrink-0" data-product-id="${product.id}" title="Edit Product">
-        <span class="material-symbols-outlined text-[16px]">edit</span>
-      </button>
+      <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+        <button class="btn-product-details p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center cursor-pointer" data-product-id="${product.id}" title="View Full Details">
+          <span class="material-symbols-outlined text-[16px]">info</span>
+        </button>
+        <button class="btn-catalog-edit p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center cursor-pointer" data-product-id="${product.id}" title="Edit Product">
+          <span class="material-symbols-outlined text-[16px]">edit</span>
+        </button>
+      </div>
     </div>
 
     <div>
@@ -2066,9 +2197,17 @@ function buildProductDetailPanel(product) {
     ${listingSectionHtml}
     ${mappingSectionHtml}
 
+    <div>
+      <div class="omd-section-title"><span class="material-symbols-outlined">history</span>Recent Orders (this product)</div>
+      <div id="product-detail-recent-orders">
+        <div class="omd-item-card" style="align-items:center; text-align:center; color:var(--text-muted); font-size:11px;">Loading…</div>
+      </div>
+    </div>
+
     <div class="omd-dp-footer">
       <div class="omd-dp-footer-actions">
-        <div class="btn-secondary btn-product-details" data-product-id="${product.id}" style="cursor:pointer;"><span class="material-symbols-outlined text-sm">info</span>View Full Details</div>
+        <div class="btn-secondary btn-add-variant-for-product" data-product-id="${product.id}" style="cursor:pointer;"><span class="material-symbols-outlined text-sm">add</span>Add Variant</div>
+        <div class="btn-primary btn-fix-mapping${hasUnmappedVars ? "" : " off"}" data-listing-id="${listing ? listing.id : ""}" style="cursor:pointer;"><span class="material-symbols-outlined text-sm">link</span>Fix Mapping</div>
       </div>
     </div>
   `;
@@ -2112,6 +2251,38 @@ function bindProductDetailPanelEvents(product) {
       if (modal) modal.classList.add("active");
     });
   }
+
+  const addVariantBtn = panel.querySelector(".btn-add-variant-for-product");
+  if (addVariantBtn) {
+    addVariantBtn.addEventListener("click", async () => {
+      await populateProductsSelect();
+      document.getElementById("modal-tab-existing-product")?.click();
+      const select = document.getElementById("catalog-select-product");
+      if (select) select.value = product.id;
+      document.getElementById("add-catalog-modal")?.classList.add("active");
+    });
+  }
+
+  const fixMappingBtn = panel.querySelector(".btn-fix-mapping");
+  if (fixMappingBtn && !fixMappingBtn.classList.contains("off")) {
+    fixMappingBtn.addEventListener("click", () => {
+      const listingId = fixMappingBtn.getAttribute("data-listing-id");
+      const listing = cachedListings.find(l => l.id === listingId);
+      const unmapped = listing && (listing.listing_variations || []).find(lv => !lv.variant_id);
+      if (unmapped) {
+        openEditVariationModal({
+          variationId: unmapped.id,
+          platformName: unmapped.platform_variation_name || "",
+          normalized: unmapped.normalized_variation_name || "",
+          variantId: unmapped.variant_id || "",
+        });
+      }
+    });
+  }
+
+  panel.querySelectorAll(".btn-edit-mapping-row").forEach(row => {
+    row.addEventListener("click", () => openEditVariationModal(row.dataset));
+  });
 }
 
 // Ingestion handling
@@ -2414,6 +2585,22 @@ function setupCatalogSearch() {
       fetchAndRenderCatalog();
     });
   }
+
+  document.querySelectorAll(".catalog-attn-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      catalogAttentionFilter = btn.getAttribute("data-attn");
+      fetchAndRenderCatalog();
+    });
+  });
+
+  document.getElementById("products-unmapped-banner-btn")?.addEventListener("click", () => {
+    catalogAttentionFilter = "needs_attention";
+    fetchAndRenderCatalog();
+  });
+
+  document.getElementById("add-listing-header-btn")?.addEventListener("click", () => {
+    openAddListingModal();
+  });
 }
 
 // Hold Resolution Helper Functions
