@@ -177,24 +177,15 @@ function initSupabase() {
   const spDispatch = localStorage.getItem("orbot_sp_dispatch_enabled");
   document.getElementById("setting-sp-dispatch").checked = spDispatch !== "false";
 
-  const statusDot = document.getElementById("db-status-dot");
-  const statusText = document.getElementById("db-status-text");
-
   if (!supabaseUrl || !supabaseKey) {
-    statusDot.className = "dot error pulse";
-    statusText.innerText = "Settings Required";
     console.error("Supabase credentials not configured.");
     return false;
   }
 
   try {
     supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
-    statusDot.className = "dot pulse";
-    statusText.innerText = "Connected";
     return true;
   } catch (error) {
-    statusDot.className = "dot error";
-    statusText.innerText = "Connection Failed";
     console.error("Failed to initialize Supabase client:", error);
     return false;
   }

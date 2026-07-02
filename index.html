@@ -459,11 +459,6 @@
     <div class="flex items-center gap-4">
       <span class="material-symbols-outlined text-surface-tint text-[28px]" style="font-variation-settings: 'FILL' 1;">sync</span>
       <h1 class="font-headline-md text-headline-md font-bold text-surface-tint tracking-tight">Orbot V2.0</h1>
-      <!-- Global Status Indicator -->
-      <div class="ml-6 flex items-center gap-2 px-3 py-1.5 rounded-full glass-panel">
-        <div class="w-2.5 h-2.5 rounded-full bg-surface-tint pulse-live" id="db-status-dot"></div>
-        <span class="font-data-mono text-data-mono text-primary-fixed" id="db-status-text">TELEMETRY LIVE</span>
-      </div>
     </div>
     <div class="flex-1 max-w-xl mx-8 hidden md:block">
       <div class="relative w-full neon-focus rounded-full transition-all duration-300">
@@ -1650,29 +1645,6 @@
                   <div class="gbar"><i id="ops-gemini-tokens-bar" style="width:0%; background:#22d3ee;"></i></div>
                   <span class="gval" id="ops-gemini-tokens-count">0 / 1M</span>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Service Health Banner (merged from former Agents tab) -->
-          <div class="glass-panel rounded-xl px-5 py-3 flex items-center justify-between gap-4">
-            <div class="flex items-center gap-3">
-              <div class="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-primary text-xl select-none">settings_applications</span>
-              </div>
-              <div>
-                <h2 class="font-headline-sm text-on-surface leading-tight">Orbot Service</h2>
-                <p class="text-[10px] font-data-mono text-outline">Unified Background Daemon · Railway</p>
-              </div>
-            </div>
-            <div class="flex items-center gap-5">
-              <div class="hidden md:flex flex-col items-end">
-                <span class="text-[9px] font-label-caps text-outline uppercase tracking-wider">Last Heartbeat</span>
-                <span class="font-data-mono text-xs text-on-surface-variant" id="agents-hb-service-time">—</span>
-              </div>
-              <div class="flex items-center gap-2 bg-black/20 px-4 py-2 rounded-lg border border-outline-variant/15">
-                <div class="status-light-offline" id="hb-orbot_service-dot"></div>
-                <span class="font-data-mono font-bold text-sm" id="hb-orbot_service-text">Offline</span>
               </div>
             </div>
           </div>
