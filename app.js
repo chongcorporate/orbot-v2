@@ -1297,7 +1297,10 @@ function bindOrderDetailPanelEvents() {
         if (error) throw error;
         logAction(`Order status changed: ${orderId} → ${newStatus}`, "info", { order_id: orderId, new_status: newStatus });
         fetchSummaryStats();
-        fetchAndRenderOrders();
+        fetchAndRenderOrders().then(() => {
+          // Flash the updated row's status badge so the change is visible
+          document.querySelector(`#orders-list .omd-row[data-order-id="${orderId}"] .badge`)?.classList.add("flash-update");
+        });
       } catch (err) {
         showToast("Error updating order status: " + err.message, "error");
         fetchAndRenderOrders();
@@ -1622,176 +1625,104 @@ window.toggleLogDetails = function(logId, event) {
   }
 };
 
+let activeStreamFilter = "all";
+
+// Unified Activity stream (Aurora 3.0): merges system_logs + print_jobs into
+// one chronological feed with level rails and expandable JSON details.
+// Kept under the old fetchAndRenderLogs name so every existing call site
+// (setupTabs, agent-trigger refreshes, clear buttons) keeps working.
 async function fetchAndRenderLogs() {
   if (!supabaseClient) return;
-  const listContainer = document.getElementById("logs-list");
-  if (!listContainer) return;
-
-  listContainer.innerHTML = loadingDiv();
-
-  const escapeHtml = (str) => {
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  };
+  const box = document.getElementById("activity-stream");
+  if (!box) return;
 
   try {
-    let query = supabaseClient.from("system_logs").select("*").order("created_at", { ascending: false }).limit(60);
-    
-    if (activeLogFilter !== "all") {
-      query = query.eq("log_level", activeLogFilter);
-    }
+    const [logsRes, jobsRes] = await Promise.all([
+      supabaseClient.from("system_logs").select("*").order("created_at", { ascending: false }).limit(60),
+      supabaseClient.from("print_jobs").select("*, order_items(variant_sku, orders(platform_order_id, customer_name))").order("created_at", { ascending: false }).limit(50),
+    ]);
 
-    const { data: logs, error } = await query;
-    if (error) throw error;
+    const events = [];
+    (logsRes.data || []).forEach(log => {
+      const level = (log.log_level || "info").toLowerCase();
+      events.push({
+        ts: new Date(log.created_at), kind: "system", level,
+        title: log.log_message || "—",
+        sub: log.agent_name || "system",
+        details: log.additional_details || null,
+      });
+    });
+    (jobsRes.data || []).forEach(j => {
+      const status = (j.job_execution_status || "pending").toLowerCase();
+      const level = status === "completed" ? "success"
+        : status === "printing" ? "info"
+        : (status === "cancelled" || status === "error" || status === "failed") ? "error"
+        : "warning";
+      const oi = Array.isArray(j.order_items) ? j.order_items[0] : j.order_items;
+      const cust = oi?.orders?.customer_name || "";
+      const sku = oi?.variant_sku || "";
+      events.push({
+        ts: new Date(j.created_at), kind: "printjob", level,
+        title: `${j.print_file_name || "Print job"}${j.printer_name ? " on " + j.printer_name : ""}`,
+        sub: [sku, cust].filter(Boolean).join(" · ") || "print job",
+        chipExtra: status + (j.percent_complete != null ? ` · ${j.percent_complete}%` : ""),
+        details: null,
+      });
+    });
 
-    if (!logs || logs.length === 0) {
-      listContainer.innerHTML = emptyDiv("No system logs found.", "description");
-      return;
-    }
+    events.sort((a, b) => b.ts - a.ts);
 
-    listContainer.innerHTML = logs.map(log => {
-      const logDate = new Date(log.created_at);
-      const timeStr = logDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      const fullDateStr = logDate.toLocaleString();
-      
-      const agentRaw = log.agent_name || 'System';
-      const agentLower = agentRaw.toLowerCase().replace("agent", "");
-      const hasDetails = !!log.additional_details;
+    const filtered = events.filter(ev => {
+      if (activeStreamFilter === "all") return true;
+      if (activeStreamFilter === "error") return ev.level === "error";
+      return ev.kind === activeStreamFilter;
+    });
 
-      let glowClass = "glow-hover-cyan";
-      if (log.log_level.toLowerCase() === "warning") {
-        glowClass = "glow-hover-yellow";
-      } else if (log.log_level.toLowerCase() === "error") {
-        glowClass = "glow-hover-red";
-      }
-      
-      return `
-        <div class="glass-panel border border-outline-variant/10 rounded-xl p-4 transition-all duration-300 group relative overflow-hidden flex flex-col gap-3 log-item ${log.log_level.toLowerCase()} ${hasDetails ? 'cursor-pointer has-details ' + glowClass : ''}" id="log-item-${log.id}" ${hasDetails ? `onclick="toggleLogDetails('${log.id}', event)"` : ''}>
-          <div class="absolute inset-0 bg-gradient-to-r from-secondary-container/0 via-secondary-container/[0.01] to-secondary-container/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
-          
-          <div class="log-item-header relative z-10">
-            <div class="log-timestamp" title="${fullDateStr}">
-              ${timeStr} 
-              <span class="text-[10px] opacity-40 ml-1.5">${logDate.toLocaleDateString([], {month: 'short', day: 'numeric'})}</span>
+    const countEl = document.getElementById("activity-count");
+    if (countEl) countEl.textContent = `${filtered.length} of ${events.length} events`;
+
+    if (filtered.length === 0) {
+      box.innerHTML = emptyDiv("No matching activity.", "update");
+    } else {
+      const railColor = { info: "#5fb4ff", warning: "#f5b942", error: "#f2657a", success: "#3ddc97" };
+      box.innerHTML = filtered.map((ev, i) => {
+        const color = railColor[ev.level] || "#5fb4ff";
+        const hasDetails = !!ev.details;
+        return `
+          <div class="act-row${hasDetails ? " act-expandable" : ""}" data-act-idx="${i}">
+            <div class="act-rail" style="background:${color};"></div>
+            <span class="material-symbols-outlined act-icon" style="color:${color};">${ev.kind === "printjob" ? "print" : "terminal"}</span>
+            <div class="act-main">
+              <div class="act-title" title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>
+              <div class="act-sub">${escapeHtml(ev.sub)}${ev.chipExtra ? ` · <span style="color:${color};">${escapeHtml(ev.chipExtra)}</span>` : ""}</div>
             </div>
-            <div class="log-level-badge ${log.log_level.toLowerCase()}">${log.log_level}</div>
-            <div class="log-agent-badge ${agentLower}">${agentRaw}</div>
-            <div class="log-msg">${log.log_message}</div>
-            ${hasDetails ? `
-              <button class="log-toggle-btn pointer-events-none" id="log-toggle-btn-${log.id}" title="Toggle detailed payload">
-                <span class="material-symbols-outlined">expand_more</span>
-              </button>
-            ` : `<div class="w-8"></div>`}
+            <span class="act-time" title="${ev.ts.toLocaleString()}">${relativeTime(ev.ts.toISOString())}</span>
+            ${hasDetails ? `<span class="material-symbols-outlined act-chevron">expand_more</span>` : ""}
           </div>
-          ${hasDetails ? `
-            <div class="log-details-pane relative z-10" id="log-details-${log.id}">
-              <pre class="font-mono text-[11px] p-4 rounded-lg bg-[#02040a]/80 border border-outline-variant/10 text-slate-300 max-h-[300px] overflow-y-auto select-text">${escapeHtml(JSON.stringify(log.additional_details, null, 2))}</pre>
-            </div>
-          ` : ''}
-        </div>
-      `;
-    }).join("");
+          ${hasDetails ? `<pre class="act-details hidden" id="act-det-${i}">${escapeHtml(JSON.stringify(ev.details, null, 2))}</pre>` : ""}
+        `;
+      }).join("");
 
+      box.querySelectorAll(".act-expandable").forEach(row => {
+        row.addEventListener("click", () => {
+          const det = document.getElementById(`act-det-${row.getAttribute("data-act-idx")}`);
+          if (det) det.classList.toggle("hidden");
+          row.querySelector(".act-chevron")?.classList.toggle("act-chevron-open");
+        });
+      });
+    }
+
+    markFresh("activity");
   } catch (err) {
-    listContainer.innerHTML = emptyDiv(`Error loading logs: ${err.message}`, "error");
+    box.innerHTML = emptyDiv(`Error loading activity: ${err.message}`, "error");
   }
 }
 
 async function fetchAndRenderLogsPagePrintJobs() {
-  if (!supabaseClient) return;
-  const container = document.getElementById("logs-print-jobs-list");
-  if (!container) return;
-
-  container.innerHTML = `<div class="text-center text-outline py-12 font-data-mono text-xs"><span class="material-symbols-outlined animate-spin text-xl mb-1 block">autorenew</span>Loading print jobs...</div>`;
-
-  try {
-    const { data: jobs, error } = await supabaseClient
-      .from("print_jobs")
-      .select("*, order_items(variant_sku, variant_name, orders(platform_order_id, customer_name))")
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (error) throw error;
-
-    if (!jobs || jobs.length === 0) {
-      container.innerHTML = `<div class="font-data-mono text-xs text-outline text-center py-12">No print jobs found.</div>`;
-      return;
-    }
-
-    let html = `
-      <table class="w-full text-left border-collapse text-xs">
-        <thead>
-          <tr class="bg-surface-container-low border-b border-outline-variant/20 sticky top-0 z-10">
-            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10">SP Job ID</th>
-            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10">SKU</th>
-            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10">Print File</th>
-            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10">Customer</th>
-            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10">Printer</th>
-            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10 w-36">Progress</th>
-            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider border-r border-outline-variant/10">Created</th>
-            <th class="py-2 px-3 font-semibold text-on-surface-variant font-data-mono text-[10px] uppercase tracking-wider">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-    `;
-
-    jobs.forEach(job => {
-      const statusLower = (job.job_execution_status || "").toLowerCase();
-      let statusColor = "text-outline border-outline/30 bg-outline/10";
-      if (statusLower === "printing" || statusLower === "executing") {
-        statusColor = "text-primary border-primary/30 bg-primary/10";
-      } else if (statusLower === "completed" || statusLower === "finished") {
-        statusColor = "text-success border-success/30 bg-success/10";
-      } else if (statusLower === "cancelled" || statusLower === "error") {
-        statusColor = "text-error border-error/30 bg-error/10";
-      } else if (statusLower === "pending") {
-        statusColor = "text-warning border-warning/30 bg-warning/10";
-      }
-
-      const oi = job.order_items;
-      const sku = oi?.variant_sku || "—";
-      const customer = oi?.orders?.customer_name || "—";
-      const orderId = oi?.orders?.platform_order_id || "";
-      const printer = job.printer_name || "—";
-      const progress = Math.min(100, Math.max(0, Math.round(Number(job.percent_complete) || 0)));
-      const created = job.created_at ? new Date(job.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
-      const spJobId = job.simplyprint_job_id || "PENDING";
-
-      html += `
-        <tr class="border-b border-outline-variant/10 hover:bg-primary/[0.03] transition-colors font-data-mono">
-          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant">${spJobId}</td>
-          <td class="py-2 px-3 border-r border-outline-variant/10 text-primary font-bold">${sku}</td>
-          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant max-w-[180px] truncate" title="${job.print_file_name || ''}">${job.print_file_name || "—"}</td>
-          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant" title="${orderId}">${customer}</td>
-          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant">${printer}</td>
-          <td class="py-2 px-3 border-r border-outline-variant/10">
-            <div class="flex items-center gap-2">
-              <div class="flex-grow bg-black/40 rounded-full h-1.5 overflow-hidden w-20">
-                <div class="h-full rounded-full ${progress === 100 ? 'bg-success' : 'bg-primary'}" style="width:${progress}%"></div>
-              </div>
-              <span class="text-[10px] text-outline w-7 text-right">${progress}%</span>
-            </div>
-          </td>
-          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant">${created}</td>
-          <td class="py-2 px-3">
-            <span class="px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${statusColor}">${job.job_execution_status || "pending"}</span>
-          </td>
-        </tr>
-      `;
-    });
-
-    html += `</tbody></table>`;
-    container.innerHTML = html;
-  } catch (err) {
-    container.innerHTML = `<div class="font-data-mono text-xs text-error text-center py-12">Error loading print jobs: ${err.message}</div>`;
-  }
+  // Print jobs are folded into the unified Activity stream.
+  return fetchAndRenderLogs();
 }
 
-// Fetch and Render Catalog
 async function fetchAndRenderCatalog() {
   if (!supabaseClient) return;
   const tbody = document.getElementById("catalog-tbody");
@@ -2790,17 +2721,20 @@ function setupSettings() {
 
 // Setup logs filtering
 function setupLogsFiltering() {
-  document.querySelectorAll("#logs-filters .filter-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#logs-filters .filter-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      activeLogFilter = btn.getAttribute("data-level");
+  document.querySelectorAll(".activity-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      document.querySelectorAll(".activity-chip").forEach(c => {
+        c.classList.remove("bg-primary/10", "text-primary", "active");
+        c.classList.add("text-on-surface-variant");
+      });
+      chip.classList.add("bg-primary/10", "text-primary", "active");
+      chip.classList.remove("text-on-surface-variant");
+      activeStreamFilter = chip.getAttribute("data-stream");
       fetchAndRenderLogs();
     });
   });
 }
 
-// Catalog Search & Filters
 function setupCatalogSearch() {
   const searchInput = document.getElementById("catalog-search");
   if (searchInput) {
@@ -4649,7 +4583,7 @@ async function fetchAndRenderPrintersAndQueue() {
                 ${jobName}
               </div>
               <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden border border-outline-variant/5">
-                <div class="h-full bg-primary rounded-full transition-all duration-300" style="width: ${progress}%"></div>
+                <div class="h-full bg-primary rounded-full transition-all duration-300${(p.state || '').toLowerCase() === 'printing' ? ' progress-live' : ''}" style="width: ${progress}%"></div>
               </div>
               <div class="flex items-center gap-1.5 text-[10px] text-outline mt-0.5">
                 <span class="material-symbols-outlined text-xs">schedule</span>
@@ -4995,35 +4929,6 @@ function setupPrinterControls() {
   if (waybillTabOrders) waybillTabOrders.addEventListener("click", () => setWaybillTab("orders"));
   if (waybillTabPdfs) waybillTabPdfs.addEventListener("click", () => setWaybillTab("pdfs"));
 
-  // Logs panel toggle (System Logs ↔ Print Jobs)
-  const logsTabSystem = document.getElementById("logs-tab-system");
-  const logsTabPrintjobs = document.getElementById("logs-tab-printjobs");
-  const logsPanelSystem = document.getElementById("logs-panel-system");
-  const logsPanelPrintjobs = document.getElementById("logs-panel-printjobs");
-  const logsActionsSystem = document.getElementById("logs-actions-system");
-  const logsActionsPrintjobs = document.getElementById("logs-actions-printjobs");
-  function setLogsTab(tab) {
-    const isSystem = tab === "system";
-    logsPanelSystem.classList.toggle("hidden", !isSystem);
-    logsPanelPrintjobs.classList.toggle("hidden", isSystem);
-    logsActionsSystem.classList.toggle("hidden", !isSystem);
-    logsActionsPrintjobs.classList.toggle("hidden", isSystem);
-    logsTabSystem.classList.toggle("bg-primary/15", isSystem);
-    logsTabSystem.classList.toggle("text-primary", isSystem);
-    logsTabSystem.classList.toggle("text-outline", !isSystem);
-    logsTabSystem.classList.toggle("hover:bg-white/5", !isSystem);
-    logsTabPrintjobs.classList.toggle("bg-primary/15", !isSystem);
-    logsTabPrintjobs.classList.toggle("text-primary", !isSystem);
-    logsTabPrintjobs.classList.toggle("text-outline", isSystem);
-    logsTabPrintjobs.classList.toggle("hover:bg-white/5", isSystem);
-    const titleEl = document.getElementById("logs-panel-title");
-    const iconEl = document.getElementById("logs-panel-icon");
-    if (titleEl) titleEl.textContent = isSystem ? "System Logs" : "Print Jobs";
-    if (iconEl) iconEl.textContent = isSystem ? "description" : "print";
-    if (!isSystem) fetchAndRenderLogsPagePrintJobs();
-  }
-  if (logsTabSystem) logsTabSystem.addEventListener("click", () => setLogsTab("system"));
-  if (logsTabPrintjobs) logsTabPrintjobs.addEventListener("click", () => setLogsTab("printjobs"));
 
   // Action Buttons Events
   const refreshOrdersBtn = document.getElementById("refresh-orders-btn");
@@ -5041,7 +4946,7 @@ function setupPrinterControls() {
     "stat-card-orders-today": "orders",
     "stat-card-pending": "orders",
     "stat-card-hold": "orders",
-    "stat-card-queue": "printers",
+    "stat-card-queue": "operations",
     "stat-card-errors": "logs",
   };
   Object.entries(statCardMap).forEach(([id, tab]) => {
@@ -6231,7 +6136,17 @@ async function fetchAndRenderMasterPDFs() {
 let _launchImages = [];
 let _launchTabReady = false;
 
+// Launch flow stepper: reflects how far along the launch is.
+function setLaunchStep(n) {
+  document.querySelectorAll("#launch-stepper .launch-step").forEach(el => {
+    const step = Number(el.getAttribute("data-step"));
+    el.classList.toggle("done", step < n);
+    el.classList.toggle("current", step === n);
+  });
+}
+
 function initLaunchTab() {
+  setLaunchStep(1);
   if (_launchTabReady) return;
   _launchTabReady = true;
 
@@ -6318,6 +6233,7 @@ function renderLaunchImageGrid() {
 }
 
 function addLaunchImages(files) {
+  setLaunchStep(2);
   const slots = 9 - _launchImages.length;
   _launchImages = [..._launchImages, ...files.filter(f => f.type.startsWith('image/')).slice(0, slots)];
   renderLaunchImageGrid();
@@ -6512,6 +6428,7 @@ async function doLaunchPreview() {
 
     document.getElementById('launch-preview-section')?.classList.remove('hidden');
     document.getElementById('launch-preview-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setLaunchStep(3);
   } catch (e) {
     setLaunchStatus('error', `Preview failed: ${e.message}`);
   } finally {
@@ -6578,6 +6495,7 @@ async function doLaunchDownload() {
     URL.revokeObjectURL(url);
 
     setLaunchStatus('success', `Done. ${product_types.length} variant type(s) inserted into DB. Package downloaded.`);
+    setLaunchStep(4);
     logAction('launch_product', "info", { master_sku: `BLO-${theme}-${set_number}`, product_types, platforms });
   } catch (e) {
     setLaunchStatus('error', `Launch failed: ${e.message}`);

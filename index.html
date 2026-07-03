@@ -1125,7 +1125,15 @@
           <div class="flex items-center gap-3">
             <span class="material-symbols-outlined text-[#8b7cf6]" style="font-size:20px">rocket_launch</span>
             <span class="text-white font-medium">Product Launch</span>
-            <span class="text-xs text-[#6b7280] font-mono">Build listings &amp; DB records for a new product</span>
+            <div class="launch-stepper ml-4 hidden md:flex" id="launch-stepper">
+              <div class="launch-step current" data-step="1"><span class="ls-dot">1</span>Details</div>
+              <div class="launch-step-line"></div>
+              <div class="launch-step" data-step="2"><span class="ls-dot">2</span>Images</div>
+              <div class="launch-step-line"></div>
+              <div class="launch-step" data-step="3"><span class="ls-dot">3</span>Preview</div>
+              <div class="launch-step-line"></div>
+              <div class="launch-step" data-step="4"><span class="ls-dot">4</span>Download</div>
+            </div>
           </div>
           <button id="launch-preview-btn" class="btn btn-primary rounded-lg px-4 py-2 text-sm flex items-center gap-2">
             <span class="material-symbols-outlined text-base">auto_awesome</span>
@@ -1376,68 +1384,40 @@
       <!-- 9. Logs Pane -->
       <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-logs">
 
-        <!-- Logs (System + Print Jobs merged) -->
-        <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
+        <!-- Unified Activity stream (Aurora 3.0): system logs + print jobs, one feed -->
+        <div class="glass-panel rounded-xl p-5 flex flex-col gap-5">
           <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 flex-wrap gap-4">
             <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">
-              <span class="material-symbols-outlined text-primary" id="logs-panel-icon">description</span>
-              <span id="logs-panel-title">System Logs</span>
+              <span class="material-symbols-outlined text-primary">update</span>
+              <span>Activity</span>
+              <span class="fresh-stamp" data-fresh="activity"></span>
             </h2>
-            <div class="flex items-center gap-3 flex-wrap">
-              <!-- Tab toggle -->
-              <div class="flex gap-1 p-0.5 bg-black/20 rounded-lg border border-outline-variant/15">
-                <button id="logs-tab-system" class="px-3 py-1.5 rounded text-[10px] font-label-caps transition-all bg-primary/15 text-primary">System Logs</button>
-                <button id="logs-tab-printjobs" class="px-3 py-1.5 rounded text-[10px] font-label-caps transition-all text-outline hover:bg-white/5">Print Jobs</button>
-              </div>
-              <!-- System logs actions -->
-              <div id="logs-actions-system" class="flex items-center gap-2">
-                <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#8b7cf6] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-logs-btn">
-                  <span class="material-symbols-outlined text-sm">sync</span> Refresh
-                </button>
-                <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-logs-btn">
-                  <span class="material-symbols-outlined text-sm">delete_sweep</span> Clear Logs
-                </button>
-              </div>
-              <!-- Print jobs actions (hidden by default) -->
-              <div id="logs-actions-printjobs" class="hidden flex items-center gap-2">
-                <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#8b7cf6] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-print-jobs-btn">
-                  <span class="material-symbols-outlined text-sm">sync</span> Refresh
-                </button>
-                <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-print-jobs-btn">
-                  <span class="material-symbols-outlined text-sm">delete_sweep</span> Clear Jobs
-                </button>
-              </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#8b7cf6] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-logs-btn">
+                <span class="material-symbols-outlined text-sm">sync</span> Refresh
+              </button>
+              <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-logs-btn">
+                <span class="material-symbols-outlined text-sm">delete_sweep</span> Clear Logs
+              </button>
+              <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-print-jobs-btn">
+                <span class="material-symbols-outlined text-sm">delete_sweep</span> Clear Jobs
+              </button>
             </div>
           </div>
 
-          <!-- System Logs content -->
-          <div id="logs-panel-system">
-            <!-- Filters Row -->
-            <div class="flex justify-between items-center flex-wrap gap-3 mb-4">
-              <div id="logs-filters" class="flex items-center gap-1.5 bg-surface-container-low p-1 rounded-lg border border-outline-variant/15">
-                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all bg-primary/10 text-primary active" data-level="all">All Logs</button>
-                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-level="info">Info</button>
-                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-level="warning">Warning</button>
-                <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-level="error">Error</button>
-              </div>
-              <div class="text-[11px] font-data-mono text-outline">
-                Showing last 60 system entries
-              </div>
+          <div class="flex justify-between items-center flex-wrap gap-3">
+            <div class="flex items-center gap-1.5 bg-surface-container-low p-1 rounded-lg border border-outline-variant/15" id="activity-chips">
+              <button class="activity-chip filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all bg-primary/10 text-primary active" data-stream="all">All</button>
+              <button class="activity-chip filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-stream="system">System</button>
+              <button class="activity-chip filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-stream="printjob">Print Jobs</button>
+              <button class="activity-chip filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-stream="error">Errors</button>
             </div>
-            <!-- Logs Container -->
-            <div class="glass-panel rounded-xl overflow-hidden border border-outline-variant/15 bg-black/10">
-              <div id="logs-list" class="flex flex-col gap-3.5 max-h-[720px] overflow-y-auto p-4 bg-slate-950/20">
-                <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
-              </div>
-            </div>
+            <div class="text-[11px] font-data-mono text-outline" id="activity-count"></div>
           </div>
 
-          <!-- Print Jobs content (hidden by default) -->
-          <div id="logs-panel-printjobs" class="hidden">
-            <div class="glass-panel rounded-xl overflow-hidden border border-outline-variant/15 bg-black/10">
-              <div id="logs-print-jobs-list" class="max-h-[720px] overflow-y-auto">
-                <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
-              </div>
+          <div class="glass-panel rounded-xl overflow-hidden border border-outline-variant/15 bg-black/10">
+            <div id="activity-stream" class="flex flex-col max-h-[720px] overflow-y-auto p-3 gap-1.5 bg-slate-950/20">
+              <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
             </div>
           </div>
         </div>
