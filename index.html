@@ -505,7 +505,7 @@
   <div class="flex pt-16 h-screen w-full">
     <!-- SideNavBar -->
     <nav class="fixed left-0 top-16 h-[calc(100vh-64px)] z-40 flex flex-col py-panel-padding bg-surface-container-low/90 backdrop-blur-xl border-r border-outline-variant/10 shadow-2xl w-64 flex-shrink-0">
-      <div class="px-6 mb-8">
+      <div class="px-6 mb-8" id="nav-header-block">
         <h2 class="font-label-caps text-label-caps text-on-surface-variant tracking-widest uppercase mb-1">Command Deck</h2>
         <p class="font-data-mono text-data-mono text-outline">V2.0 Live Telemetry</p>
       </div>
@@ -514,27 +514,29 @@
       <div class="flex-1 overflow-y-auto px-4 space-y-1" id="nav-tabs">
         <button class="tab-btn active" data-tab="overview">
           <span class="material-symbols-outlined">dashboard</span>
-          <span class="font-headline-sm text-headline-sm">Overview</span>
+          <span class="font-headline-sm text-headline-sm nav-label">Overview</span>
         </button>
         <button class="tab-btn" data-tab="orders">
           <span class="material-symbols-outlined">receipt_long</span>
-          <span class="font-headline-sm text-headline-sm">Orders</span>
+          <span class="font-headline-sm text-headline-sm nav-label">Orders</span>
+          <span class="nav-badge" id="nav-badge-orders"></span>
         </button>
         <button class="tab-btn" data-tab="operations">
           <span class="material-symbols-outlined">hub</span>
-          <span class="font-headline-sm text-headline-sm">Operations</span>
+          <span class="font-headline-sm text-headline-sm nav-label">Operations</span>
         </button>
         <button class="tab-btn" data-tab="products">
           <span class="material-symbols-outlined">inventory_2</span>
-          <span class="font-headline-sm text-headline-sm">Products</span>
+          <span class="font-headline-sm text-headline-sm nav-label">Products</span>
+          <span class="nav-badge nav-badge-warn" id="nav-badge-products"></span>
         </button>
         <button class="tab-btn" data-tab="launch">
           <span class="material-symbols-outlined">rocket_launch</span>
-          <span class="font-headline-sm text-headline-sm">Launch</span>
+          <span class="font-headline-sm text-headline-sm nav-label">Launch</span>
         </button>
         <button class="tab-btn" data-tab="logs">
           <span class="material-symbols-outlined">description</span>
-          <span class="font-headline-sm text-headline-sm">Logs</span>
+          <span class="font-headline-sm text-headline-sm nav-label">Logs</span>
         </button>
       </div>
     </nav>

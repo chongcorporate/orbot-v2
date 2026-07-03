@@ -369,6 +369,8 @@ async function fetchSummaryStats() {
       }
     }
     tickStat(document.getElementById("stats-items"), pendingOrdersCount);
+    const navOrdersBadge = document.getElementById("nav-badge-orders");
+    if (navOrdersBadge) navOrdersBadge.textContent = pendingOrdersCount > 0 ? String(pendingOrdersCount) : "";
     tickStat(document.getElementById("stats-hold"), ordersOnHoldCount);
     
     const errorEl = document.getElementById("stats-errors");
@@ -1904,6 +1906,9 @@ function updateProductsAttentionUI(productsList) {
     const el = document.getElementById(`catalog-attn-count-${key}`);
     if (el) el.textContent = counts[key];
   });
+
+  const navProductsBadge = document.getElementById("nav-badge-products");
+  if (navProductsBadge) navProductsBadge.textContent = counts.needs_attention > 0 ? String(counts.needs_attention) : "";
 
   document.querySelectorAll(".catalog-attn-btn").forEach(btn => {
     const isActive = btn.getAttribute("data-attn") === catalogAttentionFilter;
