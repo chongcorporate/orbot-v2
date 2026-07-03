@@ -1,4 +1,9 @@
 let supabaseClient = null;
+// Fixed Railway URL for this deployment — used to bootstrap /config on first load, before
+// any localStorage override exists. A per-browser override can still be set via Settings
+// (e.g. pointing a local checkout at a different backend for testing).
+const DEFAULT_BACKEND_URL = "https://web-production-fb6c3.up.railway.app";
+let spDispatchEnabled = true; // synced from backend /config; see isSpDispatchEnabled()
 let currentTab = "overview";
 let activeLogFilter = "all";
 let activeWaybillFilter = "all";
@@ -185,7 +190,7 @@ function updateSystemClock() {
 }
 
 function isSpDispatchEnabled() {
-  return localStorage.getItem("orbot_sp_dispatch_enabled") !== "false";
+  return spDispatchEnabled;
 }
 
 function updateDispatchIndicator() {
@@ -207,22 +212,37 @@ function updateDispatchIndicator() {
   });
 }
 
-// Initialize configuration
-function initSupabase() {
+// Initialize configuration. Credentials/keys are fetched from the backend's GET /config
+// (sourced from Railway env vars) so the dashboard works on any browser/device with zero
+// setup. A localStorage value still wins if present, for local-dev overrides only —
+// normal use should never need to touch the Settings modal's text fields.
+async function initSupabase() {
   const localUrl = localStorage.getItem("orbot_supabase_url");
   const localKey = localStorage.getItem("orbot_supabase_key");
-  
-  const supabaseUrl = localUrl || (window.ENV ? window.ENV.SUPABASE_URL : "");
-  const supabaseKey = localKey || (window.ENV ? window.ENV.SUPABASE_SERVICE_ROLE_KEY : "");
+  const localSpKey = localStorage.getItem("orbot_simplyprint_key");
+  const backendUrl = (localStorage.getItem("orbot_backend_url") || DEFAULT_BACKEND_URL).replace(/\/$/, "");
+
+  let remote = null;
+  try {
+    const res = await fetch(`${backendUrl}/config`);
+    remote = JSON.parse(await res.text());
+  } catch (error) {
+    console.error("Failed to fetch /config from backend:", error);
+  }
+
+  const envUrl = window.ENV ? window.ENV.SUPABASE_URL : "";
+  const envKey = window.ENV ? window.ENV.SUPABASE_SERVICE_ROLE_KEY : "";
+  const supabaseUrl = localUrl || (remote && remote.supabase_url) || envUrl || "";
+  const supabaseKey = localKey || (remote && remote.supabase_key) || envKey || "";
+  const spKey = localSpKey || (remote && remote.simplyprint_key) || "";
+  spDispatchEnabled = remote ? remote.sp_dispatch_enabled !== false : true;
 
   document.getElementById("setting-supabase-url").value = supabaseUrl;
   document.getElementById("setting-supabase-key").value = supabaseKey;
-  const backendUrl = localStorage.getItem("orbot_backend_url") || "";
-  document.getElementById("setting-backend-url").value = backendUrl;
-  const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
+  document.getElementById("setting-backend-url").value = localStorage.getItem("orbot_backend_url") || "";
   document.getElementById("setting-simplyprint-key").value = spKey;
-  const spDispatch = localStorage.getItem("orbot_sp_dispatch_enabled");
-  document.getElementById("setting-sp-dispatch").checked = spDispatch !== "false";
+  document.getElementById("setting-sp-dispatch").checked = spDispatchEnabled;
+  updateDispatchIndicator();
 
   if (!supabaseUrl || !supabaseKey) {
     console.error("Supabase credentials not configured.");
@@ -1698,7 +1718,7 @@ window.redispatchPrintFile = async function(simplyPrintFileId, printFileName, pr
     showToast("SimplyPrint dispatch is disabled in Settings.", "warning");
     return;
   }
-  const backendUrl = (localStorage.getItem("orbot_backend_url") || "").replace(/\/$/, "");
+  const backendUrl = (localStorage.getItem("orbot_backend_url") || DEFAULT_BACKEND_URL).replace(/\/$/, "");
   if (!backendUrl) { showToast("Backend URL not set in Settings.", "warning"); return; }
   const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
   if (btn) { btn.disabled = true; btn.querySelector(".material-symbols-outlined").textContent = "sync"; }
@@ -2813,7 +2833,7 @@ function setupSettings() {
   closeBtn.addEventListener("click", closeModal);
   cancelBtn.addEventListener("click", closeModal);
 
-  saveBtn.addEventListener("click", () => {
+  saveBtn.addEventListener("click", async () => {
     const url = document.getElementById("setting-supabase-url").value.trim();
     const key = document.getElementById("setting-supabase-key").value.trim();
     let backendUrl = document.getElementById("setting-backend-url").value.trim();
@@ -2822,19 +2842,33 @@ function setupSettings() {
       document.getElementById("setting-backend-url").value = backendUrl;
     }
     const spKey = document.getElementById("setting-simplyprint-key").value.trim();
+    const spDispatchChecked = document.getElementById("setting-sp-dispatch").checked;
 
-    const spDispatchEnabled = document.getElementById("setting-sp-dispatch").checked;
+    // These are local-dev overrides only (blank = defer to the backend's /config
+    // defaults, which is what every browser uses out of the box).
     localStorage.setItem("orbot_supabase_url", url);
     localStorage.setItem("orbot_supabase_key", key);
     localStorage.setItem("orbot_backend_url", backendUrl);
     localStorage.setItem("orbot_simplyprint_key", spKey);
-    localStorage.setItem("orbot_sp_dispatch_enabled", spDispatchEnabled ? "true" : "false");
-    updateDispatchIndicator();
+
+    // The dispatch toggle is a shared feature flag, not a per-browser credential —
+    // persist it on the backend so flipping it here applies on every device.
+    const effectiveBackendUrl = (backendUrl || DEFAULT_BACKEND_URL).replace(/\/$/, "");
+    try {
+      await fetch(`${effectiveBackendUrl}/config/sp-dispatch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: spDispatchChecked }),
+      });
+    } catch (error) {
+      console.error("Failed to persist SimplyPrint dispatch toggle:", error);
+      showToast("Failed to save dispatch toggle to the server", "error");
+    }
 
     closeModal();
-    
+
     // Re-initialize
-    if (initSupabase()) {
+    if (await initSupabase()) {
       fetchSummaryStats();
       if (currentTab === "orders") {
         fetchAndRenderOrders();
@@ -3513,7 +3547,7 @@ function setupWaybillProcessing() {
     // Instantly update Overview queue if active
     if (currentTab === "overview") fetchAndRenderOverviewJobs();
 
-    const backendUrl = (localStorage.getItem("orbot_backend_url") || "").replace(/\/$/, "");
+    const backendUrl = (localStorage.getItem("orbot_backend_url") || DEFAULT_BACKEND_URL).replace(/\/$/, "");
 
     try {
       if (!backendUrl) throw new Error("Backend URL not set. Add your Railway URL in Settings.");
@@ -4314,14 +4348,14 @@ function setupWaybillFilters() {
 }
 
 // Initialize on page load
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   // Start system clock
   updateSystemClock();
   setInterval(updateSystemClock, 1000);
 
   updateDispatchIndicator();
 
-  if (initSupabase()) {
+  if (await initSupabase()) {
     // Load shops first so the header switcher + shop-scoped queries have data to work with.
     initShopSwitcher();
     fetchSummaryStats();
@@ -5152,7 +5186,7 @@ function setupCatalogStockListeners() {
       e.stopPropagation();
       const spFileId = printFileBtn.getAttribute("data-sp-file-id");
       const fileName = printFileBtn.getAttribute("data-file-name");
-      const backendUrl = (localStorage.getItem("orbot_backend_url") || "").replace(/\/$/, "");
+      const backendUrl = (localStorage.getItem("orbot_backend_url") || DEFAULT_BACKEND_URL).replace(/\/$/, "");
       if (!backendUrl) { showToast("Backend URL not set in Settings.", "warning"); return; }
       const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
       printFileBtn.disabled = true;
@@ -6369,7 +6403,7 @@ async function doLaunchScrape() {
   document.getElementById('launch-status')?.classList.add('hidden');
 
   try {
-    const backendUrl = localStorage.getItem('orbot_backend_url') || '';
+    const backendUrl = localStorage.getItem('orbot_backend_url') || DEFAULT_BACKEND_URL;
     const res = await fetch(`${backendUrl}/catalog/scrape-product`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -6405,7 +6439,7 @@ async function doLaunchScrape() {
 // Runs one /catalog/clean-image call per file in parallel; swaps each grid tile
 // to the cleaned version as it lands. Files the user removed mid-flight are skipped.
 async function cleanLaunchImages(files) {
-  const backendUrl = localStorage.getItem('orbot_backend_url') || '';
+  const backendUrl = localStorage.getItem('orbot_backend_url') || DEFAULT_BACKEND_URL;
   let lastReason = null;
   await Promise.all(files.map(async (file) => {
     file._cleaning = true;
@@ -6489,7 +6523,7 @@ async function doLaunchPreview() {
   document.getElementById('launch-status')?.classList.add('hidden');
 
   try {
-    const backendUrl = localStorage.getItem('orbot_backend_url') || '';
+    const backendUrl = localStorage.getItem('orbot_backend_url') || DEFAULT_BACKEND_URL;
     const res = await fetch(`${backendUrl}/catalog/preview-product`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -6554,7 +6588,7 @@ async function doLaunchDownload() {
   document.getElementById('launch-status')?.classList.add('hidden');
 
   try {
-    const backendUrl = localStorage.getItem('orbot_backend_url') || '';
+    const backendUrl = localStorage.getItem('orbot_backend_url') || DEFAULT_BACKEND_URL;
     const fd = new FormData();
     fd.append('set_name', set_name);
     fd.append('set_number', set_number);

@@ -462,9 +462,15 @@ def normalize_filename(name: str) -> str:
 
 def normalize_variation(raw: str) -> str:
     """Canonical normalization for matching variation names.
-    Strips leading (set_number) prefix, lowercases, normalizes spacing around - and ,."""
+    Lowercases, normalizes spacing around - and ,.
+
+    Does NOT strip a leading "(N)" prefix: on shared/multi-set listings (e.g. a base
+    plate compatible with two sets, sold under one listing) that prefix is the set
+    number distinguishing otherwise-identical variation text like "(60367)Base - Blank"
+    vs "(60262)Base - Blank". Stripping it collapsed both to the same normalized key,
+    made Stage 1 exact-match ambiguous, and let a fallback stage silently resolve to
+    the wrong set (see order 260703PDMEJC73)."""
     s = (raw or "").strip().lower()
-    s = re.sub(r'^\(\d+\)\s*', '', s)       # strip leading (N) prefix
     s = re.sub(r'\s*-\s*', ' - ', s)         # normalize hyphens: space-hyphen-space
     s = re.sub(r'\s*,\s*', ',', s)           # normalize commas: no spaces
     s = re.sub(r'\s+', ' ', s).strip()
@@ -523,7 +529,7 @@ def _self_heal_listing_variation(supabase_client, listing_id: Optional[str], lis
     except Exception:
         pass  # duplicate = already healed, safe to ignore
 
-_VARIANT_COLS = "variant_sku, variant_name, plaque_count"
+_VARIANT_COLS = "variant_sku, variant_name, plaque_count, set_number"
 
 def _embed_variant_row(embedded) -> Optional[dict]:
     """Normalize a PostgREST embedded `variants(...)` payload (which may come back as a
@@ -594,18 +600,22 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
     # numbers, plaque counts). Skipped for non-LEGO ('generic') shops.
     if is_lego:
         intent = extract_variant_intent(norm_var, listing_title)
+        # Variation-derived set number takes priority over the listing title: shared
+        # listings (e.g. "Display Stand ... (60367 / 60262)") name multiple sets, and
+        # extract_set_number_from_text(listing_title) would otherwise always grab
+        # whichever set number appears first, ignoring what the customer actually picked.
         set_num = (
-            extract_set_number_from_text(listing_title) or
             intent.get("set_number_override") or
-            extract_set_number_from_text(norm_var)
+            extract_set_number_from_text(norm_var) or
+            extract_set_number_from_text(listing_title)
         )
         logger.info(f"[Matching] Stage 2: set_num={set_num} intent={intent}")
 
         if set_num:
             try:
                 q = supabase_client.table("variants")\
-                    .select("id, variant_sku, variant_name, variant_type, plaque_count, products!inner(shop_id)" if shop_id else
-                            "id, variant_sku, variant_name, variant_type, plaque_count")\
+                    .select("id, variant_sku, variant_name, variant_type, plaque_count, set_number, products!inner(shop_id)" if shop_id else
+                            "id, variant_sku, variant_name, variant_type, plaque_count, set_number")\
                     .eq("set_number", set_num)
                 if shop_id:
                     q = q.eq("products.shop_id", shop_id)
@@ -630,7 +640,7 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
                     logger.info(f"[Matching] Stage 2 Success: set {set_num} {intent} → '{variant['variant_sku']}'")
                     _self_heal_listing_variation(supabase_client, exact_listing_id, listing_title,
                                                  variant["id"], norm_var, variation_name)
-                    return variant["id"], True, {k: variant.get(k) for k in ("variant_sku", "variant_name", "plaque_count")}
+                    return variant["id"], True, {k: variant.get(k) for k in ("variant_sku", "variant_name", "plaque_count", "set_number")}
             except Exception as e:
                 logger.error(f"[Matching] Stage 2 database error: {e}")
 
@@ -649,7 +659,7 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
                 if res.data:
                     _self_heal_listing_variation(supabase_client, exact_listing_id, listing_title,
                                                  res.data[0]["id"], norm_var, variation_name)
-                    return res.data[0]["id"], True, {k: res.data[0].get(k) for k in ("variant_sku", "variant_name", "plaque_count")}
+                    return res.data[0]["id"], True, {k: res.data[0].get(k) for k in ("variant_sku", "variant_name", "plaque_count", "set_number")}
             except Exception as e:
                 logger.error(f"[Matching] Stage 2.5 F1 multi-tier database error: {e}")
 
@@ -663,7 +673,7 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
                 if res.data:
                     _self_heal_listing_variation(supabase_client, exact_listing_id, listing_title,
                                                  res.data[0]["id"], norm_var, variation_name)
-                    return res.data[0]["id"], True, {k: res.data[0].get(k) for k in ("variant_sku", "variant_name", "plaque_count")}
+                    return res.data[0]["id"], True, {k: res.data[0].get(k) for k in ("variant_sku", "variant_name", "plaque_count", "set_number")}
             except Exception as e:
                 logger.error(f"[Matching] Stage 2.5 F1 team database error: {e}")
 
@@ -1822,11 +1832,13 @@ class ScoutAgent:
                     v_sku          = variant_row.get("variant_sku")
                     v_name         = variant_row.get("variant_name")
                     v_plaque_count = variant_row.get("plaque_count")
+                    v_set_number   = variant_row.get("set_number")
                 else:
-                    var_info = self.supabase.table("variants").select("variant_sku, variant_name, plaque_count").eq("id", variant_id).execute()
+                    var_info = self.supabase.table("variants").select("variant_sku, variant_name, plaque_count, set_number").eq("id", variant_id).execute()
                     v_sku         = var_info.data[0]["variant_sku"]    if var_info.data else None
                     v_name        = var_info.data[0]["variant_name"]   if var_info.data else None
                     v_plaque_count = var_info.data[0].get("plaque_count") if var_info.data else None
+                    v_set_number   = var_info.data[0].get("set_number") if var_info.data else None
 
                 if is_fuzzy:
                     has_fuzzy_match = True
@@ -1850,6 +1862,27 @@ class ScoutAgent:
                     self.log_to_db("error", msg, {"platform_order_id": order_details.platform_order_id,
                                                    "variation_name": variation_name, "matched_sku": v_sku})
                     missing_item_details += f"Plaque mismatch: '{variation_name}' → '{v_sku}'; "
+                    fake_key = f"non_existent_{item_index}"
+                    item_index += 1
+                    resolved_items[fake_key] = {"variant_sku": v_sku, "variant_name": v_name,
+                                                 "quantity": quantity, "variation_names": {variation_name},
+                                                 "is_fake": True}
+                    continue
+
+                # Sanity-check: if the variation text itself names a set number (common on
+                # shared/"compatible with sets A/B" listings), the matched variant must be
+                # for that exact set. Catches wrong-set mismatches regardless of which
+                # matching stage produced them — hold the order rather than print the wrong item.
+                expected_set_num = extract_set_number_from_text(variation_name or "")
+                if expected_set_num is not None and v_set_number is not None and str(v_set_number) != str(expected_set_num):
+                    has_matching_failure = True
+                    msg = (f"Set number mismatch: variation '{variation_name}' expects set {expected_set_num} "
+                           f"but matched SKU '{v_sku}' is for set {v_set_number} "
+                           f"for '{listing_title}' in order {order_details.platform_order_id}.")
+                    logger.error(msg)
+                    self.log_to_db("error", msg, {"platform_order_id": order_details.platform_order_id,
+                                                   "variation_name": variation_name, "matched_sku": v_sku})
+                    missing_item_details += f"Set mismatch: '{variation_name}' → '{v_sku}'; "
                     fake_key = f"non_existent_{item_index}"
                     item_index += 1
                     resolved_items[fake_key] = {"variant_sku": v_sku, "variant_name": v_name,
@@ -3667,6 +3700,43 @@ def get_status():
             "status": "degraded",
             "error": str(e)
         }
+
+@app.get("/config")
+def get_config():
+    """Bootstrap config for the frontend so it works from any browser/device without
+    manual setup — the dashboard previously required pasting these into a Settings
+    modal saved to localStorage, which meant a fresh browser had nothing configured."""
+    sp_dispatch_enabled = True
+    try:
+        res = supabase.table("app_settings").select("value").eq("key", "sp_dispatch_enabled").limit(1).execute()
+        if res.data:
+            sp_dispatch_enabled = res.data[0]["value"] != "false"
+    except Exception as e:
+        logging.warning(f"Failed to load app_settings.sp_dispatch_enabled, defaulting to enabled: {e}")
+
+    return {
+        "supabase_url": SUPABASE_URL,
+        "supabase_key": SUPABASE_KEY,
+        "simplyprint_key": os.getenv("SIMPLYPRINT_API_KEY", ""),
+        "sp_dispatch_enabled": sp_dispatch_enabled,
+    }
+
+
+class SpDispatchRequest(BaseModel):
+    enabled: bool
+
+
+@app.post("/config/sp-dispatch")
+def set_sp_dispatch(body: SpDispatchRequest):
+    """Persists the SimplyPrint dispatch on/off toggle so it applies everywhere,
+    not just the browser it was flipped in."""
+    supabase.table("app_settings").upsert({
+        "key": "sp_dispatch_enabled",
+        "value": "true" if body.enabled else "false",
+        "updated_at": datetime.now().isoformat(),
+    }).execute()
+    return {"status": "ok", "sp_dispatch_enabled": body.enabled}
+
 
 @app.post("/scout/poll")
 def scout_poll(background_tasks: BackgroundTasks):
