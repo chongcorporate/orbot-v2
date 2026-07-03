@@ -4477,148 +4477,119 @@ async function fetchAndRenderPrintersAndQueue() {
       if (mainErrorBox) mainErrorBox.classList.add("hidden");
     }
 
+    // Aurora 3.0 printer card: state-tinted icon + circular progress ring.
+    // Overview gets the compact variant; Operations adds temp chips + controls.
+    // Control button classes/data-attrs are load-bearing — setupPrinterControls
+    // binds via delegated grid click on .printer-btn-ready/pause/estop.
     const renderPrintersHtml = (prefix) => {
       if (!printers || printers.length === 0) {
-        return `
-          <div class="col-span-12 text-center py-12 text-outline font-data-mono">
-            <span class="material-symbols-outlined text-3xl mb-2 block">print_disabled</span>
-            No printers configured in database.
-          </div>
-        `;
+        return `<div class="col-span-2">${emptyDiv("No printers configured in database.", "print_disabled")}</div>`;
       }
 
+      const MINI_PRINTER_IDS = [38959, 38960];
+
       return printers.map(p => {
+        const stateLower = (p.state || "").toLowerCase();
+        const isPrinting = p.online && stateLower === "printing";
+        const isPaused = p.online && stateLower === "paused";
+        const stateColor = !p.online ? "#f2657a" : isPrinting ? "#8b7cf6" : isPaused ? "#f5b942" : "#3ddc97";
+        let stateDisplay = p.online ? (p.state || "idle") : "offline";
+        if (stateDisplay.toLowerCase() === "starting" || stateDisplay.toLowerCase() === "starting print") stateDisplay = "finishing";
         const statusClass = p.online ? "status-light-online" : "status-light-offline";
-        let stateDisplay = p.online ? (p.state || 'unknown') : 'offline';
-        const stateDisplayLower = stateDisplay.toLowerCase();
-        if (stateDisplayLower === 'starting' || stateDisplayLower === 'starting print') {
-          stateDisplay = 'finishing';
-        }
-        const stateClass = p.online ? (((p.state || '').toLowerCase() === "printing") ? "text-primary" : "text-outline") : "text-error";
-        
-        let printDetailsHtml = "";
-        if (p.online && (p.current_job_name || (p.state || '').toLowerCase() === "printing" || p.percent_complete !== null)) {
-          const progress = p.percent_complete || 0;
-          const remainingMinutes = p.remaining_seconds ? Math.round(p.remaining_seconds / 60) : 0;
+        const typeBadge = MINI_PRINTER_IDS.includes(p.id)
+          ? `<span class="pt-type badge-mini">MINI</span>`
+          : `<span class="pt-type badge-reg">A1</span>`;
+        const cardAccentClass = !p.online ? "pcard-error" : (isPrinting ? "pcard-printing" : "pcard-idle");
+
+        // --- Body: progress ring + job info, or idle/offline state ---
+        let bodyHtml;
+        if (p.online && (p.current_job_name || isPrinting || p.percent_complete !== null)) {
+          const progress = Math.max(0, Math.min(100, p.percent_complete || 0));
           const jobName = p.current_job_name || "Active Print Job";
-          
-          let remainingStr = "Finishing...";
-          if (remainingMinutes > 0) {
-            if (remainingMinutes >= 60) {
-              const hours = Math.floor(remainingMinutes / 60);
-              const mins = remainingMinutes % 60;
-              remainingStr = `${hours}h ${mins}m remaining`;
-            } else {
-              remainingStr = `${remainingMinutes}m remaining`;
-            }
-          }
-          
-          printDetailsHtml = `
-            <div class="mt-4 pt-3 border-t border-outline-variant/10 flex flex-col gap-2">
-              <div class="flex justify-between items-center text-xs">
-                <div class="text-on-surface font-semibold overflow-hidden text-ellipsis whitespace-nowrap max-w-[200px] cursor-help" 
-                     interestfor="tooltip-${prefix}printer-${p.id}" 
-                     id="trigger-${prefix}printer-${p.id}" 
-                     tabindex="0" 
-                     style="anchor-name: --tooltip-${prefix}printer-${p.id};">${jobName}</div>
-                <span class="font-data-mono text-primary">${progress}%</span>
+          const remainingMinutes = p.remaining_seconds ? Math.round(p.remaining_seconds / 60) : 0;
+          const remainingStr = remainingMinutes > 0
+            ? (remainingMinutes >= 60 ? `${Math.floor(remainingMinutes / 60)}h ${remainingMinutes % 60}m left` : `${remainingMinutes}m left`)
+            : "Finishing…";
+          const C = 2 * Math.PI * 26;
+          const offset = (C * (1 - progress / 100)).toFixed(1);
+          bodyHtml = `
+            <div class="pt-body">
+              <div class="pt-ring${isPrinting ? " pt-ring-live" : ""}">
+                <svg viewBox="0 0 64 64">
+                  <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="5"></circle>
+                  <circle cx="32" cy="32" r="26" fill="none" stroke="${stateColor}" stroke-width="5" stroke-linecap="round"
+                    stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${offset}" transform="rotate(-90 32 32)"
+                    style="transition: stroke-dashoffset 0.6s ease;"></circle>
+                </svg>
+                <span class="pt-ring-pct">${progress}%</span>
               </div>
-              <div popover="hint" id="tooltip-${prefix}printer-${p.id}" style="position-anchor: --tooltip-${prefix}printer-${p.id}; top: anchor(bottom); left: anchor(left); margin: unset;">
-                ${jobName}
+              <div class="pt-job">
+                <div class="pt-job-name" title="${escapeHtml(jobName)}">${escapeHtml(jobName)}</div>
+                <div class="pt-job-eta"><span class="material-symbols-outlined">schedule</span>${remainingStr}</div>
               </div>
-              <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden border border-outline-variant/5">
-                <div class="h-full bg-primary rounded-full transition-all duration-300${(p.state || '').toLowerCase() === 'printing' ? ' progress-live' : ''}" style="width: ${progress}%"></div>
-              </div>
-              <div class="flex items-center gap-1.5 text-[10px] text-outline mt-0.5">
-                <span class="material-symbols-outlined text-xs">schedule</span>
-                <span>${remainingStr}</span>
-              </div>
-            </div>
-          `;
+            </div>`;
         } else if (p.online) {
-          printDetailsHtml = `
-            <div class="mt-4 pt-3 border-t border-outline-variant/10 flex items-center justify-center py-3 text-xs text-outline font-medium">
-              <span class="material-symbols-outlined text-sm mr-1.5">hourglass_empty</span> Idle - Ready for jobs
-            </div>
-          `;
+          bodyHtml = `
+            <div class="pt-body pt-body-idle">
+              <span class="material-symbols-outlined" style="color:#3ddc97;">check_circle</span>
+              Idle — ready for jobs
+            </div>`;
         } else {
-          printDetailsHtml = `
-            <div class="mt-4 pt-3 border-t border-outline-variant/10 flex items-center justify-center py-3 text-xs text-error/60 font-medium">
-              <span class="material-symbols-outlined text-sm mr-1.5">wifi_off</span> Printer is offline
-            </div>
-          `;
+          bodyHtml = `
+            <div class="pt-body pt-body-idle" style="color:var(--error-color);opacity:0.75;">
+              <span class="material-symbols-outlined">wifi_off</span>
+              Printer is offline
+            </div>`;
         }
 
-        const nozzleTempStr = p.nozzle_temp !== null ? `${Math.round(p.nozzle_temp)}°C` : "-";
-        const nozzleTargetStr = p.nozzle_target ? ` / ${Math.round(p.nozzle_target)}°C` : "";
-        const bedTempStr = p.bed_temp !== null ? `${Math.round(p.bed_temp)}°C` : "-";
-        const bedTargetStr = p.bed_target ? ` / ${Math.round(p.bed_target)}°C` : "";
+        // --- Temp chips (Operations only) ---
+        const tempsHtml = (prefix === "overview-") ? "" : `
+          <div class="pt-chips">
+            <span class="pt-chip"><span class="material-symbols-outlined" style="color:#ebb2ff;">thermometer</span>${p.nozzle_temp !== null && p.nozzle_temp !== undefined ? Math.round(p.nozzle_temp) : "–"}${p.nozzle_target ? ` / ${Math.round(p.nozzle_target)}` : ""}°</span>
+            <span class="pt-chip"><span class="material-symbols-outlined" style="color:#ffaa6b;">nest_heat_link_gen_3</span>${p.bed_temp !== null && p.bed_temp !== undefined ? Math.round(p.bed_temp) : "–"}${p.bed_target ? ` / ${Math.round(p.bed_target)}` : ""}°</span>
+            ${p.autoprint ? `<span class="pt-chip" style="color:var(--primary-color);"><span class="material-symbols-outlined" style="color:var(--primary-color);">layers</span>${p.autoprint_current_jobs ?? 0}/${p.autoprint_max_jobs ?? 0}</span>` : ""}
+          </div>`;
 
-        const controlButtonsHtml = (prefix === "overview-") ? "" : `
-          <div class="flex items-center gap-1.5 mt-3 pt-3 border-t border-outline-variant/10">
-            <button class="printer-btn-ready flex-1 py-1 px-2 rounded bg-surface-container hover:bg-surface-container-high text-xs font-semibold text-on-surface border border-outline-variant/30 flex items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-50 whitespace-nowrap" data-printer-id="${p.id}" ${!p.online ? 'disabled' : ''}>
-              <span class="material-symbols-outlined text-sm">done</span> Ready
+        // --- Controls (Operations only) ---
+        const controlsHtml = (prefix === "overview-") ? "" : `
+          <div class="pt-controls">
+            <button class="printer-btn-ready pt-btn" data-printer-id="${p.id}" ${!p.online ? "disabled" : ""}>
+              <span class="material-symbols-outlined">done</span> Ready
             </button>
-            <button class="printer-btn-pause flex-1 py-1 px-2 rounded bg-surface-container hover:bg-surface-container-high text-xs font-semibold text-on-surface border border-outline-variant/30 flex items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-50 whitespace-nowrap" data-printer-id="${p.id}" data-state="${p.state}" ${!p.online ? 'disabled' : ''}>
-              <span class="material-symbols-outlined text-sm">${p.state === 'paused' ? 'play_arrow' : 'pause'}</span> ${p.state === 'paused' ? 'Resume' : 'Pause'}
+            <button class="printer-btn-pause pt-btn" data-printer-id="${p.id}" data-state="${p.state}" ${!p.online ? "disabled" : ""}>
+              <span class="material-symbols-outlined">${isPaused ? "play_arrow" : "pause"}</span> ${isPaused ? "Resume" : "Pause"}
             </button>
-            <button class="printer-btn-estop flex-1 py-1 px-2 rounded bg-error/15 hover:bg-error/25 text-xs font-bold text-error border border-error/30 flex items-center justify-center gap-1 transition-all active:scale-95 whitespace-nowrap" data-printer-id="${p.id}" data-printer-name="${p.name}">
-              <span class="material-symbols-outlined text-sm">emergency</span> E-Stop
+            <button class="printer-btn-estop pt-btn pt-btn-danger" data-printer-id="${p.id}" data-printer-name="${escapeHtml(p.name)}">
+              <span class="material-symbols-outlined">emergency</span> E-Stop
             </button>
-          </div>
-        `;
-        const temperaturesGridHtml = (prefix === "overview-") ? "" : `
-              <!-- Temperatures Grid -->
-              <div class="grid grid-cols-2 gap-2 mt-4 text-xs">
-                <div class="bg-surface-container-lowest/40 border border-outline-variant/10 rounded-lg p-2 flex items-center gap-2">
-                  <span class="material-symbols-outlined text-secondary text-sm">thermometer</span>
-                  <div>
-                    <div class="text-[9px] text-outline uppercase font-semibold">Nozzle</div>
-                    <div class="font-data-mono text-on-surface mt-0.5">${nozzleTempStr}${nozzleTargetStr}</div>
-                  </div>
-                </div>
-                <div class="bg-surface-container-lowest/40 border border-outline-variant/10 rounded-lg p-2 flex items-center gap-2">
-                  <span class="material-symbols-outlined text-[#ffaa6b] text-sm">nest_heat_link_gen_3</span>
-                  <div>
-                    <div class="text-[9px] text-outline uppercase font-semibold">Bed</div>
-                    <div class="font-data-mono text-on-surface mt-0.5">${bedTempStr}${bedTargetStr}</div>
-                  </div>
-                </div>
-              </div>
-        `;
+          </div>`;
 
-        const cardAccentClass = !p.online ? "pcard-error" : ((p.state || "").toLowerCase() === "printing" ? "pcard-printing" : "pcard-idle");
+        // Overview shows plates as a small header chip since it has no chips row
+        const platesHeaderChip = (prefix === "overview-" && p.autoprint)
+          ? `<span class="pt-chip" style="color:var(--primary-color);"><span class="material-symbols-outlined" style="color:var(--primary-color);">layers</span>${p.autoprint_current_jobs ?? 0}/${p.autoprint_max_jobs ?? 0}</span>`
+          : "";
 
         return `
-          <div class="glass-panel rounded-xl p-4 flex flex-col justify-between hover:bg-surface-container-highest/10 transition-colors duration-300 ${cardAccentClass} ${p.online ? 'glow-hover-cyan' : 'glow-hover-red'}">
-            <div>
-              <div class="flex justify-between items-start">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-lg bg-surface-container-highest border border-outline-variant/15 flex items-center justify-center">
-                    <span class="material-symbols-outlined text-outline text-lg">print</span>
-                  </div>
-                  <div>
-                    <h4 class="font-bold text-on-surface text-sm">${p.name}</h4>
-                    <p class="text-[10px] font-data-mono mt-0.5">
-                      ${p.autoprint 
-                        ? `<span class="text-primary font-semibold">Plates: ${p.autoprint_current_jobs !== null ? p.autoprint_current_jobs : 0}/${p.autoprint_max_jobs !== null ? p.autoprint_max_jobs : 0}</span>` 
-                        : `<span class="text-outline/60">Autoprint: Off</span>`
-                      }
-                    </p>
-                  </div>
+          <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 ${cardAccentClass} ${p.online ? "glow-hover-cyan" : "glow-hover-red"}${!p.online ? " pt-card-offline" : ""}">
+            <div class="flex justify-between items-center gap-2">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="pt-icon" style="--pt-color:${stateColor};">
+                  <span class="material-symbols-outlined">print</span>
                 </div>
-                <div class="flex items-center gap-1.5 bg-black/25 px-2 py-0.5 rounded border border-outline-variant/10">
+                <h4 class="font-bold text-on-surface text-sm truncate" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</h4>
+                ${typeBadge}
+              </div>
+              <div class="flex items-center gap-2 flex-shrink-0">
+                ${platesHeaderChip}
+                <div class="flex items-center gap-1.5 bg-black/25 px-2 py-0.5 rounded-full border border-outline-variant/10">
                   <div class="${statusClass}"></div>
-                  <span class="text-[9px] font-data-mono uppercase tracking-wider ${stateClass}">${stateDisplay}</span>
+                  <span class="text-[9px] font-data-mono uppercase tracking-wider" style="color:${stateColor};">${escapeHtml(stateDisplay)}</span>
                 </div>
               </div>
-              
-              ${temperaturesGridHtml}
             </div>
-            
-            ${printDetailsHtml}
-            
-            ${controlButtonsHtml}
+            ${bodyHtml}
+            ${tempsHtml}
+            ${controlsHtml}
           </div>
         `;
       }).join("");
