@@ -2,7 +2,7 @@ let supabaseClient = null;
 let currentTab = "overview";
 let activeLogFilter = "all";
 let activeWaybillFilter = "all";
-let activeOrderFilter = "all";
+let activeOrderFilter = "active"; // "active" = everything not completed (daily default)
 let orderSearchQuery = "";
 let waybillSearchQuery = "";
 let jobsSearchQuery = "";
@@ -19,6 +19,7 @@ let bulkSelectedOrderIds = new Set(); // Orders list: checkbox-selected rows for
 let selectedProductId = null; // Master-detail: which product's detail panel is showing
 let catalogAttentionFilter = "all"; // "all" | "needs_attention" | "full_coverage" | "low_stock"
 let lastRenderedProductsList = []; // Snapshot of the currently rendered product list, for keyboard nav
+let lastRenderedOrdersList = []; // Snapshot of the currently rendered orders list, for keyboard nav + select-all
 let cachedVariants = [];
 let cachedProducts = [];
 let cachedFilteredWaybills = [];
@@ -520,10 +521,13 @@ async function fetchAndRenderOrders(forceFetch = true) {
 
     let filtered = cachedOrders;
 
-    // Apply status filter
+    // Apply status filter ("active" = everything not completed)
     if (activeOrderFilter !== "all") {
       filtered = filtered.filter(o => {
         const statusLower = (o.overall_order_status || "").toLowerCase();
+        if (activeOrderFilter === "active") {
+          return statusLower !== "completed";
+        }
         if (activeOrderFilter === "hold") {
           return statusLower === "hold" || statusLower === "on hold";
         }
@@ -992,19 +996,23 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
 // Keeps the header action button in sync with checkbox selection: "Complete
 // All" when nothing is checked (original behavior, untouched), "Complete
 // Selected (N)" once the employee checks specific rows for a targeted action.
-function updateBulkCompleteButton() {
-  const btn = document.getElementById("orders-btn-complete-all");
-  if (!btn) return;
+// Contextual bulk-action bar: visible only while rows are checked.
+function updateBulkBar() {
+  const bar = document.getElementById("orders-bulk-bar");
+  if (!bar) return;
   const n = bulkSelectedOrderIds.size;
-  btn.innerHTML = n > 0
-    ? `<span class="material-symbols-outlined text-sm">done_all</span> Complete Selected (${n})`
-    : `<span class="material-symbols-outlined text-sm">done_all</span> Complete All`;
+  bar.classList.toggle("hidden", n === 0);
+  bar.classList.toggle("flex", n > 0);
+  const countEl = document.getElementById("orders-bulk-count");
+  if (countEl) countEl.textContent = `${n} selected`;
 }
+const updateBulkCompleteButton = updateBulkBar; // legacy call sites
 
 function renderOrdersMasterDetail(filtered) {
   const headEl = document.getElementById("orders-list-head");
   const rowsEl = document.getElementById("orders-list");
   const panel = document.getElementById("order-detail-panel");
+  lastRenderedOrdersList = filtered;
   if (!headEl || !rowsEl || !panel) return;
 
   headEl.className = "omd-list-head omd-orders-cols";
@@ -1050,6 +1058,13 @@ function renderOrdersMasterDetail(filtered) {
     else if (platformLower.includes("lazada")) platformBadgeClass = "bg-blue-600/15 text-blue-400";
     else if (platformLower.includes("shopify")) platformBadgeClass = "bg-green-600/15 text-green-400";
 
+    // Order age: surfaces stale actionable orders at a glance
+    const ageMs = Date.now() - new Date(order.order_timestamp || order.created_at).getTime();
+    const ageH = ageMs / 3600000;
+    const ageLabel = ageH < 1 ? `${Math.max(1, Math.round(ageMs / 60000))}m` : ageH < 24 ? `${Math.round(ageH)}h` : `${Math.round(ageH / 24)}d`;
+    const isDone = statusLower === "completed";
+    const ageClass = isDone ? "" : ageH >= 48 ? " bad" : ageH >= 24 ? " warn" : "";
+
     const isSelected = order.id === selectedOrderId;
 
     return `
@@ -1057,7 +1072,7 @@ function renderOrdersMasterDetail(filtered) {
         <div class="omd-cb" data-order-id="${order.id}"></div>
         <div class="omd-oid-cell">
           <div class="omd-oid-num truncate" title="${escapeHtml(order.platform_order_id)}">${escapeHtml(order.platform_order_id)}</div>
-          <span class="omd-plat ${platformBadgeClass}">${escapeHtml(order.sales_platform || "")}</span>
+          <span class="omd-plat ${platformBadgeClass}">${escapeHtml(order.sales_platform || "")}</span><span class="omd-age${ageClass}" title="Order age">${ageLabel}</span>
         </div>
         <div class="text-xs font-medium text-on-surface truncate">${escapeHtml(order.customer_name) || "N/A"}</div>
         <div class="omd-items-cell">${itemsHtml}</div>
@@ -1245,9 +1260,14 @@ function buildOrderDetailPanel(order) {
           <span class="sep">·</span><span>${escapeHtml(order.customer_name) || "N/A"}</span>
         </div>
       </div>
-      <button class="delete-order-btn p-1.5 rounded hover:bg-error/20 border border-transparent hover:border-error/30 text-error transition-transform flex items-center justify-center cursor-pointer flex-shrink-0" data-order-id="${order.id}" data-platform-order-id="${escapeHtml(order.platform_order_id)}" title="Delete Order">
-        <span class="material-symbols-outlined text-[16px]">delete</span>
-      </button>
+      <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+        <button class="copy-order-id-btn p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center cursor-pointer" data-copy="${escapeHtml(order.platform_order_id)}" title="Copy Order ID">
+          <span class="material-symbols-outlined text-[16px]">content_copy</span>
+        </button>
+        <button class="delete-order-btn p-1.5 rounded hover:bg-error/20 border border-transparent hover:border-error/30 text-error transition-transform flex items-center justify-center cursor-pointer" data-order-id="${order.id}" data-platform-order-id="${escapeHtml(order.platform_order_id)}" title="Delete Order">
+          <span class="material-symbols-outlined text-[16px]">delete</span>
+        </button>
+      </div>
     </div>
 
     <div>
@@ -1270,13 +1290,22 @@ function buildOrderDetailPanel(order) {
 
     <div class="omd-dp-footer">
       <div class="omd-section-title" style="margin-bottom:2px;">Update Status</div>
-      <select class="badge ${statusSelectClass} overall-status-select" data-order-id="${order.id}" style="width:100%; text-align:center; text-transform:capitalize; padding:8px;">
+      <div style="display:flex; gap:8px; align-items:stretch;">
+      ${(() => {
+        const nextMap = { pending: "printing", printing: "printed", printed: "completed", hold: "pending", "on hold": "pending" };
+        const next = nextMap[statusLower];
+        return next
+          ? `<button class="status-advance-btn" data-next="${next}" title="Advance to ${next}"><span class="material-symbols-outlined text-sm">skip_next</span>${next.charAt(0).toUpperCase() + next.slice(1)}</button>`
+          : "";
+      })()}
+      <select class="badge ${statusSelectClass} overall-status-select" data-order-id="${order.id}" style="flex:1; text-align:center; text-transform:capitalize; padding:8px;">
         <option value="pending" ${statusLower === "pending" ? "selected" : ""}>Pending</option>
         <option value="printing" ${statusLower === "printing" ? "selected" : ""}>Printing</option>
         <option value="printed" ${statusLower === "printed" ? "selected" : ""}>Printed</option>
         <option value="completed" ${statusLower === "completed" ? "selected" : ""}>Completed</option>
         <option value="hold" ${statusLower === "hold" || statusLower === "on hold" ? "selected" : ""}>Hold</option>
       </select>
+      </div>
     </div>
   `;
 }
@@ -1284,6 +1313,28 @@ function buildOrderDetailPanel(order) {
 function bindOrderDetailPanelEvents() {
   const panel = document.getElementById("order-detail-panel");
   if (!panel) return;
+
+  const copyBtn = panel.querySelector(".copy-order-id-btn");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", () => {
+      navigator.clipboard.writeText(copyBtn.getAttribute("data-copy") || "").then(
+        () => showToast("Order ID copied.", "success"),
+        () => showToast("Copy failed.", "error")
+      );
+    });
+  }
+
+  // One-click advance: sets the select to the next pipeline status and fires
+  // its existing change handler (DB update + re-render + badge flash).
+  const advanceBtn = panel.querySelector(".status-advance-btn");
+  if (advanceBtn) {
+    advanceBtn.addEventListener("click", () => {
+      const sel = panel.querySelector(".overall-status-select");
+      if (!sel) return;
+      sel.value = advanceBtn.getAttribute("data-next");
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
 
   const select = panel.querySelector(".overall-status-select");
   if (select) {
@@ -1521,25 +1572,16 @@ function setupOrderFilters() {
     completeAllOrdersBtn.addEventListener("click", async () => {
       if (!supabaseClient) return;
 
-      const bulkIds = Array.from(bulkSelectedOrderIds);
-      const isBulk = bulkIds.length > 0;
-
-      const confirmed = isBulk
-        ? await showConfirmModal("Complete Selected Orders", `Are you sure you want to mark ${bulkIds.length} selected order${bulkIds.length > 1 ? "s" : ""} as completed? This cannot be undone.`, "Complete Selected")
-        : await showConfirmModal("Complete All Orders", "Are you sure you want to mark all orders as completed? This cannot be undone.", "Complete All");
+      const confirmed = await showConfirmModal("Complete All Orders", "Are you sure you want to mark all orders as completed? This cannot be undone.", "Complete All");
       if (!confirmed) return;
 
       try {
         completeAllOrdersBtn.disabled = true;
-
-        const query = supabaseClient.from("orders").update({ overall_order_status: "completed" });
-        const { error } = isBulk
-          ? await query.in("id", bulkIds)
-          : await query.neq("id", "00000000-0000-0000-0000-000000000000");
-
+        const { error } = await supabaseClient.from("orders")
+          .update({ overall_order_status: "completed" })
+          .neq("id", "00000000-0000-0000-0000-000000000000");
         if (error) throw error;
-
-        showToast(isBulk ? `${bulkIds.length} order${bulkIds.length > 1 ? "s" : ""} marked as completed.` : "All orders marked as completed.", "success");
+        showToast("All orders marked as completed.", "success");
         bulkSelectedOrderIds.clear();
         fetchSummaryStats();
         fetchAndRenderOrders();
@@ -1548,6 +1590,79 @@ function setupOrderFilters() {
       } finally {
         completeAllOrdersBtn.disabled = false;
       }
+    });
+  }
+
+  // --- Bulk-action bar handlers ---
+  const bulkCompleteBtn = document.getElementById("orders-bulk-complete");
+  if (bulkCompleteBtn) {
+    bulkCompleteBtn.addEventListener("click", async () => {
+      if (!supabaseClient) return;
+      const ids = Array.from(bulkSelectedOrderIds);
+      if (ids.length === 0) return;
+      const confirmed = await showConfirmModal("Complete Selected Orders", `Mark ${ids.length} selected order${ids.length > 1 ? "s" : ""} as completed? This cannot be undone.`, "Complete Selected");
+      if (!confirmed) return;
+      try {
+        bulkCompleteBtn.disabled = true;
+        const { error } = await supabaseClient.from("orders")
+          .update({ overall_order_status: "completed" })
+          .in("id", ids);
+        if (error) throw error;
+        showToast(`${ids.length} order${ids.length > 1 ? "s" : ""} marked as completed.`, "success");
+        bulkSelectedOrderIds.clear();
+        updateBulkBar();
+        fetchSummaryStats();
+        fetchAndRenderOrders();
+      } catch (err) {
+        showToast(`Failed to complete order(s): ${err.message}`, "error");
+      } finally {
+        bulkCompleteBtn.disabled = false;
+      }
+    });
+  }
+
+  const bulkWaybillSelect = document.getElementById("orders-bulk-waybill-status");
+  if (bulkWaybillSelect) {
+    bulkWaybillSelect.addEventListener("change", async (e) => {
+      const newStatus = e.target.value;
+      const ids = Array.from(bulkSelectedOrderIds);
+      if (!newStatus || ids.length === 0 || !supabaseClient) { bulkWaybillSelect.value = ""; return; }
+      const confirmed = await showConfirmModal("Set Waybill Status", `Set waybill status of ${ids.length} selected order${ids.length > 1 ? "s" : ""} to '${newStatus}'?`, "Update");
+      if (!confirmed) { bulkWaybillSelect.value = ""; return; }
+      try {
+        bulkWaybillSelect.disabled = true;
+        const { error } = await supabaseClient.from("orders")
+          .update({ waybill_processing_status: newStatus })
+          .in("id", ids);
+        if (error) throw error;
+        showToast(`Waybill status set to '${newStatus}' for ${ids.length} order${ids.length > 1 ? "s" : ""}.`, "success");
+        bulkSelectedOrderIds.clear();
+        updateBulkBar();
+        fetchAndRenderOrders();
+      } catch (err) {
+        showToast(`Failed to update waybill status: ${err.message}`, "error");
+      } finally {
+        bulkWaybillSelect.disabled = false;
+        bulkWaybillSelect.value = "";
+      }
+    });
+  }
+
+  const bulkSelectAllBtn = document.getElementById("orders-bulk-select-all");
+  if (bulkSelectAllBtn) {
+    bulkSelectAllBtn.addEventListener("click", () => {
+      lastRenderedOrdersList.forEach(o => bulkSelectedOrderIds.add(o.id));
+      document.querySelectorAll("#orders-list .omd-cb").forEach(cb => cb.classList.add("checked"));
+      updateBulkBar();
+    });
+  }
+
+  const bulkClearBtn = document.getElementById("orders-bulk-clear");
+  if (bulkClearBtn) {
+    bulkClearBtn.addEventListener("click", () => {
+      bulkSelectedOrderIds.clear();
+      document.querySelectorAll("#orders-list .omd-cb").forEach(cb => cb.classList.remove("checked"));
+      updateBulkBar();
     });
   }
 }
@@ -2005,20 +2120,27 @@ function selectProductForDetail(productId, productsList) {
 // typing in a field or while any modal is open.
 function setupProductsKeyboardNav() {
   document.addEventListener("keydown", (e) => {
-    if (currentTab !== "products") return;
+    if (currentTab !== "products" && currentTab !== "orders") return;
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     const tag = (e.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "select" || tag === "textarea") return;
     if (document.querySelector(".modal-overlay.active")) return;
-    if (lastRenderedProductsList.length === 0) return;
+
+    const list = currentTab === "products" ? lastRenderedProductsList : lastRenderedOrdersList;
+    const selectedId = currentTab === "products" ? selectedProductId : selectedOrderId;
+    if (list.length === 0) return;
 
     e.preventDefault();
-    const idx = lastRenderedProductsList.findIndex(p => p.id === selectedProductId);
+    const idx = list.findIndex(x => x.id === selectedId);
     const nextIdx = e.key === "ArrowDown"
-      ? Math.min(idx + 1, lastRenderedProductsList.length - 1)
+      ? Math.min(idx + 1, list.length - 1)
       : Math.max(idx - 1, 0);
     if (nextIdx === idx) return;
-    selectProductForDetail(lastRenderedProductsList[nextIdx].id, lastRenderedProductsList);
+    if (currentTab === "products") selectProductForDetail(list[nextIdx].id, list);
+    else {
+      selectOrderForDetail(list[nextIdx].id, list);
+      document.querySelector(`#orders-list .omd-row[data-order-id="${list[nextIdx].id}"]`)?.scrollIntoView({ block: "nearest" });
+    }
   });
 }
 
@@ -4854,6 +4976,25 @@ window.addEventListener("DOMContentLoaded", () => {
   if (overviewRefreshOrdersBtn) overviewRefreshOrdersBtn.addEventListener("click", fetchAndRenderOrders);
 
   // Quick Operations: jump to the compiled Batch PDFs panel on the Orders tab
+  // Waybill Tools drawer (Orders tab): collapsed by default; fetch the
+  // compiled master PDFs list on first expand.
+  let waybillToolsLoaded = false;
+  const waybillToolsToggle = document.getElementById("waybill-tools-toggle");
+  if (waybillToolsToggle) {
+    waybillToolsToggle.addEventListener("click", () => {
+      const body = document.querySelector(".waybill-tools-body");
+      const chevron = document.getElementById("waybill-tools-chevron");
+      if (!body) return;
+      const opening = body.classList.contains("hidden");
+      body.classList.toggle("hidden", !opening);
+      if (chevron) chevron.style.transform = opening ? "rotate(180deg)" : "";
+      if (opening && !waybillToolsLoaded) {
+        waybillToolsLoaded = true;
+        fetchAndRenderMasterPDFs();
+      }
+    });
+  }
+
   const qoBatchPdfsBtn = document.getElementById("overview-qo-batch-pdfs");
   if (qoBatchPdfsBtn) qoBatchPdfsBtn.addEventListener("click", () => {
     navigateToTab("orders");

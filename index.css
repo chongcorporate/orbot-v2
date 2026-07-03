@@ -2784,3 +2784,31 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
 }
 .pt-btn-danger:hover:not(:disabled) { background: rgba(242, 101, 122, 0.2); color: var(--error-color); }
 .pt-card-offline { opacity: 0.72; }
+
+/* Orders redesign (Aurora 3.0): age indicator + status-advance button */
+.omd-age {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  color: var(--text-muted);
+  margin-left: 5px;
+  white-space: nowrap;
+}
+.omd-age.warn { color: var(--warning-color, #f5b942); font-weight: 700; }
+.omd-age.bad { color: var(--error-color); font-weight: 700; }
+.status-advance-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+  background: rgba(139, 124, 246, 0.12);
+  border: 1px solid rgba(139, 124, 246, 0.3);
+  color: var(--primary-color);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+.status-advance-btn:hover { background: rgba(139, 124, 246, 0.22); }
