@@ -714,32 +714,33 @@
             </h3>
 
             <div class="flex flex-col gap-1.5">
-              <div class="qo-group-label">Agents</div>
-              <button class="qo-action" id="overview-ctrl-trigger-scout" style="--qo-color:#22d3ee; --qo-soft:#22d3ee1f; --qo-line:#22d3ee47;">
-                <span class="qo-icon material-symbols-outlined">mail</span>
-                <span class="qo-body"><span class="qo-label">Scan Gmail</span><span class="qo-desc">Poll for new orders now</span></span>
-                <span class="material-symbols-outlined qo-go">play_arrow</span>
-              </button>
-              <button class="qo-action" id="overview-ctrl-trigger-foreman" style="--qo-color:#8b7cf6; --qo-soft:#8b7cf61f; --qo-line:#8b7cf647;">
-                <span class="qo-icon material-symbols-outlined">print</span>
-                <span class="qo-body"><span class="qo-label">Trigger Dispatch</span><span class="qo-desc">Send pending items to printers</span></span>
-                <span class="material-symbols-outlined qo-go">play_arrow</span>
-              </button>
-              <button class="qo-action" id="overview-ctrl-trigger-compile" style="--qo-color:#ffaa6b; --qo-soft:#ffaa6b1f; --qo-line:#ffaa6b47;">
-                <span class="qo-icon material-symbols-outlined">picture_as_pdf</span>
-                <span class="qo-body"><span class="qo-label">Compile Batch</span><span class="qo-desc">Build master waybill PDF</span></span>
-                <span class="material-symbols-outlined qo-go">play_arrow</span>
-              </button>
-              <button class="qo-action" id="overview-qo-batch-pdfs" style="--qo-color:#3ddc97; --qo-soft:#3ddc971f; --qo-line:#3ddc9747;">
-                <span class="qo-icon material-symbols-outlined">folder_open</span>
-                <span class="qo-body"><span class="qo-label">Batch PDFs</span><span class="qo-desc">Open compiled waybill batches</span></span>
-                <span class="material-symbols-outlined qo-go">chevron_right</span>
-              </button>
-              <button class="qo-action" id="overview-ctrl-trigger-sync-simplyprint" style="--qo-color:#7ea6e8; --qo-soft:#7ea6e81f; --qo-line:#7ea6e847;">
-                <span class="qo-icon material-symbols-outlined">sync</span>
-                <span class="qo-body"><span class="qo-label">Sync SimplyPrint</span><span class="qo-desc">Refresh printer telemetry</span></span>
-                <span class="material-symbols-outlined qo-go">play_arrow</span>
-              </button>
+              <div class="qo-group-label">Actions</div>
+              <div class="qo-grid">
+                <button class="qo-action" id="overview-ctrl-trigger-scout" style="--qo-color:#22d3ee; --qo-soft:#22d3ee1f; --qo-line:#22d3ee47;" title="Poll Gmail for new orders now">
+                  <span class="qo-icon material-symbols-outlined">mail</span>
+                  <span class="qo-body"><span class="qo-label">Scan Gmail</span></span>
+                </button>
+                <button class="qo-action" id="overview-ctrl-trigger-foreman" style="--qo-color:#8b7cf6; --qo-soft:#8b7cf61f; --qo-line:#8b7cf647;" title="Send pending items to printers">
+                  <span class="qo-icon material-symbols-outlined">print</span>
+                  <span class="qo-body"><span class="qo-label">Dispatch</span></span>
+                </button>
+                <button class="qo-action" id="overview-ctrl-trigger-compile" style="--qo-color:#ffaa6b; --qo-soft:#ffaa6b1f; --qo-line:#ffaa6b47;" title="Build master waybill PDF">
+                  <span class="qo-icon material-symbols-outlined">picture_as_pdf</span>
+                  <span class="qo-body"><span class="qo-label">Compile Batch</span></span>
+                </button>
+                <button class="qo-action" id="overview-qo-batch-pdfs" style="--qo-color:#3ddc97; --qo-soft:#3ddc971f; --qo-line:#3ddc9747;" title="Open compiled waybill batches">
+                  <span class="qo-icon material-symbols-outlined">folder_open</span>
+                  <span class="qo-body"><span class="qo-label">Batch PDFs</span></span>
+                </button>
+                <button class="qo-action" id="overview-ctrl-trigger-sync-simplyprint" style="--qo-color:#7ea6e8; --qo-soft:#7ea6e81f; --qo-line:#7ea6e847;" title="Refresh printer telemetry">
+                  <span class="qo-icon material-symbols-outlined">sync</span>
+                  <span class="qo-body"><span class="qo-label">Sync SP</span></span>
+                </button>
+                <button class="qo-action" id="overview-waybill-browse-btn" style="--qo-color:#5fb4ff; --qo-soft:#5fb4ff1f; --qo-line:#5fb4ff47;" title="Upload raw waybill PDFs">
+                  <span class="qo-icon material-symbols-outlined">cloud_upload</span>
+                  <span class="qo-body"><span class="qo-label">Upload Waybills</span></span>
+                </button>
+              </div>
             </div>
 
             <div class="flex flex-col gap-1.5">
@@ -757,18 +758,11 @@
               </div>
             </div>
 
-            <!-- Upload drag-drop area in Overview Page -->
-            <div class="glass-panel border-dashed border-2 border-outline-variant/40 hover:border-surface-tint/50 rounded-xl p-3 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-surface-container-high/40 transition-all duration-300 group relative glow-hover-cyan flex-grow min-h-[110px]" id="overview-waybill-upload-zone">
-              <div class="absolute inset-0 bg-gradient-to-b from-surface-tint/0 to-surface-tint/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
-              <div class="relative z-10 flex flex-col items-center justify-center">
-                <div class="w-9 h-9 rounded-full bg-surface-container-highest border border-outline-variant/30 flex items-center justify-center mb-1.5 group-hover:scale-110 group-hover:border-surface-tint/40 shadow-[0_0_10px_rgba(0,0,0,0.2)] transition-all duration-300">
-                  <span class="material-symbols-outlined text-lg text-surface-tint group-hover:animate-bounce select-none">cloud_upload</span>
-                </div>
-                <h4 class="text-xs font-bold text-on-surface group-hover:text-surface-tint transition-colors duration-300">Upload Waybills</h4>
-                <p class="text-[9px] text-on-surface-variant mt-0.5 leading-normal max-w-[200px]">Drag PDFs here or click to browse</p>
-                <input type="file" id="overview-waybill-file-input" accept="application/pdf" style="display: none;" multiple>
-                <button class="mt-1.5 px-3 py-1 btn-primary rounded-lg text-[10px] font-label-caps tracking-wider transition-all duration-300 shadow-md" id="overview-waybill-browse-btn">Browse Files</button>
-              </div>
+            <!-- Hidden upload-zone stub: bindUploadEvents needs the zone + file
+                 input + browse button trio to exist; the visible "Upload
+                 Waybills" action above IS the browse button. -->
+            <div class="hidden" id="overview-waybill-upload-zone">
+              <input type="file" id="overview-waybill-file-input" accept="application/pdf" style="display: none;" multiple>
             </div>
 
             <!-- Upload Status Progress in Overview Page -->

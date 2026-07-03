@@ -2868,3 +2868,14 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
   border: none !important;
   padding: 0 !important;
 }
+
+/* Quick Operations compact 2-column grid */
+.qo-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.qo-grid .qo-action { padding: 7px 9px; gap: 8px; }
+.qo-grid .qo-icon { width: 24px; height: 24px; font-size: 14px; border-radius: 7px; }
+.qo-grid .qo-label { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qo-grid .qo-go { display: none; }
