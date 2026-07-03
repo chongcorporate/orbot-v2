@@ -4976,6 +4976,20 @@ window.addEventListener("DOMContentLoaded", () => {
   if (overviewRefreshOrdersBtn) overviewRefreshOrdersBtn.addEventListener("click", fetchAndRenderOrders);
 
   // Quick Operations: jump to the compiled Batch PDFs panel on the Orders tab
+  // Toolbar "Upload Waybills": opens the file picker of the drawer's upload
+  // zone (its change handler is already bound), and expands the drawer first
+  // so the upload progress + daemon console are visible.
+  const uploadWaybillsBtn = document.getElementById("orders-upload-waybills-btn");
+  if (uploadWaybillsBtn) {
+    uploadWaybillsBtn.addEventListener("click", () => {
+      const body = document.querySelector(".waybill-tools-body");
+      if (body && body.classList.contains("hidden")) {
+        document.getElementById("waybill-tools-toggle")?.click();
+      }
+      document.getElementById("waybill-file-input")?.click();
+    });
+  }
+
   // Waybill Tools drawer (Orders tab): collapsed by default; fetch the
   // compiled master PDFs list on first expand.
   let waybillToolsLoaded = false;
