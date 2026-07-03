@@ -269,9 +269,18 @@ async function initShopSwitcher() {
   if (!valid.includes(currentShop)) currentShop = "all";
   sel.value = currentShop;
 
+  // Keep the custom pill label in sync with the (invisible) native select.
+  const syncShopLabel = () => {
+    const label = document.getElementById("shop-switcher-label");
+    if (label) label.textContent = sel.options[sel.selectedIndex]?.text || "All Shops";
+    sel.closest(".shop-pill")?.classList.toggle("scoped", sel.value !== "all");
+  };
+  syncShopLabel();
+
   sel.addEventListener("change", () => {
     currentShop = sel.value;
     localStorage.setItem("orbot_current_shop", currentShop);
+    syncShopLabel();
     onShopChange();
   });
 }

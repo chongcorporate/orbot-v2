@@ -475,15 +475,18 @@
         </div>
       </div>
 
-      <!-- Shop Scope Switcher -->
-      <div class="hidden md:flex items-center gap-2 pl-3.5 pr-3 py-1.5 rounded-full bg-black/25 border border-outline-variant/10 hover:border-primary/30 transition-colors" title="Active shop scope">
-        <span class="material-symbols-outlined text-surface-tint text-[16px] flex-shrink-0">storefront</span>
-        <div class="relative flex items-center">
-          <select id="shop-switcher" class="appearance-none bg-transparent border-0 focus:ring-0 focus:outline-none text-on-surface font-data-mono text-xs font-bold cursor-pointer pr-4">
-            <option value="all">All Shops</option>
-          </select>
-          <span class="material-symbols-outlined text-on-surface-variant text-[15px] absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none">expand_more</span>
+      <!-- Shop Scope Switcher: custom two-line pill with the native select
+           layered invisibly on top (keeps the OS dropdown + all JS wiring). -->
+      <div class="shop-pill hidden md:flex" title="Active shop scope">
+        <span class="material-symbols-outlined sp-ic">storefront</span>
+        <div class="sp-text">
+          <span class="sp-cap">Shop</span>
+          <span class="sp-val" id="shop-switcher-label">All Shops</span>
         </div>
+        <span class="material-symbols-outlined sp-chev">expand_more</span>
+        <select id="shop-switcher" class="sp-native">
+          <option value="all">All Shops</option>
+        </select>
       </div>
 
       <!-- System Clock & Date -->
