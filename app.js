@@ -4882,6 +4882,13 @@ window.addEventListener("DOMContentLoaded", () => {
   const overviewRefreshOrdersBtn = document.getElementById("overview-orders-btn-refresh");
   if (overviewRefreshOrdersBtn) overviewRefreshOrdersBtn.addEventListener("click", fetchAndRenderOrders);
 
+  // Quick Operations: jump to the compiled Batch PDFs panel on the Orders tab
+  const qoBatchPdfsBtn = document.getElementById("overview-qo-batch-pdfs");
+  if (qoBatchPdfsBtn) qoBatchPdfsBtn.addEventListener("click", () => {
+    navigateToTab("orders");
+    document.getElementById("waybill-tab-pdfs")?.click();
+  });
+
   // Stat card navigation
   function navigateToTab(tabId) {
     const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
@@ -5214,7 +5221,12 @@ async function fetchAndRenderPrintJobs() {
   }
 }
 
-// Promise-based Action Confirmation Modal
+// Promise-based Action Confirmation Modal.
+// Only one confirmation can be live at a time: if a second request arrives while
+// one is showing (e.g. a backdrop click firing the dirty-close guard mid-delete),
+// the first resolves as cancelled and its listeners are detached — otherwise one
+// button click would resolve both pending confirmations at once.
+let activeConfirmCancel = null;
 function showConfirmModal(title, message, confirmBtnText = "Delete") {
   return new Promise((resolve) => {
     const modal = document.getElementById("confirm-modal");
@@ -5228,6 +5240,8 @@ function showConfirmModal(title, message, confirmBtnText = "Delete") {
       return;
     }
 
+    if (activeConfirmCancel) activeConfirmCancel();
+
     titleEl.textContent = title;
     msgEl.textContent = message;
     okBtn.textContent = confirmBtnText;
@@ -5236,6 +5250,7 @@ function showConfirmModal(title, message, confirmBtnText = "Delete") {
       modal.classList.remove("active");
       cancelBtn.removeEventListener("click", onCancel);
       okBtn.removeEventListener("click", onConfirm);
+      activeConfirmCancel = null;
     };
 
     const onCancel = () => {
@@ -5248,6 +5263,7 @@ function showConfirmModal(title, message, confirmBtnText = "Delete") {
       resolve(true);
     };
 
+    activeConfirmCancel = onCancel;
     cancelBtn.addEventListener("click", onCancel);
     okBtn.addEventListener("click", onConfirm);
 
