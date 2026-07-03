@@ -2284,6 +2284,11 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
   color: var(--text-muted);
   white-space: nowrap;
   opacity: 0.8;
+  /* Reserve constant width so the ticking text ("updated 9s ago" ->
+     "updated 10s ago" -> "updated 1m ago") never reflows neighbors. */
+  display: inline-block;
+  min-width: 16ch;
+  text-align: left;
 }
 .fresh-stamp:empty { display: none; }
 
@@ -2719,12 +2724,13 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
 .pt-ring-live svg { filter: drop-shadow(0 0 5px rgba(139, 124, 246, 0.45)); }
 .pt-job { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .pt-job-name {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Show the full print file name — wrap instead of truncating. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 .pt-job-eta {
   display: flex;

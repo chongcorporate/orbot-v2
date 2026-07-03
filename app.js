@@ -4576,7 +4576,7 @@ async function fetchAndRenderPrintersAndQueue() {
                 <div class="pt-icon" style="--pt-color:${stateColor}; --pt-soft:${stateColor}1f; --pt-line:${stateColor}47;">
                   <span class="material-symbols-outlined">print</span>
                 </div>
-                <h4 class="font-bold text-on-surface text-sm truncate" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</h4>
+                <h4 class="font-semibold text-on-surface text-[11.5px] truncate" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</h4>
                 ${typeBadge}
               </div>
               <div class="flex items-center gap-2 flex-shrink-0">
