@@ -2623,8 +2623,8 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
 }
 .qo-action:hover {
-  background: color-mix(in srgb, var(--qo-color) 10%, transparent);
-  border-color: color-mix(in srgb, var(--qo-color) 35%, transparent);
+  background: var(--qo-soft);
+  border-color: var(--qo-line);
 }
 .qo-action:active { transform: scale(0.985); }
 .qo-action:disabled { opacity: 0.5; cursor: default; }
@@ -2637,8 +2637,8 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--qo-color) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--qo-color) 25%, transparent);
+  background: var(--qo-soft);
+  border: 1px solid var(--qo-line);
   flex-shrink: 0;
 }
 .qo-action .qo-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -2670,8 +2670,8 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
 }
 .qo-ext .material-symbols-outlined { font-size: 15px; color: var(--qo-color); }
 .qo-ext:hover {
-  background: color-mix(in srgb, var(--qo-color) 10%, transparent);
-  border-color: color-mix(in srgb, var(--qo-color) 35%, transparent);
+  background: var(--qo-soft);
+  border-color: var(--qo-line);
 }
 
 /* Aurora 3.0 printer cards */
@@ -2683,8 +2683,8 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: color-mix(in srgb, var(--pt-color) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--pt-color) 28%, transparent);
+  background: var(--pt-soft);
+  border: 1px solid var(--pt-line);
 }
 .pt-icon .material-symbols-outlined { font-size: 16px; color: var(--pt-color); }
 .pt-type { flex-shrink: 0; }

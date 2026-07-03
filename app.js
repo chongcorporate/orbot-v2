@@ -4573,7 +4573,7 @@ async function fetchAndRenderPrintersAndQueue() {
           <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 ${cardAccentClass} ${p.online ? "glow-hover-cyan" : "glow-hover-red"}${!p.online ? " pt-card-offline" : ""}">
             <div class="flex justify-between items-center gap-2">
               <div class="flex items-center gap-2.5 min-w-0">
-                <div class="pt-icon" style="--pt-color:${stateColor};">
+                <div class="pt-icon" style="--pt-color:${stateColor}; --pt-soft:${stateColor}1f; --pt-line:${stateColor}47;">
                   <span class="material-symbols-outlined">print</span>
                 </div>
                 <h4 class="font-bold text-on-surface text-sm truncate" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</h4>
