@@ -464,7 +464,7 @@
       <div class="relative w-full neon-focus rounded-full transition-all duration-300">
         <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
         <!-- Target search overrides inline styles using !important from css override rules -->
-        <input id="global-search-input" class="w-full bg-surface-container-highest/50 border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/50 rounded-full pl-11 pr-4 py-2 focus:ring-0 focus:border-transparent transition-all font-body-md" placeholder="Search catalog, jobs, agents..." type="text">
+        <input id="global-search-input" class="w-full bg-surface-container-highest/50 border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/50 rounded-full pl-11 pr-16 py-2 focus:ring-0 focus:border-transparent transition-all font-body-md cursor-pointer" placeholder="Search anything…" type="text" readonly><kbd class="cp-kbd absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">⌘K</kbd>
       </div>
     </div>
     <div class="flex items-center gap-4">
@@ -1832,6 +1832,23 @@
   </div>
 
   <!-- Settings Config Modal -->
+  <!-- Command Palette (Aurora 3.0) — ⌘K / Ctrl+K -->
+  <div class="modal-overlay" id="command-palette">
+    <div class="cp-panel">
+      <div class="cp-input-row">
+        <span class="material-symbols-outlined">search</span>
+        <input id="cp-input" type="text" autocomplete="off" spellcheck="false" placeholder="Search orders, products, SKUs — or run an action…">
+        <kbd class="cp-kbd">esc</kbd>
+      </div>
+      <div class="cp-results" id="cp-results"></div>
+      <div class="cp-footer">
+        <span><kbd class="cp-kbd">↑↓</kbd> navigate</span>
+        <span><kbd class="cp-kbd">↵</kbd> select</span>
+        <span><kbd class="cp-kbd">esc</kbd> close</span>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="settings-modal">
     <div class="modal glass-panel w-full max-w-lg rounded-2xl p-6 flex flex-col gap-4 relative">
       <div class="flex justify-between items-center border-b border-outline-variant/10 pb-3">

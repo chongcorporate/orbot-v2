@@ -2482,30 +2482,254 @@ function setupTabs() {
   });
 }
 
-// Global search input handling
-function setupGlobalSearch() {
-  const globalSearch = document.getElementById("global-search-input");
-  if (!globalSearch) return;
+// ==========================================================================
+// Command Palette (Aurora 3.0) — true global search + actions. Replaces the
+// old header-search proxy that only filtered the active tab.
+// ==========================================================================
 
-  globalSearch.addEventListener("input", debounce((e) => {
-    const query = e.target.value;
-    
-    if (currentTab === "orders") {
-      const ordersSearch = document.getElementById("orders-search-input");
-      if (ordersSearch) ordersSearch.value = query;
-      orderSearchQuery = query.trim();
-      fetchAndRenderOrders(false); // Filter from cache
-    } else if (currentTab === "products") {
-      const catalogSearch = document.getElementById("catalog-search");
-      if (catalogSearch) catalogSearch.value = query;
-      fetchAndRenderCatalog(); // Filter from cache
-    } else if (currentTab === "operations") {
-      const jobsSearch = document.getElementById("jobs-search-input");
-      if (jobsSearch) jobsSearch.value = query;
-      jobsSearchQuery = query.trim();
-      fetchAndRenderJobs();
+const CP_RECENTS_KEY = "orbot_cp_recents";
+let cpResults = [];
+let cpActiveIdx = 0;
+let cpQueryToken = 0;
+
+function cpActions() {
+  return [
+    { icon: "mail", label: "Trigger Gmail Scan", type: "Action", run: () => document.getElementById("ctrl-trigger-scout")?.click() },
+    { icon: "print", label: "Trigger Print Dispatch", type: "Action", run: () => document.getElementById("ctrl-trigger-foreman")?.click() },
+    { icon: "local_shipping", label: "Compile Waybill Batch", type: "Action", run: () => document.getElementById("ctrl-trigger-compile")?.click() },
+    { icon: "sync", label: "Sync SimplyPrint", type: "Action", run: () => document.getElementById("ctrl-trigger-sync-simplyprint")?.click() },
+    { icon: "add_box", label: "Add Product", type: "Action", run: () => { navigateToTab("products"); document.getElementById("add-catalog-item-btn")?.click(); } },
+    { icon: "storefront", label: "Add Listing", type: "Action", run: () => { navigateToTab("products"); document.getElementById("add-listing-header-btn")?.click(); } },
+    { icon: "settings", label: "Open Settings", type: "Action", run: () => document.getElementById("settings-open-btn")?.click() },
+    { icon: "dashboard", label: "Go to Overview", type: "Nav", run: () => navigateToTab("overview") },
+    { icon: "receipt_long", label: "Go to Orders", type: "Nav", run: () => navigateToTab("orders") },
+    { icon: "hub", label: "Go to Operations", type: "Nav", run: () => navigateToTab("operations") },
+    { icon: "inventory_2", label: "Go to Products", type: "Nav", run: () => navigateToTab("products") },
+    { icon: "rocket_launch", label: "Go to Launch", type: "Nav", run: () => navigateToTab("launch") },
+    { icon: "description", label: "Go to Logs", type: "Nav", run: () => navigateToTab("logs") },
+  ];
+}
+
+function cpScore(query, text) {
+  const q = query.toLowerCase(), t = String(text || "").toLowerCase();
+  if (!t) return -1;
+  if (t === q) return 100;
+  if (t.startsWith(q)) return 80;
+  const wordStart = t.split(/[\s\-_/]+/).some(w => w.startsWith(q));
+  if (wordStart) return 60;
+  if (t.includes(q)) return 40;
+  return -1;
+}
+
+function cpLoadRecents() {
+  try { return JSON.parse(localStorage.getItem(CP_RECENTS_KEY)) || []; } catch (_) { return []; }
+}
+
+function cpPushRecent(item) {
+  const recents = cpLoadRecents().filter(r => r.label !== item.label);
+  recents.unshift({ icon: item.icon, label: item.label, type: item.type, orderId: item.orderId || null, productId: item.productId || null });
+  localStorage.setItem(CP_RECENTS_KEY, JSON.stringify(recents.slice(0, 6)));
+}
+
+function cpItemFromRecent(r) {
+  return {
+    ...r,
+    run: () => {
+      if (r.orderId) { selectedOrderId = r.orderId; navigateToTab("orders"); }
+      else if (r.productId) { selectedProductId = r.productId; navigateToTab("products"); }
+      else {
+        const act = cpActions().find(a => a.label === r.label);
+        if (act) act.run();
+      }
+    },
+  };
+}
+
+function cpCollect(query) {
+  const q = query.trim();
+  if (!q) {
+    const recents = cpLoadRecents().map(cpItemFromRecent);
+    return [
+      ...(recents.length ? [{ section: "Recent" }, ...recents] : []),
+      { section: "Actions" },
+      ...cpActions(),
+    ];
+  }
+
+  const scored = [];
+  cpActions().forEach(a => {
+    const s = cpScore(q, a.label);
+    if (s > 0) scored.push({ ...a, _s: s + 5 });
+  });
+  cachedOrders.forEach(o => {
+    const s = Math.max(cpScore(q, o.platform_order_id), cpScore(q, o.customer_name));
+    if (s > 0) scored.push({
+      icon: "receipt_long", type: "Order", _s: s,
+      label: `${o.platform_order_id} — ${o.customer_name || "—"}`,
+      sub: o.overall_order_status || "", orderId: o.id,
+      run: () => { selectedOrderId = o.id; navigateToTab("orders"); },
+    });
+  });
+  const seenProducts = new Set();
+  cachedVariants.forEach(v => {
+    const prod = v.products;
+    if (!prod) return;
+    const s = Math.max(cpScore(q, v.variant_sku), cpScore(q, prod.product_base_name), cpScore(q, prod.master_sku));
+    if (s > 0 && !seenProducts.has(prod.id)) {
+      seenProducts.add(prod.id);
+      scored.push({
+        icon: "inventory_2", type: "Product", _s: s,
+        label: `${prod.master_sku || ""} — ${prod.product_base_name}`,
+        sub: v.variant_sku, productId: prod.id,
+        run: () => { selectedProductId = prod.id; navigateToTab("products"); },
+      });
     }
-  }, 250));
+  });
+  cachedListings.forEach(l => {
+    const s = cpScore(q, l.platform_listing_name);
+    if (s > 0 && l.products && !seenProducts.has(l.products.id)) {
+      seenProducts.add(l.products.id);
+      scored.push({
+        icon: "storefront", type: "Listing", _s: s - 5,
+        label: l.platform_listing_name, productId: l.products.id,
+        run: () => { selectedProductId = l.products.id; navigateToTab("products"); },
+      });
+    }
+  });
+
+  scored.sort((a, b) => b._s - a._s);
+  return scored.slice(0, 14);
+}
+
+// Cold-cache fallback: when the local caches have nothing, hit the DB with a
+// lightweight ilike search and merge the results in (token-guarded).
+async function cpRemoteSearch(query, token) {
+  if (!supabaseClient || query.length < 2) return;
+  try {
+    const [oRes, vRes] = await Promise.all([
+      supabaseClient.from("orders").select("id, platform_order_id, customer_name, overall_order_status")
+        .or(`platform_order_id.ilike.%${query}%,customer_name.ilike.%${query}%`).limit(6),
+      supabaseClient.from("variants").select("id, variant_sku, products(id, master_sku, product_base_name)")
+        .ilike("variant_sku", `%${query}%`).limit(6),
+    ]);
+    if (token !== cpQueryToken) return; // stale response
+    const extra = [];
+    (oRes.data || []).forEach(o => {
+      if (!cpResults.some(r => r.orderId === o.id)) extra.push({
+        icon: "receipt_long", type: "Order",
+        label: `${o.platform_order_id} — ${o.customer_name || "—"}`,
+        sub: o.overall_order_status || "", orderId: o.id,
+        run: () => { selectedOrderId = o.id; navigateToTab("orders"); },
+      });
+    });
+    (vRes.data || []).forEach(v => {
+      const prod = v.products;
+      if (prod && !cpResults.some(r => r.productId === prod.id)) extra.push({
+        icon: "inventory_2", type: "Product",
+        label: `${prod.master_sku || ""} — ${prod.product_base_name}`,
+        sub: v.variant_sku, productId: prod.id,
+        run: () => { selectedProductId = prod.id; navigateToTab("products"); },
+      });
+    });
+    if (extra.length) {
+      cpResults = [...cpResults.filter(r => !r.section), ...extra].slice(0, 14);
+      cpRender();
+    }
+  } catch (_) { /* remote search is best-effort */ }
+}
+
+function cpRender() {
+  const box = document.getElementById("cp-results");
+  if (!box) return;
+  const rows = cpResults;
+  if (rows.length === 0) {
+    box.innerHTML = `<div class="cp-empty">No matches. Try an order ID, SKU, product name, or action.</div>`;
+    return;
+  }
+  // Clamp active index onto a non-section row
+  const selectable = rows.map((r, i) => (r.section ? null : i)).filter(i => i !== null);
+  if (!selectable.includes(cpActiveIdx)) cpActiveIdx = selectable[0] ?? 0;
+  box.innerHTML = rows.map((r, i) => r.section
+    ? `<div class="cp-section-label">${r.section}</div>`
+    : `<div class="cp-result${i === cpActiveIdx ? " active" : ""}" data-cp-idx="${i}">
+        <span class="material-symbols-outlined">${r.icon}</span>
+        <span class="cp-label">${escapeHtml(r.label)}</span>
+        ${r.sub ? `<span class="cp-sub">${escapeHtml(r.sub)}</span>` : ""}
+        <span class="cp-type">${r.type}</span>
+      </div>`).join("");
+  box.querySelectorAll(".cp-result").forEach(el => {
+    el.addEventListener("click", () => cpExecute(Number(el.getAttribute("data-cp-idx"))));
+    el.addEventListener("mousemove", () => {
+      const i = Number(el.getAttribute("data-cp-idx"));
+      if (i !== cpActiveIdx) { cpActiveIdx = i; cpRender(); }
+    });
+  });
+  box.querySelector(".cp-result.active")?.scrollIntoView({ block: "nearest" });
+}
+
+function cpExecute(idx) {
+  const item = cpResults[idx];
+  if (!item || item.section) return;
+  cpPushRecent(item);
+  cpClose();
+  item.run();
+}
+
+function cpOpen() {
+  const overlay = document.getElementById("command-palette");
+  const input = document.getElementById("cp-input");
+  if (!overlay || !input) return;
+  overlay.classList.add("active");
+  input.value = "";
+  cpActiveIdx = 0;
+  cpResults = cpCollect("");
+  cpRender();
+  setTimeout(() => input.focus(), 30);
+}
+
+function cpClose() {
+  document.getElementById("command-palette")?.classList.remove("active");
+}
+
+function setupCommandPalette() {
+  const overlay = document.getElementById("command-palette");
+  const input = document.getElementById("cp-input");
+  const trigger = document.getElementById("global-search-input");
+  if (!overlay || !input) return;
+
+  if (trigger) trigger.addEventListener("click", cpOpen);
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      overlay.classList.contains("active") ? cpClose() : cpOpen();
+    }
+  });
+
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) cpClose(); });
+
+  const remoteDebounced = debounce((q, token) => cpRemoteSearch(q, token), 220);
+
+  input.addEventListener("keydown", (e) => {
+    const selectable = cpResults.map((r, i) => (r.section ? null : i)).filter(i => i !== null);
+    const pos = selectable.indexOf(cpActiveIdx);
+    if (e.key === "Escape") { e.preventDefault(); cpClose(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); cpActiveIdx = selectable[Math.min(pos + 1, selectable.length - 1)] ?? cpActiveIdx; cpRender(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); cpActiveIdx = selectable[Math.max(pos - 1, 0)] ?? cpActiveIdx; cpRender(); }
+    else if (e.key === "Enter") { e.preventDefault(); cpExecute(cpActiveIdx); }
+    e.stopPropagation();
+  });
+
+  input.addEventListener("input", () => {
+    const q = input.value;
+    cpActiveIdx = 0;
+    cpResults = cpCollect(q);
+    cpRender();
+    cpQueryToken++;
+    if (q.trim().length >= 2 && (cachedOrders.length === 0 || cachedVariants.length === 0)) {
+      remoteDebounced(q.trim(), cpQueryToken);
+    }
+  });
 }
 
 // Settings Modal Handling
@@ -4743,7 +4967,7 @@ function setupPrinterControls() {
   setupWaybillFilters();
   setupOrderFilters();
   setupPrinterControls();
-  setupGlobalSearch();
+  setupCommandPalette();
   setupCatalogDetailModal();
   setupCatalogEditModal();
   setupSystemErrorReset();
