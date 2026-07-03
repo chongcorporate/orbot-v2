@@ -3856,35 +3856,23 @@ function navigateToTab(tab) {
   document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.click();
 }
 
-let attentionFeedItems = []; // click handlers resolved by index
-
 async function fetchAndRenderMissionControl() {
   if (!supabaseClient) return;
   const barsEl = document.getElementById("chart-orders-daily");
   const donutEl = document.getElementById("chart-platform-donut");
   const lineEl = document.getElementById("chart-throughput");
-  const attentionEl = document.getElementById("overview-attention-list");
-  if (!barsEl && !attentionEl) return;
+  if (!barsEl && !donutEl && !lineEl) return;
 
   try {
     const sinceIso = new Date(Date.now() - 30 * 86400000).toISOString();
-    const [ordersRes, jobsRes, holdsRes, lowStockRes, listingsRes, printersRes] = await Promise.all([
+    const [ordersRes, jobsRes] = await Promise.all([
       supabaseClient.from("orders").select("order_timestamp, created_at, sales_platform, shop_id").gte("created_at", sinceIso),
       supabaseClient.from("print_jobs").select("created_at, job_execution_status").gte("created_at", sinceIso),
-      supabaseClient.from("orders").select("id, platform_order_id, customer_name, shop_id").eq("overall_order_status", "hold"),
-      supabaseClient.from("variants").select("id, variant_sku, stock_quantity, products(id, product_base_name, shop_id)").lte("stock_quantity", 5),
-      supabaseClient.from("listings").select("id, products(id, product_base_name, shop_id), listing_variations(id, variant_id)"),
-      supabaseClient.from("simplyprint_printers").select("id, name, online"),
     ]);
 
     const orders = (ordersRes.data || []).filter(o => passesShopScope(o.shop_id));
     const jobs = jobsRes.data || [];
-    const holds = (holdsRes.data || []).filter(o => passesShopScope(o.shop_id));
-    const lowStock = (lowStockRes.data || []).filter(v => passesShopScope(v.products?.shop_id));
-    const listings = (listingsRes.data || []).filter(l => passesShopScope(l.products?.shop_id));
-    const printers = printersRes.data || [];
 
-    // --- Charts ---
     const keys = dayBuckets(30);
     const orderCounts = Object.fromEntries(keys.map(k => [k, 0]));
     orders.forEach(o => {
@@ -3914,61 +3902,6 @@ async function fetchAndRenderMissionControl() {
       if (k in jobCounts) jobCounts[k]++;
     });
     if (lineEl) lineEl.innerHTML = svgLineChart(keys.map(k => jobCounts[k]), keys, { color: "#22d3ee" });
-
-    // --- Attention feed ---
-    const items = [];
-    holds.forEach(o => items.push({
-      icon: "pause_circle", color: "#f5b942", chip: "Hold",
-      label: `Order ${o.platform_order_id || o.id} on hold${o.customer_name ? " — " + o.customer_name : ""}`,
-      go: () => { selectedOrderId = o.id; navigateToTab("orders"); },
-    }));
-    listings.forEach(l => {
-      const unmapped = (l.listing_variations || []).filter(lv => !lv.variant_id).length;
-      if (unmapped === 0 || !l.products) return;
-      items.push({
-        icon: "link_off", color: "#f2657a", chip: "Unmapped",
-        label: `${unmapped} unmapped variation${unmapped !== 1 ? "s" : ""} — ${l.products.product_base_name}`,
-        go: () => { selectedProductId = l.products.id; catalogAttentionFilter = "needs_attention"; navigateToTab("products"); },
-      });
-    });
-    lowStock.forEach(v => {
-      if (!v.products) return;
-      items.push({
-        icon: "inventory", color: "#f5b942", chip: "Low stock",
-        label: `${v.variant_sku} — ${v.stock_quantity} left (${v.products.product_base_name})`,
-        go: () => { selectedProductId = v.products.id; catalogAttentionFilter = "low_stock"; navigateToTab("products"); },
-      });
-    });
-    printers.filter(pr => !pr.online).forEach(pr => items.push({
-      icon: "wifi_off", color: "#f2657a", chip: "Printer",
-      label: `${pr.name} is offline`,
-      go: () => navigateToTab("operations"),
-    }));
-
-    attentionFeedItems = items;
-    const countEl = document.getElementById("overview-attention-count");
-    if (countEl) countEl.textContent = items.length ? `(${items.length})` : "";
-
-    if (attentionEl) {
-      if (items.length === 0) {
-        attentionEl.innerHTML = emptyDiv("All clear — nothing needs attention.", "verified");
-      } else {
-        attentionEl.innerHTML = items.map((it, i) => `
-          <div class="attention-row" data-attn-idx="${i}">
-            <span class="material-symbols-outlined" style="font-size:16px; color:${it.color}; flex-shrink:0;">${it.icon}</span>
-            <span class="attention-label">${escapeHtml(it.label)}</span>
-            <span class="attention-chip" style="color:${it.color}; border-color:${it.color}40; background:${it.color}14;">${it.chip}</span>
-            <span class="material-symbols-outlined" style="font-size:14px; color:var(--text-muted); flex-shrink:0;">chevron_right</span>
-          </div>
-        `).join("");
-        attentionEl.querySelectorAll(".attention-row").forEach(row => {
-          row.addEventListener("click", () => {
-            const it = attentionFeedItems[Number(row.getAttribute("data-attn-idx"))];
-            if (it) it.go();
-          });
-        });
-      }
-    }
 
     markFresh("analytics");
   } catch (err) {
@@ -4299,6 +4232,12 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+});
+// NOTE: the listener above was previously left unclosed here, which swallowed
+// renderGanttChart / fetchAndRenderPrintersAndQueue / setupPrinterControls into
+// its scope — making them invisible to setupTabs and every other outside
+// caller (tab switches to Overview/Operations threw ReferenceError). The
+// wiring half below now runs in its own DOMContentLoaded listener.
 
 function renderGanttChart(printers, queue, jobs) {
   const container = document.getElementById("gantt-chart-container");
@@ -4894,6 +4833,7 @@ function setupPrinterControls() {
   });
 }
 
+window.addEventListener("DOMContentLoaded", () => {
   setupTabs();
   setupSettings();
   setupLogsFiltering();
