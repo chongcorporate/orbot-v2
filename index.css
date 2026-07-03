@@ -2194,3 +2194,88 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
 .pcard-idle { border-left: 3px solid var(--text-muted) !important; }
 .pcard-error { border-left: 3px solid var(--error-color) !important; }
 
+
+/* ==========================================================================
+   Aurora 3.0 — Design-system components: skeletons, empty states, freshness
+   ========================================================================== */
+
+/* Skeleton shimmer — used by loadingDiv()/loadingRow() in app.js and static
+   pre-render placeholders in index.html. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 45%,
+    rgba(139, 124, 246, 0.09) 50%,
+    rgba(255, 255, 255, 0.06) 55%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px 16px;
+  width: 100%;
+}
+.skeleton-stack .skeleton { height: 14px; }
+.skeleton-stack .skeleton:nth-child(2n) { width: 82%; }
+.skeleton-stack .skeleton:nth-child(3n) { width: 64%; }
+.skeleton.skeleton-card { height: 88px; }
+.skeleton.skeleton-stat { height: 22px; width: 64px; display: inline-block; vertical-align: middle; }
+
+/* Empty state with optional action */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 16px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.empty-state .material-symbols-outlined { font-size: 28px; opacity: 0.5; }
+.empty-state p { font-size: 11.5px; font-family: var(--font-mono); }
+.empty-state .empty-action {
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(139, 124, 246, 0.12);
+  border: 1px solid rgba(139, 124, 246, 0.3);
+  color: var(--primary-color);
+  transition: background 0.15s ease;
+}
+.empty-state .empty-action:hover { background: rgba(139, 124, 246, 0.22); }
+.empty-state .empty-action .material-symbols-outlined { font-size: 14px; opacity: 1; }
+
+/* Freshness stamp — "updated Xs ago" in panel headers, ticked by the 1s clock */
+.fresh-stamp {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  opacity: 0.8;
+}
+.fresh-stamp:empty { display: none; }

@@ -90,20 +90,65 @@ async function logAction(message, level = "info", meta = {}) {
   } catch (_) {}
 }
 
-function loadingDiv() {
-  return `<div class="flex items-center justify-center gap-2 py-12 text-outline"><span class="material-symbols-outlined text-xl animate-spin">sync</span><span class="font-data-mono text-xs">Loading...</span></div>`;
+// Skeleton shimmer placeholders (Aurora 3.0). Same call signatures as the
+// old spinner helpers so every existing call site upgrades automatically.
+function skeletonStack(bars = 4) {
+  return `<div class="skeleton-stack">${`<div class="skeleton"></div>`.repeat(bars)}</div>`;
 }
 
-function emptyDiv(message, icon = "search_off") {
-  return `<div class="flex flex-col items-center justify-center gap-2 py-12 text-outline"><span class="material-symbols-outlined text-2xl">${icon}</span><span class="font-data-mono text-xs">${message}</span></div>`;
+function loadingDiv(bars = 4) {
+  return skeletonStack(bars);
 }
 
-function loadingRow(colspan = 6) {
-  return `<tr><td colspan="${colspan}" class="py-12 text-center"><div class="flex items-center justify-center gap-2 text-outline"><span class="material-symbols-outlined text-xl animate-spin">sync</span><span class="font-data-mono text-xs">Loading...</span></div></td></tr>`;
+// Optional third arg: pre-built action-button HTML (class "empty-action"),
+// wired up by the caller after insertion.
+function emptyDiv(message, icon = "search_off", actionHtml = "") {
+  return `<div class="empty-state"><span class="material-symbols-outlined">${icon}</span><p>${message}</p>${actionHtml}</div>`;
+}
+
+function loadingRow(colspan = 6, bars = 3) {
+  return `<tr><td colspan="${colspan}">${skeletonStack(bars)}</td></tr>`;
 }
 
 function emptyRow(message, icon = "search_off", colspan = 6) {
-  return `<tr><td colspan="${colspan}" class="py-12 text-center"><div class="flex flex-col items-center gap-2 text-outline"><span class="material-symbols-outlined text-2xl">${icon}</span><span class="font-data-mono text-xs">${message}</span></div></td></tr>`;
+  return `<tr><td colspan="${colspan}">${emptyDiv(message, icon)}</td></tr>`;
+}
+
+// Animated count-up for numeric stat values (Aurora 3.0). Falls back to a
+// plain assignment for non-numeric strings.
+function tickStat(el, newValue) {
+  if (!el) return;
+  const target = Number(newValue);
+  if (!Number.isFinite(target)) { el.innerText = newValue; return; }
+  const from = Number(String(el.innerText).replace(/[^0-9.-]/g, "")) || 0;
+  if (from === target) { el.innerText = String(target); return; }
+  const t0 = performance.now(), dur = 450;
+  const step = (t) => {
+    const k = Math.min((t - t0) / dur, 1);
+    const eased = 1 - Math.pow(1 - k, 3);
+    el.innerText = String(Math.round(from + (target - from) * eased));
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+  // rAF is throttled/paused in background tabs — guarantee the final value.
+  setTimeout(() => { el.innerText = String(target); }, dur + 120);
+}
+
+// Freshness stamps: fetch functions call markFresh(key); every element with
+// data-fresh="key" is re-ticked by the 1s system clock so users can always
+// tell how stale a polled panel is.
+const panelFreshness = {};
+function markFresh(key) {
+  panelFreshness[key] = Date.now();
+  tickFreshStamps();
+}
+function tickFreshStamps() {
+  document.querySelectorAll("[data-fresh]").forEach(el => {
+    const ts = panelFreshness[el.getAttribute("data-fresh")];
+    if (!ts) return;
+    const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    el.textContent = s < 5 ? "updated just now" : s < 60 ? `updated ${s}s ago` : `updated ${Math.floor(s / 60)}m ago`;
+  });
 }
 
 // Helper to format remaining time (ETA)
@@ -135,6 +180,7 @@ function updateSystemClock() {
 
   clockEl.innerText = timeStr;
   dateEl.innerText = dateStr;
+  tickFreshStamps();
 }
 
 function isSpDispatchEnabled() {
@@ -303,7 +349,7 @@ async function fetchSummaryStats() {
     const pendingOrdersCount = (ordersData || []).filter(o => o.overall_order_status !== 'completed').length;
     const ordersOnHoldCount = (ordersData || []).filter(o => o.overall_order_status === 'hold').length;
 
-    document.getElementById("stats-orders").innerText = ordersTodayCount;
+    tickStat(document.getElementById("stats-orders"), ordersTodayCount);
 
     const trendEl = document.getElementById("stats-orders-trend");
     if (trendEl) {
@@ -323,11 +369,11 @@ async function fetchSummaryStats() {
         }
       }
     }
-    document.getElementById("stats-items").innerText = pendingOrdersCount;
-    document.getElementById("stats-hold").innerText = ordersOnHoldCount;
+    tickStat(document.getElementById("stats-items"), pendingOrdersCount);
+    tickStat(document.getElementById("stats-hold"), ordersOnHoldCount);
     
     const errorEl = document.getElementById("stats-errors");
-    errorEl.innerText = errorsCount ?? 0;
+    tickStat(errorEl, errorsCount ?? 0);
     if (errorsCount > 0) {
       errorEl.style.color = "var(--error-color)";
       errorEl.style.textShadow = "0 0 10px var(--error-glow)";
@@ -335,6 +381,7 @@ async function fetchSummaryStats() {
       errorEl.style.color = "var(--text-primary)";
       errorEl.style.textShadow = "none";
     }
+    markFresh("stats");
   } catch (err) {
     console.error("Error fetching stats:", err);
   }
@@ -432,6 +479,7 @@ async function fetchAndRenderGeminiUsage() {
         }).join("");
       }
     }
+    markFresh("gemini");
   } catch (err) {
     console.error("Failed to fetch Gemini usage stats:", err);
   }
@@ -523,6 +571,7 @@ async function fetchAndRenderOrders(forceFetch = true) {
 
     if (listContainer) {
       renderOrdersMasterDetail(filtered);
+      markFresh("orders");
     }
     if (overviewContainer) {
       const pendingOrders = cachedOrders.filter(o => (o.overall_order_status || "").toLowerCase() !== "completed");
@@ -547,7 +596,7 @@ async function fetchAndRenderOrders(forceFetch = true) {
 // Reusable spreadsheet orders table rendering helper
 function renderOrdersTableToContainer(container, prefix, filtered) {
   if (filtered.length === 0) {
-    container.innerHTML = emptyDiv("No matching orders found.", "receipt_long");
+    container.innerHTML = emptyDiv("No matching orders found.", "receipt_long", `<button class="empty-action" onclick="document.getElementById('ctrl-trigger-scout')?.click()"><span class="material-symbols-outlined">mail</span>Trigger Gmail Scan</button>`);
     return;
   }
 
@@ -966,7 +1015,7 @@ function renderOrdersMasterDetail(filtered) {
   updateBulkCompleteButton();
 
   if (filtered.length === 0) {
-    rowsEl.innerHTML = emptyDiv("No matching orders found.", "receipt_long");
+    rowsEl.innerHTML = emptyDiv("No matching orders found.", "receipt_long", `<button class="empty-action" onclick="document.getElementById('ctrl-trigger-scout')?.click()"><span class="material-symbols-outlined">mail</span>Trigger Gmail Scan</button>`);
     panel.innerHTML = `<div class="omd-empty-state"><span class="material-symbols-outlined">touch_app</span><p>Select an order to view details</p></div>`;
     selectedOrderId = null;
     return;
@@ -1860,7 +1909,7 @@ async function fetchAndRenderCatalog() {
     }
 
     if (productsList.length === 0) {
-      tbody.innerHTML = emptyDiv("No catalog items found matching filters.", "inventory_2");
+      tbody.innerHTML = emptyDiv("No catalog items found matching filters.", "inventory_2", `<button class="empty-action" onclick="document.getElementById('add-catalog-item-btn')?.click()"><span class="material-symbols-outlined">add_box</span>Add Product</button>`);
       const detailPanel = document.getElementById("product-detail-panel");
       if (detailPanel) detailPanel.innerHTML = `<div class="omd-empty-state"><span class="material-symbols-outlined">touch_app</span><p>Select a product to view details</p></div>`;
       selectedProductId = null;
@@ -1868,6 +1917,7 @@ async function fetchAndRenderCatalog() {
     }
 
     renderProductsMasterDetail(productsList);
+    markFresh("products");
 
   } catch (err) {
     if (tbody) tbody.innerHTML = emptyDiv(`Error loading catalog: ${err.message}`, "error");
@@ -1880,23 +1930,32 @@ async function fetchAndRenderCatalog() {
 // platform coverage) built from cachedListings.
 // ==========================================================================
 
-// Find the listing tied to a product, if any. A product can technically have
-// more than one listing row (no unique constraint), but in practice it's 1:1;
-// we surface the first match, matching how the data is actually used today.
+// Find every listing tied to a product. A product can genuinely have more
+// than one listing row — e.g. two separate marketplace product pages (one
+// per bundled price point) that each offer the same set of physical variants.
+function findListingsForProduct(productId) {
+  return cachedListings.filter(l => l.products?.id === productId);
+}
+
+// Back-compat single-listing accessor for call sites that only need "a"
+// representative listing (e.g. the compact list-row price column).
 function findListingForProduct(productId) {
-  return cachedListings.find(l => l.products?.id === productId) || null;
+  return findListingsForProduct(productId)[0] || null;
 }
 
 // Shared classification used by both list-row rendering and the
 // Needs Attention/Full Coverage/Low Stock filter tabs, so the tab counts
 // always match what actually shows up when a tab is clicked.
 function computeProductAttention(p) {
-  const listing = findListingForProduct(p.id);
-  const platformCount = listing ? LISTING_PLATFORMS.filter(pl => !!listing[pl.key]).length : 0;
-  const hasUnmapped = listing && (listing.listing_variations || []).some(lv => !lv.variant_id);
-  const hasIssue = hasUnmapped || !listing;
+  const listings = findListingsForProduct(p.id);
+  const listing = listings[0] || null;
+  // Coverage is the union of platforms across every listing for this
+  // product, since a platform can be live on one listing but not another.
+  const platformCount = LISTING_PLATFORMS.filter(pl => listings.some(l => !!l[pl.key])).length;
+  const hasUnmapped = listings.some(l => (l.listing_variations || []).some(lv => !lv.variant_id));
+  const hasIssue = hasUnmapped || listings.length === 0;
   const isLowStock = p.variations.some(v => (v.stock_quantity || 0) <= 5);
-  return { listing, platformCount, hasUnmapped, hasIssue, isLowStock };
+  return { listing, listings, platformCount, hasUnmapped, hasIssue, isLowStock };
 }
 
 // Updates the unmapped-variations alert banner and the attention filter
@@ -2085,7 +2144,7 @@ async function fetchRecentOrdersForProduct(product) {
 }
 
 function buildProductDetailPanel(product) {
-  const listing = findListingForProduct(product.id);
+  const listings = findListingsForProduct(product.id);
 
   const variantsHtml = product.variations.map(v => {
     let typeClass = "omd-vtype-other";
@@ -2114,38 +2173,21 @@ function buildProductDetailPanel(product) {
   }).join("");
 
   let listingSectionHtml;
-  let mappingSectionHtml = "";
-  if (listing) {
-    const platformCount = LISTING_PLATFORMS.filter(pl => !!listing[pl.key]).length;
-    const platformCardsHtml = LISTING_PLATFORMS.map(pl => {
-      const val = listing[pl.key];
-      return `
-        <div class="omd-pcard${val ? "" : " off"}">
-          <div class="pcolor" style="background:${pl.color}"></div>
-          <span class="plabel">${pl.label}</span>
-          <span class="pval">${val ? escapeHtml(val) : "not listed"}</span>
-        </div>
-      `;
-    }).join("");
-
-    listingSectionHtml = `
-      <div>
-        <div class="omd-section-title"><span class="material-symbols-outlined">storefront</span>Platform Listing</div>
-        <div class="omd-listing-summary">
-          <div class="omd-price-block">
-            <div class="pb"><span class="pl">MYR</span><span class="pv">${listing.price_myr != null ? Number(listing.price_myr).toFixed(2) : "—"}</span></div>
-            <div class="omd-price-div"></div>
-            <div class="pb"><span class="pl">SGD</span><span class="pv">${listing.price_sgd != null ? Number(listing.price_sgd).toFixed(2) : "—"}</span></div>
+  if (listings.length > 0) {
+    listingSectionHtml = listings.map(listing => {
+      const platformCount = LISTING_PLATFORMS.filter(pl => !!listing[pl.key]).length;
+      const platformCardsHtml = LISTING_PLATFORMS.map(pl => {
+        const val = listing[pl.key];
+        return `
+          <div class="omd-pcard${val ? "" : " off"}">
+            <div class="pcolor" style="background:${pl.color}"></div>
+            <span class="plabel">${pl.label}</span>
+            <span class="pval">${val ? escapeHtml(val) : "not listed"}</span>
           </div>
-          <span class="badge ${listing.is_active ? "completed" : "hold"}" style="margin-left:auto; font-size:9px; padding:3px 9px;">${listing.is_active ? "Active" : "Off"}</span>
-          <span class="omd-cov-label">${platformCount}/5 platforms</span>
-        </div>
-        <div class="omd-platform-grid">${platformCardsHtml}</div>
-      </div>
-    `;
+        `;
+      }).join("");
 
-    const vars = listing.listing_variations || [];
-    if (vars.length > 0) {
+      const vars = listing.listing_variations || [];
       const rowsHtml = vars.map(lv => {
         const mapped = !!lv.variant_id;
         const sku = lv.variants?.variant_sku || "— unlinked";
@@ -2164,16 +2206,37 @@ function buildProductDetailPanel(product) {
           </tr>
         `;
       }).join("");
-      mappingSectionHtml = `
+      const mappingTableHtml = `
+        <table class="omd-map-table">
+          <thead><tr><th></th><th>Platform Variation</th><th>SKU</th><th>Type</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      `;
+
+      return `
         <div>
-          <div class="omd-section-title"><span class="material-symbols-outlined">link</span>Variation Mapping</div>
-          <table class="omd-map-table">
-            <thead><tr><th></th><th>Platform Variation</th><th>SKU</th><th>Type</th></tr></thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>
+          <div class="omd-section-title">
+            <span class="material-symbols-outlined">storefront</span>
+            <span class="truncate" title="${escapeHtml(listing.platform_listing_name || "")}">${escapeHtml(listing.platform_listing_name || "Platform Listing")}</span>
+          </div>
+          <div class="omd-listing-summary">
+            <div class="omd-price-block">
+              <div class="pb"><span class="pl">MYR</span><span class="pv">${listing.price_myr != null ? Number(listing.price_myr).toFixed(2) : "—"}</span></div>
+              <div class="omd-price-div"></div>
+              <div class="pb"><span class="pl">SGD</span><span class="pv">${listing.price_sgd != null ? Number(listing.price_sgd).toFixed(2) : "—"}</span></div>
+            </div>
+            <span class="badge ${listing.is_active ? "completed" : "hold"}" style="margin-left:auto; font-size:9px; padding:3px 9px;">${listing.is_active ? "Active" : "Off"}</span>
+            <span class="omd-cov-label">${platformCount}/5 platforms</span>
+          </div>
+          <div class="omd-platform-grid">${platformCardsHtml}</div>
+          <div class="omd-section-title" style="margin-top:10px;">
+            <span class="material-symbols-outlined">link</span>Variation Mapping
+            <button class="omd-tag-btn btn-add-variation-mapping" data-listing-id="${listing.id}" style="margin-left:auto;"><span class="material-symbols-outlined">add</span>Add Variation</button>
+          </div>
+          ${vars.length > 0 ? mappingTableHtml : `<div class="omd-item-card" style="align-items:center; text-align:center; color:var(--text-muted); font-size:11px;">No variations mapped yet.</div>`}
         </div>
       `;
-    }
+    }).join("");
   } else {
     listingSectionHtml = `
       <div>
@@ -2186,7 +2249,7 @@ function buildProductDetailPanel(product) {
     `;
   }
 
-  const hasUnmappedVars = listing && (listing.listing_variations || []).some(lv => !lv.variant_id);
+  const hasUnmappedVars = listings.some(l => (l.listing_variations || []).some(lv => !lv.variant_id));
 
   return `
     <div class="omd-dp-head">
@@ -2211,7 +2274,6 @@ function buildProductDetailPanel(product) {
     </div>
 
     ${listingSectionHtml}
-    ${mappingSectionHtml}
 
     <div>
       <div class="omd-section-title"><span class="material-symbols-outlined">history</span>Recent Orders (this product)</div>
@@ -2223,7 +2285,7 @@ function buildProductDetailPanel(product) {
     <div class="omd-dp-footer">
       <div class="omd-dp-footer-actions">
         <div class="btn-secondary btn-add-variant-for-product" data-product-id="${product.id}" style="cursor:pointer;"><span class="material-symbols-outlined text-sm">add</span>Add Variant</div>
-        <div class="btn-primary btn-fix-mapping${hasUnmappedVars ? "" : " off"}" data-listing-id="${listing ? listing.id : ""}" style="cursor:pointer;"><span class="material-symbols-outlined text-sm">link</span>Fix Mapping</div>
+        <div class="btn-primary btn-fix-mapping${hasUnmappedVars ? "" : " off"}" style="cursor:pointer;"><span class="material-symbols-outlined text-sm">link</span>Fix Mapping</div>
       </div>
     </div>
   `;
@@ -2282,22 +2344,34 @@ function bindProductDetailPanelEvents(product) {
   const fixMappingBtn = panel.querySelector(".btn-fix-mapping");
   if (fixMappingBtn && !fixMappingBtn.classList.contains("off")) {
     fixMappingBtn.addEventListener("click", () => {
-      const listingId = fixMappingBtn.getAttribute("data-listing-id");
-      const listing = cachedListings.find(l => l.id === listingId);
-      const unmapped = listing && (listing.listing_variations || []).find(lv => !lv.variant_id);
-      if (unmapped) {
-        openEditVariationModal({
-          variationId: unmapped.id,
-          platformName: unmapped.platform_variation_name || "",
-          normalized: unmapped.normalized_variation_name || "",
-          variantId: unmapped.variant_id || "",
-        });
+      // Search across every listing for this product — it's no longer
+      // guaranteed to be just one.
+      for (const listing of findListingsForProduct(product.id)) {
+        const unmapped = (listing.listing_variations || []).find(lv => !lv.variant_id);
+        if (unmapped) {
+          openEditVariationModal({
+            variationId: unmapped.id,
+            platformName: unmapped.platform_variation_name || "",
+            normalized: unmapped.normalized_variation_name || "",
+            variantId: unmapped.variant_id || "",
+          });
+          break;
+        }
       }
     });
   }
 
   panel.querySelectorAll(".btn-edit-mapping-row").forEach(row => {
     row.addEventListener("click", () => openEditVariationModal(row.dataset));
+  });
+
+  // Add a brand-new variation mapping row to an existing listing — e.g. a
+  // listing that bundles two physical variants under one marketplace page
+  // but only had one of them mapped.
+  panel.querySelectorAll(".btn-add-variation-mapping").forEach(btn => {
+    btn.addEventListener("click", () => {
+      openEditVariationModal({ listingId: btn.getAttribute("data-listing-id") });
+    });
   });
 }
 
@@ -4238,12 +4312,11 @@ async function fetchAndRenderPrintersAndQueue() {
     // Render Queue
     const renderQueueHtml = (prefix) => {
       if (!queue || queue.length === 0) {
-        return `
-          <div class="flex flex-col items-center justify-center py-12 text-center text-outline font-data-mono bg-surface-container-low/20 rounded-xl border border-outline-variant/10 p-5">
-            <span class="material-symbols-outlined text-2xl mb-1.5">done_all</span>
-            Queue is empty.
-          </div>
-        `;
+        return emptyDiv(
+          "Queue is empty.",
+          "done_all",
+          `<button class="empty-action" onclick="document.getElementById('ctrl-trigger-foreman')?.click()"><span class="material-symbols-outlined">print</span>Trigger Dispatch</button>`
+        );
       }
       return queue.map(q => {
         const minVal = q.estimate_seconds ? Math.round(q.estimate_seconds / 60) : 0;
@@ -4319,11 +4392,12 @@ async function fetchAndRenderPrintersAndQueue() {
     const queueDepthEl = document.getElementById("stats-queue-depth");
     const queueTimeEl = document.getElementById("stats-queue-time");
     if (queueDepthEl) {
-      queueDepthEl.innerText = queueDepth;
+      tickStat(queueDepthEl, queueDepth);
     }
     if (queueTimeEl) {
       queueTimeEl.innerText = timeStr;
     }
+    markFresh("printers");
 
   } catch (err) {
     console.error("Error in fetchAndRenderPrintersAndQueue:", err);
@@ -4834,6 +4908,7 @@ async function fetchAndRenderPrintJobs() {
     `;
 
     listContainer.innerHTML = html;
+    markFresh("printjobs");
 
   } catch (err) {
     console.error("Failed to render print jobs table:", err);
@@ -5094,6 +5169,54 @@ function openCatalogDetailModal(productId) {
 }
 
 // Catalog Edit Modal
+// Dirty flag for the catalog edit modal: set on any input, checked before closing
+// so employees don't silently lose edits by clicking the backdrop.
+let catalogEditDirty = false;
+// Counter for not-yet-saved variant blocks added via "Add Variant".
+let catalogEditNewVariantSeq = 0;
+
+const CATALOG_EDIT_INPUT_CLS = "w-full bg-black/30 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-xs font-data-mono text-on-surface focus:border-primary/50 focus:outline-none transition-colors";
+const CATALOG_EDIT_LABEL_CLS = "font-label-caps text-[10px] text-outline uppercase tracking-wider block mb-1";
+
+// One labeled input. `attrs` carries either data-id (existing row) or data-new-idx
+// (unsaved variant block). data-initial holds the original value so save can send
+// only changed fields. type: "text" | "number" (float) | "int".
+function catalogEditField(label, table, attrs, fieldName, value, type = "text", opts = {}) {
+  const esc = String(value ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const attrStr = Object.entries(attrs).map(([k, v]) => `data-${k}="${v}"`).join(" ");
+  return `
+    <div class="${opts.span2 ? "col-span-2" : ""}">
+      <label class="${CATALOG_EDIT_LABEL_CLS}">${label}</label>
+      <input type="${type === "text" ? "text" : "number"}" ${type === "number" ? `step="any"` : ""} ${type === "int" ? `step="1"` : ""}
+        value="${esc}" ${opts.list ? `list="${opts.list}"` : ""} ${opts.placeholder ? `placeholder="${opts.placeholder}"` : ""}
+        class="edit-field ${CATALOG_EDIT_INPUT_CLS}"
+        ${attrStr} data-table="${table}" data-field="${fieldName}" data-type="${type}" data-initial="${esc}">
+    </div>
+  `;
+}
+
+// Full field set for one variant. Works for existing rows (attrs = {id}) and new
+// unsaved blocks (attrs = {"new-idx": n}).
+function catalogEditVariantFields(v, table, attrs) {
+  const f = (label, fieldName, type, opts) => catalogEditField(label, table, attrs, fieldName, v[fieldName], type, opts);
+  return `
+    <div class="grid grid-cols-2 gap-3">
+      ${f("Variant SKU *", "variant_sku")}
+      ${f("Variant Name", "variant_name")}
+      ${f("Variant Type", "variant_type", "text", { list: "variant-type-suggestions" })}
+      ${f("Stock Quantity", "stock_quantity", "int")}
+      ${f("Set Number", "set_number")}
+      ${f("Plaque Count", "plaque_count", "int")}
+      ${f("Reference Name", "reference_name")}
+      ${f("File Checklist", "file_checklist")}
+      ${f("Seal Sticker Drive URL", "seal_sticker_gdrive_url", "text", { span2: true })}
+      ${f("Print Files Drive URL", "print_files_gdrive_url", "text", { span2: true })}
+      ${f("Pictures Drive URL", "pictures_gdrive_url", "text", { span2: true })}
+      ${f("Adobe Express URL", "adobe_express_url", "text", { span2: true })}
+    </div>
+  `;
+}
+
 function openCatalogEditModal(productId) {
   const productVariants = cachedVariants.filter(v => v.products && v.products.id === productId);
   if (productVariants.length === 0) return;
@@ -5105,16 +5228,20 @@ function openCatalogEditModal(productId) {
   if (!modal || !contentEl) return;
 
   titleEl.textContent = product.product_base_name || "Edit Product";
+  contentEl.dataset.productId = productId;
+  catalogEditDirty = false;
+  catalogEditNewVariantSeq = 0;
 
-  const field = (label, table, id, fieldName, value, type = "text") => `
-    <div>
-      <label class="font-label-caps text-[10px] text-outline uppercase tracking-wider block mb-1">${label}</label>
-      <input type="${type === "number" ? "number" : "text"}" step="${type === "number" ? "any" : undefined}"
-        value="${String(value ?? "").replace(/"/g, "&quot;")}"
-        class="edit-field w-full bg-black/30 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-xs font-data-mono text-on-surface focus:border-primary/50 focus:outline-none transition-colors"
-        data-table="${table}" data-id="${id}" data-field="${fieldName}" data-type="${type}">
-    </div>
-  `;
+  const field = (label, table, id, fieldName, value, type = "text", opts = {}) =>
+    catalogEditField(label, table, { id }, fieldName, value, type, opts);
+
+  const fmtTs = (ts) => ts ? new Date(ts).toLocaleString() : "—";
+
+  // Shop dropdown built from cachedShops (loaded at startup for the header switcher).
+  const shopOptions = [
+    `<option value="" ${!product.shop_id ? "selected" : ""}>— Unassigned —</option>`,
+    ...cachedShops.map(s => `<option value="${s.id}" ${s.id === product.shop_id ? "selected" : ""}>${s.name}</option>`)
+  ].join("");
 
   let html = `
     <!-- Product fields -->
@@ -5124,24 +5251,40 @@ function openCatalogEditModal(productId) {
       </h4>
       <div class="grid grid-cols-2 gap-3 bg-black/20 border border-outline-variant/10 rounded-xl p-4">
         ${field("Product Base Name", "products", product.id, "product_base_name", product.product_base_name)}
-        ${field("Master SKU", "products", product.id, "master_sku", product.master_sku)}
+        ${field("Master SKU *", "products", product.id, "master_sku", product.master_sku)}
         ${field("Brand Name", "products", product.id, "brand_name", product.brand_name)}
         ${field("Category", "products", product.id, "product_category", product.product_category)}
+        <div>
+          <label class="${CATALOG_EDIT_LABEL_CLS}">Shop</label>
+          <select class="edit-field ${CATALOG_EDIT_INPUT_CLS}"
+            data-table="products" data-id="${product.id}" data-field="shop_id" data-type="text"
+            data-initial="${product.shop_id ?? ""}">${shopOptions}</select>
+        </div>
+        <div class="flex flex-col justify-end gap-0.5 text-[10px] font-data-mono text-on-surface-variant/40">
+          <span>ID: ${product.id}</span>
+          <span>Created: ${fmtTs(product.created_at)} · Updated: ${fmtTs(product.updated_at)}</span>
+        </div>
       </div>
     </div>
+    <div id="catalog-edit-variants-container" class="flex flex-col gap-5">
   `;
 
   productVariants.forEach((v, vi) => {
+    const escSku = String(v.variant_sku ?? "").replace(/"/g, "&quot;");
     const filesHtml = (v.print_files || []).map(f => `
       <div class="flex flex-col gap-2 bg-black/20 border border-outline-variant/10 rounded-lg p-3">
-        <div class="font-label-caps text-[9px] text-surface-tint uppercase tracking-widest flex items-center gap-1.5 mb-1">
-          <span class="material-symbols-outlined text-[11px]">description</span> Print File
+        <div class="font-label-caps text-[9px] text-surface-tint uppercase tracking-widest flex items-center justify-between mb-1">
+          <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[11px]">description</span> Print File</span>
+          <button class="btn-remove-print-file flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold text-error/60 hover:text-error hover:bg-error/10 transition-all cursor-pointer"
+            data-file-id="${f.id}" data-file-name="${String(f.print_file_name ?? "").replace(/"/g, "&quot;")}">
+            <span class="material-symbols-outlined text-[11px]">delete</span> Remove
+          </button>
         </div>
         <div class="grid grid-cols-2 gap-2">
           ${field("File Name", "print_files", f.id, "print_file_name", f.print_file_name)}
           ${field("SimplyPrint File ID", "print_files", f.id, "simplyprint_file_id", f.simplyprint_file_id)}
           ${field("Weight (g)", "print_files", f.id, "weight_g", f.weight_g, "number")}
-          ${field("Print Time (min)", "print_files", f.id, "print_time_m", f.print_time_m, "number")}
+          ${field("Print Time (min)", "print_files", f.id, "print_time_m", f.print_time_m, "int")}
           ${field("Reference Name", "print_files", f.id, "reference_name", f.reference_name)}
           ${field("Variant SKU (denorm)", "print_files", f.id, "variant_sku", f.variant_sku)}
         </div>
@@ -5149,30 +5292,36 @@ function openCatalogEditModal(productId) {
     `).join("");
 
     html += `
-      <div class="flex flex-col gap-3">
-        <h4 class="font-label-caps text-[11px] text-[#ebb2ff] uppercase tracking-widest flex items-center gap-2">
-          <span class="material-symbols-outlined text-sm">layers</span> Variant ${vi + 1} of ${productVariants.length}
-        </h4>
-        <div class="flex flex-col gap-3 bg-black/20 border border-outline-variant/10 rounded-xl p-4">
-          <div class="grid grid-cols-2 gap-3">
-            ${field("Variant SKU", "variants", v.id, "variant_sku", v.variant_sku)}
-            ${field("Variant Name", "variants", v.id, "variant_name", v.variant_name)}
-            <div>
-              <label class="font-label-caps text-[10px] text-outline uppercase tracking-wider block mb-1">Variant Type</label>
-              <input list="variant-type-suggestions" type="text"
-                value="${String(v.variant_type ?? "").replace(/"/g, "&quot;")}"
-                class="edit-field w-full bg-black/30 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-xs font-data-mono text-on-surface focus:border-primary/50 focus:outline-none transition-colors"
-                data-table="variants" data-id="${v.id}" data-field="variant_type" data-type="text">
-            </div>
-            ${field("Stock Quantity", "variants", v.id, "stock_quantity", v.stock_quantity, "number")}
-            <div class="col-span-2">${field("Seal Sticker Drive URL", "variants", v.id, "seal_sticker_gdrive_url", v.seal_sticker_gdrive_url)}</div>
+      <div class="flex flex-col gap-3 variant-edit-block" data-variant-id="${v.id}">
+        <div class="flex items-center justify-between">
+          <h4 class="font-label-caps text-[11px] text-[#ebb2ff] uppercase tracking-widest flex items-center gap-2">
+            <span class="material-symbols-outlined text-sm">layers</span> Variant ${vi + 1} of ${productVariants.length}
+            <span class="font-data-mono normal-case tracking-normal text-on-surface-variant/50">${v.variant_sku || ""}</span>
+          </h4>
+          <div class="flex items-center gap-1.5">
+            <button class="btn-duplicate-variant flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-on-surface-variant/70 hover:text-on-surface hover:bg-white/5 border border-transparent hover:border-outline-variant/30 transition-all cursor-pointer"
+              data-variant-id="${v.id}" title="Copy this variant into a new unsaved variant form">
+              <span class="material-symbols-outlined text-[13px]">content_copy</span> Duplicate
+            </button>
+            <button class="btn-remove-variant flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-error/70 hover:text-error hover:bg-error/10 border border-transparent hover:border-error/30 transition-all cursor-pointer"
+              data-variant-id="${v.id}" data-variant-sku="${escSku}"
+              data-file-count="${(v.print_files || []).length}" data-is-last="${productVariants.length === 1}">
+              <span class="material-symbols-outlined text-[13px]">delete</span> Remove
+            </button>
           </div>
-          ${filesHtml.length ? `
-            <div class="flex flex-col gap-2">
-              <div class="font-label-caps text-[10px] text-outline uppercase tracking-wider mt-1">Print Files (${(v.print_files || []).length})</div>
-              ${filesHtml}
-            </div>
-          ` : `<div class="text-[10px] font-data-mono text-on-surface-variant/30 italic">No print files mapped.</div>`}
+        </div>
+        <div class="flex flex-col gap-3 bg-black/20 border border-outline-variant/10 rounded-xl p-4">
+          ${catalogEditVariantFields(v, "variants", { id: v.id })}
+          <div class="flex flex-col gap-2">
+            <div class="font-label-caps text-[10px] text-outline uppercase tracking-wider mt-1">Print Files (${(v.print_files || []).length})</div>
+            ${filesHtml || `<div class="text-[10px] font-data-mono text-on-surface-variant/30 italic">No print files mapped.</div>`}
+            <div class="new-files-container flex flex-col gap-2"></div>
+            <button class="btn-add-print-file self-start flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-tertiary/80 hover:text-tertiary hover:bg-tertiary/10 border border-tertiary/20 transition-all cursor-pointer"
+              data-variant-id="${v.id}" data-variant-sku="${escSku}">
+              <span class="material-symbols-outlined text-[13px]">add</span> Add Print File
+            </button>
+          </div>
+          <div class="text-[10px] font-data-mono text-on-surface-variant/40">ID: ${v.id} · Created: ${fmtTs(v.created_at)} · Updated: ${fmtTs(v.updated_at)}</div>
         </div>
       </div>
     `;
@@ -5181,6 +5330,7 @@ function openCatalogEditModal(productId) {
   // Free-text input above with suggestions — variant_type isn't DB-constrained to LEGO
   // codes (DS/WM/etc.), since generic (non-LEGO) shops use their own type names.
   html += `
+    </div>
     <datalist id="variant-type-suggestions">
       ${["DS-1","DS-2","DS-3","DS-4","DS-NP","WM","FWM","BASE"].map(t => `<option value="${t}">`).join("")}
     </datalist>
@@ -5190,43 +5340,357 @@ function openCatalogEditModal(productId) {
   modal.classList.add("active");
 }
 
+// Append a blank variant form to the open edit modal. Saved on "Save Changes".
+// `prefill` (optional) seeds the form fields — used by the Duplicate button.
+function addCatalogEditNewVariantBlock(prefill) {
+  const contentEl = document.getElementById("catalog-edit-content");
+  const container = document.getElementById("catalog-edit-variants-container");
+  if (!contentEl || !container) return;
+
+  const productId = contentEl.dataset.productId;
+  const productVariants = cachedVariants.filter(v => v.products && v.products.id === productId);
+  const product = productVariants[0]?.products || {};
+
+  const idx = ++catalogEditNewVariantSeq;
+  // Prefill the SKU prefix and set number so employees only type the suffix.
+  const draft = (prefill && typeof prefill === "object" && !(prefill instanceof Event)) ? prefill : {
+    variant_sku: product.master_sku ? `${product.master_sku}-` : "",
+    set_number: productVariants[0]?.set_number ?? "",
+    stock_quantity: 0,
+  };
+
+  const block = document.createElement("div");
+  block.className = "flex flex-col gap-3 variant-new-block";
+  block.dataset.newIdx = idx;
+  block.innerHTML = `
+    <div class="flex items-center justify-between">
+      <h4 class="font-label-caps text-[11px] text-tertiary uppercase tracking-widest flex items-center gap-2">
+        <span class="material-symbols-outlined text-sm">add_circle</span> New Variant (unsaved)
+      </h4>
+      <button class="btn-discard-new-variant flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-on-surface-variant/60 hover:text-on-surface hover:bg-white/5 border border-transparent hover:border-outline-variant/30 transition-all cursor-pointer">
+        <span class="material-symbols-outlined text-[13px]">close</span> Discard
+      </button>
+    </div>
+    <div class="flex flex-col gap-3 bg-tertiary/5 border border-tertiary/20 rounded-xl p-4">
+      ${catalogEditVariantFields(draft, "variants", { "new-idx": idx })}
+    </div>
+  `;
+  container.appendChild(block);
+  catalogEditDirty = true;
+  block.querySelector(".edit-field")?.focus();
+  block.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// Counter for not-yet-saved print-file blocks added via "Add Print File".
+let catalogEditNewFileSeq = 0;
+
+// Append a blank print-file form under an existing variant. Saved on "Save Changes".
+function addCatalogEditNewPrintFileBlock(variantId, variantSku) {
+  const container = document.querySelector(`#catalog-edit-content .variant-edit-block[data-variant-id="${variantId}"] .new-files-container`);
+  if (!container) return;
+
+  const idx = ++catalogEditNewFileSeq;
+  const draft = { variant_sku: variantSku || "" };
+  const f = (label, fieldName, type, opts) =>
+    catalogEditField(label, "print_files", { "new-file-idx": idx }, fieldName, draft[fieldName], type, opts);
+
+  const block = document.createElement("div");
+  block.className = "flex flex-col gap-2 bg-tertiary/5 border border-tertiary/20 rounded-lg p-3 print-file-new-block";
+  block.dataset.variantId = variantId;
+  block.innerHTML = `
+    <div class="font-label-caps text-[9px] text-tertiary uppercase tracking-widest flex items-center justify-between mb-1">
+      <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[11px]">note_add</span> New Print File (unsaved)</span>
+      <button class="btn-discard-new-file flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold text-on-surface-variant/60 hover:text-on-surface hover:bg-white/5 transition-all cursor-pointer">
+        <span class="material-symbols-outlined text-[11px]">close</span> Discard
+      </button>
+    </div>
+    <div class="grid grid-cols-2 gap-2">
+      ${f("File Name *", "print_file_name")}
+      ${f("SimplyPrint File ID", "simplyprint_file_id")}
+      ${f("Weight (g)", "weight_g", "number")}
+      ${f("Print Time (min)", "print_time_m", "int")}
+      ${f("Reference Name", "reference_name")}
+      ${f("Variant SKU (denorm)", "variant_sku")}
+    </div>
+  `;
+  container.appendChild(block);
+  catalogEditDirty = true;
+  block.querySelector(".edit-field")?.focus();
+}
+
+// Coerce an edit-field's string value for the DB. Empty string -> null.
+function catalogEditCoerce(raw, type) {
+  const val = raw.trim();
+  if (val === "") return null;
+  if (type === "int") { const n = parseInt(val, 10); return Number.isNaN(n) ? null : n; }
+  if (type === "number") { const n = parseFloat(val); return Number.isNaN(n) ? null : n; }
+  return val;
+}
+
+// SKU guardrails run before any write:
+// 1. duplicate SKUs typed inside the modal itself,
+// 2. SKUs that don't start with the shop's sku_prefix (warn, overridable),
+// 3. SKUs already taken by another row in the DB (hard block — the DB would
+//    reject them anyway, this just gives a readable message first).
+// Returns true when the save may proceed.
+async function catalogEditValidateSkus(contentEl, updates, inserts, productId) {
+  const skuChecks = [];
+  Object.values(updates).forEach(u => {
+    if (u.table === "variants" && u.data.variant_sku) skuChecks.push({ sku: u.data.variant_sku, excludeId: u.id });
+  });
+  inserts.forEach(r => skuChecks.push({ sku: r.variant_sku }));
+
+  // 1. In-modal duplicates (two fields with the same SKU)
+  const allSkus = [...contentEl.querySelectorAll('.edit-field[data-table="variants"][data-field="variant_sku"]')]
+    .map(el => el.value.trim()).filter(Boolean);
+  const dupes = [...new Set(allSkus.filter((s, i) => allSkus.indexOf(s) !== i))];
+  if (dupes.length) {
+    showToast(`Duplicate variant SKU in this form: ${dupes.join(", ")}`, "error");
+    return false;
+  }
+
+  // 2. Shop prefix warning (uses the shop currently selected in the modal)
+  const shopSel = contentEl.querySelector('.edit-field[data-field="shop_id"]');
+  const shop = cachedShops.find(s => s.id === (shopSel?.value || ""));
+  const prefix = shop?.sku_prefix;
+  if (prefix) {
+    const bad = skuChecks.filter(c => !c.sku.startsWith(prefix + "-")).map(c => c.sku);
+    const productUpd = Object.values(updates).find(u => u.table === "products" && u.data.master_sku);
+    if (productUpd && !productUpd.data.master_sku.startsWith(prefix + "-")) bad.push(productUpd.data.master_sku);
+    if (bad.length) {
+      const ok = await showConfirmModal(
+        "SKU prefix mismatch",
+        `${shop.name} SKUs normally start with "${prefix}-". These don't: ${bad.join(", ")}. Save anyway?`,
+        "Save Anyway"
+      );
+      if (!ok) return false;
+    }
+  }
+
+  // 3. Already taken in the DB by a different row
+  if (skuChecks.length) {
+    const { data: existing, error } = await supabaseClient
+      .from("variants").select("id, variant_sku")
+      .in("variant_sku", skuChecks.map(c => c.sku));
+    if (error) { showToast("SKU check failed: " + error.message, "error"); return false; }
+    const conflict = (existing || []).find(row => {
+      const c = skuChecks.find(k => k.sku === row.variant_sku);
+      return c && row.id !== c.excludeId;
+    });
+    if (conflict) {
+      showToast(`Variant SKU "${conflict.variant_sku}" already exists on another variant.`, "error");
+      return false;
+    }
+  }
+  const productUpd = Object.values(updates).find(u => u.table === "products" && u.data.master_sku);
+  if (productUpd) {
+    const { data: existing, error } = await supabaseClient
+      .from("products").select("id").eq("master_sku", productUpd.data.master_sku).neq("id", productId);
+    if (error) { showToast("SKU check failed: " + error.message, "error"); return false; }
+    if ((existing || []).length) {
+      showToast(`Master SKU "${productUpd.data.master_sku}" already exists on another product.`, "error");
+      return false;
+    }
+  }
+  return true;
+}
+
 function setupCatalogEditModal() {
   const modal = document.getElementById("catalog-edit-modal");
   if (!modal) return;
 
-  const closeModal = () => modal.classList.remove("active");
+  const contentEl = document.getElementById("catalog-edit-content");
+  const saveBtn = document.getElementById("catalog-edit-save-btn");
+
+  const closeModal = async () => {
+    if (catalogEditDirty) {
+      const ok = await showConfirmModal("Discard changes?", "You have unsaved edits in this product. Close without saving?", "Discard");
+      if (!ok) return;
+    }
+    catalogEditDirty = false;
+    modal.classList.remove("active");
+  };
 
   document.getElementById("catalog-edit-close-btn").addEventListener("click", closeModal);
   document.getElementById("catalog-edit-cancel-btn").addEventListener("click", closeModal);
   modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
 
-  document.getElementById("catalog-edit-save-btn").addEventListener("click", async () => {
-    const contentEl = document.getElementById("catalog-edit-content");
-    const saveBtn = document.getElementById("catalog-edit-save-btn");
-    const fields = contentEl.querySelectorAll(".edit-field");
+  // Any typing/selection marks the modal dirty (close then warns before discarding).
+  contentEl.addEventListener("input", () => { catalogEditDirty = true; });
 
-    // Group updates by table + id
+  document.getElementById("catalog-edit-add-variant-btn")?.addEventListener("click", addCatalogEditNewVariantBlock);
+
+  // Delegated clicks: duplicate variant, add/discard/remove print files, remove
+  // existing variant (DB deletes happen immediately after confirmation; discards
+  // are DOM-only since those blocks were never saved).
+  contentEl.addEventListener("click", async (e) => {
+    const discardBtn = e.target.closest(".btn-discard-new-variant");
+    if (discardBtn) {
+      discardBtn.closest(".variant-new-block")?.remove();
+      return;
+    }
+
+    const discardFileBtn = e.target.closest(".btn-discard-new-file");
+    if (discardFileBtn) {
+      discardFileBtn.closest(".print-file-new-block")?.remove();
+      return;
+    }
+
+    const dupBtn = e.target.closest(".btn-duplicate-variant");
+    if (dupBtn) {
+      const src = cachedVariants.find(v => v.id === dupBtn.dataset.variantId);
+      if (src) addCatalogEditNewVariantBlock({
+        variant_sku: (src.variant_sku || "") + "-COPY",
+        variant_name: src.variant_name,
+        variant_type: src.variant_type,
+        stock_quantity: src.stock_quantity,
+        set_number: src.set_number,
+        plaque_count: src.plaque_count,
+        reference_name: src.reference_name,
+        file_checklist: src.file_checklist,
+        seal_sticker_gdrive_url: src.seal_sticker_gdrive_url,
+        print_files_gdrive_url: src.print_files_gdrive_url,
+        pictures_gdrive_url: src.pictures_gdrive_url,
+        adobe_express_url: src.adobe_express_url,
+      });
+      return;
+    }
+
+    const addFileBtn = e.target.closest(".btn-add-print-file");
+    if (addFileBtn) {
+      addCatalogEditNewPrintFileBlock(addFileBtn.dataset.variantId, addFileBtn.dataset.variantSku);
+      return;
+    }
+
+    const removeFileBtn = e.target.closest(".btn-remove-print-file");
+    if (removeFileBtn) {
+      const { fileId, fileName } = removeFileBtn.dataset;
+      const ok = await showConfirmModal(
+        "Remove Print File",
+        `Remove print file "${fileName}"? The Foreman will no longer dispatch it for this variant. Past print jobs keep their history.`,
+        "Remove"
+      );
+      if (!ok) return;
+      try {
+        await supabaseClient.from("print_files").delete().eq("id", fileId).throwOnError();
+        removeFileBtn.closest(".rounded-lg")?.remove();
+        cachedVariants.forEach(v => { if (v.print_files) v.print_files = v.print_files.filter(f => f.id !== fileId); });
+        logAction(`Print file removed via product editor: ${fileName}`, "warning", { print_file_id: fileId });
+        showToast(`Print file "${fileName}" removed.`, "success");
+        fetchAndRenderCatalog();
+      } catch (err) {
+        showToast("Remove failed: " + err.message, "error");
+      }
+      return;
+    }
+
+    const removeBtn = e.target.closest(".btn-remove-variant");
+    if (!removeBtn) return;
+
+    const { variantId, variantSku, fileCount, isLast } = removeBtn.dataset;
+    let msg = `Delete variant ${variantSku}? This also deletes its ${fileCount} linked print file record(s) and any listing variation mappings. Past order history is kept (unlinked).`;
+    if (isLast === "true") msg += ` This is the LAST variant — the product will disappear from the catalog view until a new variant is added.`;
+    const ok = await showConfirmModal("Delete Variant", msg, "Delete");
+    if (!ok) return;
+
+    try {
+      await supabaseClient.from("variants").delete().eq("id", variantId).throwOnError();
+      contentEl.querySelector(`.variant-edit-block[data-variant-id="${variantId}"]`)?.remove();
+      cachedVariants = cachedVariants.filter(v => v.id !== variantId);
+      logAction(`Variant deleted via product editor: ${variantSku}`, "warning", { variant_id: variantId, print_files_cascaded: Number(fileCount) });
+      showToast(`Variant ${variantSku} deleted.`, "success");
+      fetchAndRenderCatalog();
+    } catch (err) {
+      showToast("Delete failed: " + err.message, "error");
+    }
+  });
+
+  saveBtn.addEventListener("click", async () => {
+    const productId = contentEl.dataset.productId;
+
+    // --- Updates to existing rows: only send fields whose value actually changed ---
     const updates = {};
-    fields.forEach(el => {
-      const { table, id, field, type } = el.dataset;
+    let invalid = null;
+    contentEl.querySelectorAll(".edit-field[data-id]").forEach(el => {
+      const { table, id, field, type, initial } = el.dataset;
+      const val = catalogEditCoerce(el.value, type);
+      const initialVal = catalogEditCoerce(initial ?? "", type);
+      if (val === initialVal) return;
+      if (val === null && (field === "master_sku" || field === "variant_sku")) {
+        invalid = `${field.replace("_", " ")} cannot be empty.`;
+        el.focus();
+        return;
+      }
       const key = `${table}::${id}`;
       if (!updates[key]) updates[key] = { table, id, data: {} };
-      let val = el.value.trim();
-      if (type === "number") val = val === "" ? null : parseFloat(val);
-      else val = val === "" ? null : val;
       updates[key].data[field] = val;
     });
+    if (invalid) { showToast(invalid, "error"); return; }
+
+    // --- New variants from "Add Variant" blocks ---
+    const inserts = [];
+    for (const block of contentEl.querySelectorAll(".variant-new-block")) {
+      const row = { product_id: productId };
+      block.querySelectorAll(".edit-field").forEach(el => {
+        row[el.dataset.field] = catalogEditCoerce(el.value, el.dataset.type);
+      });
+      if (!row.variant_sku) {
+        showToast("New variant needs a Variant SKU before saving.", "error");
+        block.querySelector(`.edit-field[data-field="variant_sku"]`)?.focus();
+        return;
+      }
+      inserts.push(row);
+    }
+
+    // --- New print files from "Add Print File" blocks (attach to existing variants) ---
+    const fileInserts = [];
+    for (const block of contentEl.querySelectorAll(".print-file-new-block")) {
+      const row = { variant_id: block.dataset.variantId };
+      block.querySelectorAll(".edit-field").forEach(el => {
+        row[el.dataset.field] = catalogEditCoerce(el.value, el.dataset.type);
+      });
+      if (!row.print_file_name) {
+        showToast("New print file needs a File Name before saving.", "error");
+        block.querySelector(`.edit-field[data-field="print_file_name"]`)?.focus();
+        return;
+      }
+      fileInserts.push(row);
+    }
+
+    if (Object.keys(updates).length === 0 && inserts.length === 0 && fileInserts.length === 0) {
+      showToast("No changes to save.", "info");
+      catalogEditDirty = false;
+      modal.classList.remove("active");
+      return;
+    }
 
     saveBtn.disabled = true;
     saveBtn.innerHTML = `<span class="material-symbols-outlined text-sm animate-spin">sync</span> Saving...`;
 
     try {
-      await Promise.all(Object.values(updates).map(({ table, id, data }) =>
-        supabaseClient.from(table).update(data).eq("id", id).throwOnError()
-      ));
+      if (!await catalogEditValidateSkus(contentEl, updates, inserts, productId)) return;
+
+      await Promise.all([
+        ...Object.values(updates).map(({ table, id, data }) =>
+          supabaseClient.from(table).update(data).eq("id", id).throwOnError()
+        ),
+        ...(inserts.length ? [supabaseClient.from("variants").insert(inserts).throwOnError()] : []),
+        ...(fileInserts.length ? [supabaseClient.from("print_files").insert(fileInserts).throwOnError()] : []),
+      ]);
       cachedVariants = [];
-      showToast("Product saved successfully.", "success");
-      closeModal();
+      catalogEditDirty = false;
+      const parts = [];
+      if (Object.keys(updates).length) parts.push(`${Object.keys(updates).length} record(s) updated`);
+      if (inserts.length) parts.push(`${inserts.length} variant(s) added`);
+      if (fileInserts.length) parts.push(`${fileInserts.length} print file(s) added`);
+      logAction(`Product edited via editor: ${parts.join(", ")}`, "info", {
+        product_id: productId,
+        updated: Object.values(updates).map(u => `${u.table}:${Object.keys(u.data).join("|")}`),
+        variants_added: inserts.map(r => r.variant_sku),
+        files_added: fileInserts.map(r => r.print_file_name),
+      });
+      showToast(`Saved: ${parts.join(", ")}.`, "success");
+      modal.classList.remove("active");
       fetchAndRenderCatalog();
     } catch (err) {
       showToast("Save failed: " + err.message, "error");
@@ -5790,7 +6254,7 @@ function renderListingsFromCache() {
   }
 
   if (filtered.length === 0) {
-    tbody.innerHTML = emptyDiv("No listings found.", "storefront");
+    tbody.innerHTML = emptyDiv("No listings found.", "storefront", `<button class="empty-action" onclick="document.getElementById('add-listing-header-btn')?.click()"><span class="material-symbols-outlined">storefront</span>Add Listing</button>`);
     return;
   }
 
@@ -6107,10 +6571,15 @@ async function saveEditListing() {
   }
 }
 
+// dataset.variationId present => edit that existing row.
+// dataset.listingId present (no variationId) => add a brand-new mapping row to that listing.
 async function openEditVariationModal(dataset) {
-  document.getElementById("edit-variation-id").value             = dataset.variationId;
+  const isNew = !dataset.variationId;
+  document.getElementById("edit-variation-id").value             = dataset.variationId || "";
+  document.getElementById("edit-variation-listing-id").value     = dataset.listingId || "";
   document.getElementById("edit-variation-platform-name").value  = dataset.platformName || "";
   document.getElementById("edit-variation-normalized-name").value = dataset.normalized || "";
+  document.getElementById("edit-variation-modal-title").textContent = isNew ? "Add Variation" : "Edit Variation";
 
   const variantSelect = document.getElementById("edit-variation-variant-id");
   if (variantSelect.options.length <= 1) {
@@ -6141,39 +6610,77 @@ function closeEditVariationModal() {
 async function saveEditVariation() {
   if (!supabaseClient) return;
   const id = document.getElementById("edit-variation-id").value;
+  const listingId = document.getElementById("edit-variation-listing-id").value;
   const saveBtn = document.getElementById("edit-variation-save-btn");
   saveBtn.disabled = true;
   saveBtn.innerHTML = `<span class="material-symbols-outlined text-sm animate-spin">sync</span> Saving…`;
 
   const variantId = document.getElementById("edit-variation-variant-id").value || null;
-  const updates = {
-    platform_variation_name:   document.getElementById("edit-variation-platform-name").value.trim(),
-    normalized_variation_name: document.getElementById("edit-variation-normalized-name").value.trim(),
-    variant_id:  variantId,
-    updated_at:  new Date().toISOString(),
-  };
+  const platformName = document.getElementById("edit-variation-platform-name").value.trim();
+  const normalizedName = document.getElementById("edit-variation-normalized-name").value.trim();
 
   try {
-    const { error } = await supabaseClient.from("listing_variations").update(updates).eq("id", id);
-    if (error) throw error;
+    let savedRow;
+    if (id) {
+      const updates = {
+        platform_variation_name:   platformName,
+        normalized_variation_name: normalizedName,
+        variant_id:  variantId,
+        updated_at:  new Date().toISOString(),
+      };
+      const { data, error } = await supabaseClient.from("listing_variations").update(updates).eq("id", id).select().single();
+      if (error) throw error;
+      savedRow = data;
 
-    // Patch cache
-    for (const l of cachedListings) {
-      if (!l.listing_variations) continue;
-      const vidx = l.listing_variations.findIndex(v => v.id === id);
-      if (vidx === -1) continue;
-      l.listing_variations[vidx] = { ...l.listing_variations[vidx], ...updates };
-      if (variantId) {
-        const src = cachedVariants.find(v => v.id === variantId);
-        if (src) l.listing_variations[vidx].variants = { id: src.id, variant_sku: src.variant_sku, variant_type: src.variant_type };
-      } else {
-        l.listing_variations[vidx].variants = null;
+      for (const l of cachedListings) {
+        if (!l.listing_variations) continue;
+        const vidx = l.listing_variations.findIndex(v => v.id === id);
+        if (vidx === -1) continue;
+        l.listing_variations[vidx] = { ...l.listing_variations[vidx], ...updates };
+        if (variantId) {
+          const src = cachedVariants.find(v => v.id === variantId);
+          if (src) l.listing_variations[vidx].variants = { id: src.id, variant_sku: src.variant_sku, variant_type: src.variant_type };
+        } else {
+          l.listing_variations[vidx].variants = null;
+        }
+        break;
       }
-      break;
+    } else {
+      if (!listingId) throw new Error("No listing selected for this new mapping.");
+      const listing = cachedListings.find(l => l.id === listingId);
+      const insertData = {
+        listing_id: listingId,
+        platform_variation_name:   platformName,
+        normalized_variation_name: normalizedName,
+        variant_id: variantId,
+        reference_name: `${listing?.platform_listing_name || ""} [${platformName || "Base"}]`,
+        match_source: "manual",
+      };
+      const { data, error } = await supabaseClient.from("listing_variations").insert(insertData).select().single();
+      if (error) throw error;
+      savedRow = data;
+
+      if (listing) {
+        if (variantId) {
+          const src = cachedVariants.find(v => v.id === variantId);
+          if (src) savedRow.variants = { id: src.id, variant_sku: src.variant_sku, variant_type: src.variant_type };
+        }
+        listing.listing_variations = [...(listing.listing_variations || []), savedRow];
+      }
     }
 
     closeEditVariationModal();
     renderListingsFromCache();
+    if (selectedProductId) {
+      const product = (lastRenderedProductsList || []).find(p => p.id === selectedProductId);
+      if (product) {
+        const panel = document.getElementById("product-detail-panel");
+        if (panel) {
+          panel.innerHTML = buildProductDetailPanel(product);
+          bindProductDetailPanelEvents(product);
+        }
+      }
+    }
     showToast("Variation saved.", "success");
   } catch (err) {
     showToast(`Save failed: ${err.message}`, "error");

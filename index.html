@@ -489,7 +489,7 @@
       <!-- System Clock & Date -->
       <div class="flex flex-col justify-center select-none font-data-mono text-outline leading-none text-right">
         <span class="text-xs font-bold text-on-surface" id="system-clock">--:--:-- --</span>
-        <span class="text-[9px] uppercase tracking-wider mt-1" id="system-date">Loading...</span>
+        <span class="text-[9px] uppercase tracking-wider mt-1" id="system-date">—</span>
       </div>
 
       <span class="sp-dispatch-indicator hidden items-center gap-1 px-2 py-1 rounded-full bg-warning/10 border border-warning/30 text-warning text-xs font-label-caps" title="SimplyPrint dispatch is disabled">
@@ -615,6 +615,7 @@
               <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
                 <span class="material-symbols-outlined text-primary">robot</span>
                 <span>Active 3D Printers</span>
+                <span class="fresh-stamp" data-fresh="printers"></span>
               </h3>
               <div class="flex items-center gap-1.5 flex-wrap">
                 <a href="https://simplyprint.io/panel/printers" target="_blank" class="px-2 py-1 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-[10px] font-semibold inline-flex items-center gap-1 no-underline" title="SimplyPrint Portal">
@@ -650,10 +651,7 @@
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="overview-printers-grid">
               <!-- Dynamically populated printer cards (2 columns, 2 rows) -->
-              <div class="col-span-2 text-center text-outline py-8 font-data-mono">
-                <span class="material-symbols-outlined animate-spin text-xl mb-1 block">autorenew</span>
-                Loading printer telemetry...
-              </div>
+              <div class="col-span-2 skeleton-stack"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div>
             </div>
           </div>
 
@@ -670,10 +668,7 @@
 
             <div class="flex flex-col gap-2 h-[440px] overflow-y-auto pr-1" id="overview-printers-queue-list">
               <!-- Dynamically populated queue items -->
-              <div class="text-center text-outline py-8 font-data-mono">
-                <span class="material-symbols-outlined animate-spin text-base mb-1 block">autorenew</span>
-                Loading queue...
-              </div>
+              <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
             </div>
           </div>
 
@@ -803,7 +798,7 @@
                   </thead>
                   <tbody id="overview-jobs-tbody" class="text-xs">
                     <tr>
-                      <td colspan="4" class="py-4 text-center text-outline">Loading activity...</td>
+                      <td colspan="4"><div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></td>
                     </tr>
                   </tbody>
                 </table>
@@ -1084,7 +1079,7 @@
                     </tr>
                   </thead>
                   <tbody id="waybills-tbody" class="text-sm">
-                    <tr><td colspan="6" class="px-6 py-10 text-center text-outline font-data-mono text-xs">Loading waybills…</td></tr>
+                    <tr><td colspan="6"><div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1093,7 +1088,7 @@
             <!-- Compiled PDFs panel (hidden by default) -->
             <div id="waybill-panel-pdfs" class="hidden">
               <div class="overflow-y-auto rounded-xl border border-outline-variant/15 bg-black/10 h-[calc(100vh-340px)] min-h-[360px]" id="master-pdfs-container">
-                <div class="text-center text-outline py-10 font-data-mono text-xs">Loading…</div>
+                <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div></div>
               </div>
             </div>
 
@@ -1185,7 +1180,7 @@
             <div class="omd-list-panel">
               <div class="omd-list-head" id="catalog-list-head"></div>
               <div class="omd-list-rows" id="catalog-tbody">
-                <div class="text-center text-outline py-12">Loading catalog items...</div>
+                <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
               </div>
             </div>
             <div class="omd-detail-panel" id="product-detail-panel">
@@ -1264,7 +1259,7 @@
           <!-- Listings scrollable container -->
           <div class="listings-body hidden h-[calc(100vh-340px)] min-h-[400px] overflow-y-auto pr-1 bg-black/10 rounded-xl border border-outline-variant/10 p-4" id="listings-container">
             <div class="flex flex-col gap-3" id="listings-tbody">
-              <div class="text-center text-outline py-12 font-data-mono text-xs">Loading listings...</div>
+              <div class="skeleton-stack"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div>
             </div>
           </div>
         </div>
@@ -1580,7 +1575,7 @@
             <!-- Logs Container -->
             <div class="glass-panel rounded-xl overflow-hidden border border-outline-variant/15 bg-black/10">
               <div id="logs-list" class="flex flex-col gap-3.5 max-h-[720px] overflow-y-auto p-4 bg-slate-950/20">
-                <div class="text-center text-outline py-12">Loading system logs...</div>
+                <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
               </div>
             </div>
           </div>
@@ -1589,7 +1584,7 @@
           <div id="logs-panel-printjobs" class="hidden">
             <div class="glass-panel rounded-xl overflow-hidden border border-outline-variant/15 bg-black/10">
               <div id="logs-print-jobs-list" class="max-h-[720px] overflow-y-auto">
-                <div class="text-center text-outline py-12 font-data-mono text-xs">Loading print jobs...</div>
+                <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
               </div>
             </div>
           </div>
@@ -1741,7 +1736,7 @@
           <div class="glass-panel rounded-xl p-4 flex flex-col gap-3">
             <div class="flex justify-between items-center">
               <h3 class="text-xs font-bold text-on-surface flex items-center gap-2">
-                <span class="material-symbols-outlined text-primary text-base">analytics</span> Gemini API · Daily Quota
+                <span class="material-symbols-outlined text-primary text-base">analytics</span> Gemini API · Daily Quota <span class="fresh-stamp" data-fresh="gemini"></span>
               </h3>
               <span class="text-[9px] font-data-mono text-primary uppercase bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded">gemini-2.0-flash-lite</span>
             </div>
@@ -1799,13 +1794,11 @@
               <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
                 <span class="material-symbols-outlined text-primary">robot</span>
                 <span>Active 3D Printers</span>
+                <span class="fresh-stamp" data-fresh="printers"></span>
               </h3>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="printers-grid">
                 <!-- Dynamically populated printer cards -->
-                <div class="col-span-2 text-center text-outline py-12 font-data-mono">
-                  <span class="material-symbols-outlined animate-spin text-2xl mb-2 block">autorenew</span>
-                  Loading printer telemetry...
-                </div>
+                <div class="col-span-2 skeleton-stack"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div>
               </div>
             </div>
 
@@ -1816,14 +1809,11 @@
                   <span class="material-symbols-outlined text-primary">list_alt</span>
                   <span>Print Queue</span>
                 </div>
-                <span class="text-xs font-data-mono text-outline" id="printers-queue-header-stats">0 (0m)</span>
+                <span class="flex items-center gap-2"><span class="fresh-stamp" data-fresh="printers"></span><span class="text-xs font-data-mono text-outline" id="printers-queue-header-stats">0 (0m)</span></span>
               </h3>
               <div class="flex flex-col gap-2.5 h-[500px] overflow-y-auto pr-1" id="printers-queue-list">
                 <!-- Dynamically populated queue items -->
-                <div class="text-center text-outline py-12 font-data-mono">
-                  <span class="material-symbols-outlined animate-spin text-xl mb-1.5 block">autorenew</span>
-                  Loading queue...
-                </div>
+                <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
               </div>
             </div>
           </div>
@@ -1844,10 +1834,7 @@
             
             <div class="overflow-x-auto w-full border border-outline-variant/10 rounded-lg bg-black/10 p-4 min-w-[800px]" id="gantt-chart-container">
               <!-- Dynamically populated gantt chart -->
-              <div class="text-center text-outline py-12 font-data-mono">
-                <span class="material-symbols-outlined animate-spin text-xl mb-1 block">autorenew</span>
-                Loading timeline...
-              </div>
+              <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
             </div>
           </div>
 
@@ -1856,13 +1843,11 @@
             <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
               <span class="material-symbols-outlined text-primary">dynamic_feed</span>
               <span>Dispatched Print Jobs</span>
+              <span class="fresh-stamp" data-fresh="printjobs"></span>
             </h3>
             <div class="h-[400px] overflow-y-auto pr-1 bg-black/10 rounded-lg border border-outline-variant/10" id="printers-jobs-list">
               <!-- Dynamically populated print jobs table -->
-              <div class="text-center text-outline py-12 font-data-mono">
-                <span class="material-symbols-outlined animate-spin text-xl mb-1 block">autorenew</span>
-                Loading print jobs...
-              </div>
+              <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
             </div>
           </div>
 
@@ -2082,11 +2067,16 @@
       <div id="catalog-edit-content" class="flex flex-col gap-5">
         <!-- Dynamically populated -->
       </div>
-      <div class="flex justify-end gap-3 border-t border-outline-variant/10 pt-4 mt-2 sticky bottom-0 bg-surface-container z-10 pb-1">
+      <div class="flex justify-between gap-3 border-t border-outline-variant/10 pt-4 mt-2 sticky bottom-0 bg-surface-container z-10 pb-1">
+        <button id="catalog-edit-add-variant-btn" class="px-4 py-2 rounded-lg border border-tertiary/30 text-tertiary hover:bg-tertiary/10 text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer">
+          <span class="material-symbols-outlined text-sm">add_circle</span> Add Variant
+        </button>
+        <div class="flex gap-3">
         <button id="catalog-edit-cancel-btn" class="px-4 py-2 rounded-lg border border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:bg-white/5 text-sm font-semibold transition-all cursor-pointer">Cancel</button>
         <button id="catalog-edit-save-btn" class="px-4 py-2 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary border border-primary/30 text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer">
           <span class="material-symbols-outlined text-sm">save</span> Save Changes
         </button>
+        </div>
       </div>
     </div>
   </div>
@@ -2181,13 +2171,14 @@
   <div class="modal-overlay" id="edit-variation-modal">
     <div class="glass-panel rounded-2xl w-full max-w-lg mx-4 flex flex-col">
       <div class="flex items-center justify-between p-5 border-b border-outline-variant/10">
-        <h3 class="font-headline-sm text-on-surface uppercase tracking-widest text-sm">Edit Variation</h3>
+        <h3 id="edit-variation-modal-title" class="font-headline-sm text-on-surface uppercase tracking-widest text-sm">Edit Variation</h3>
         <button id="edit-variation-close-btn" class="p-1.5 rounded-full hover:bg-white/10 text-outline hover:text-on-surface transition-all">
           <span class="material-symbols-outlined text-xl">close</span>
         </button>
       </div>
       <div class="p-5 flex flex-col gap-4">
         <input type="hidden" id="edit-variation-id">
+        <input type="hidden" id="edit-variation-listing-id">
         <div class="flex flex-col gap-1.5">
           <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Platform Variation Name</label>
           <input type="text" id="edit-variation-platform-name" placeholder="As shown on Shopee / Lazada">
@@ -2317,6 +2308,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=1.8.0"></script>
+  <script src="app.js?v=1.9.0"></script>
 </body>
 </html>
