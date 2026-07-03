@@ -245,7 +245,7 @@ async function initShopSwitcher() {
   try {
     const { data: shops, error } = await supabaseClient
       .from("shops")
-      .select("id, name, slug, is_active")
+      .select("id, name, slug, sku_prefix, is_active")
       .order("name", { ascending: true });
     if (error) throw error;
     cachedShops = shops || [];
@@ -308,8 +308,7 @@ function onShopChange() {
     renderListingsFromCache();
   }
   if (currentTab === "overview") {
-    fetchAndRenderOverviewJobs();
-    fetchAndRenderOverviewLogs();
+    fetchAndRenderMissionControl();
   }
 }
 
@@ -2250,6 +2249,9 @@ function buildProductDetailPanel(product) {
   }
 
   const hasUnmappedVars = listings.some(l => (l.listing_variations || []).some(lv => !lv.variant_id));
+  // First variant with a photos folder — Drive folder URLs can't be rendered as
+  // thumbnails client-side, so link out instead.
+  const picsUrl = (product.variations.find(v => v.pictures_gdrive_url) || {}).pictures_gdrive_url;
 
   return `
     <div class="omd-dp-head">
@@ -2259,6 +2261,7 @@ function buildProductDetailPanel(product) {
         <div class="omd-meta" style="margin-top:4px;">${escapeHtml(product.brand_name)} · ${escapeHtml(product.product_category)}</div>
       </div>
       <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+        ${picsUrl ? `<a href="${picsUrl}" target="_blank" rel="noopener" class="p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center" title="Open product photos (Google Drive)"><span class="material-symbols-outlined text-[16px]">photo_library</span></a>` : ""}
         <button class="btn-product-details p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center cursor-pointer" data-product-id="${product.id}" title="View Full Details">
           <span class="material-symbols-outlined text-[16px]">info</span>
         </button>
@@ -2448,10 +2451,9 @@ function setupTabs() {
       // Refresh data for the active tab
       if (tabId === "overview") {
         fetchAgentHeartbeats();
-        fetchAndRenderOverviewJobs();
-        fetchAndRenderOverviewLogs();
         fetchSummaryStats();
-        fetchAndRenderPrintersAndQueue();
+        fetchAndRenderPrintersAndQueue(); // still feeds the Queue Depth KPI
+        fetchAndRenderMissionControl();
       }
       if (tabId === "orders") {
         // Merged Orders + Waybills tab
@@ -3587,6 +3589,230 @@ async function fetchAndRenderOverviewLogs() {
   // Integrated into fetchAndRenderOverviewJobs
 }
 
+// ==========================================================================
+// Mission Control (Aurora 3.0): hand-rolled SVG analytics + attention feed.
+// No chart library — inline SVG keeps the no-build vanilla stack.
+// ==========================================================================
+
+function chartPalette(i) {
+  return ["#8b7cf6", "#5fb4ff", "#3ddc97", "#f5b942", "#f2657a", "#22d3ee"][i % 6];
+}
+
+function localDayKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Last-N-days buckets: returns { keys: ["2026-06-04",...], counts: Map }
+function dayBuckets(n) {
+  const keys = [];
+  for (let i = n - 1; i >= 0; i--) {
+    keys.push(localDayKey(new Date(Date.now() - i * 86400000)));
+  }
+  return keys;
+}
+
+function svgSparkline(values, { color = "#ff8c00" } = {}) {
+  if (!values.length) return "";
+  const w = 140, h = 34;
+  const max = Math.max(...values, 1);
+  const pts = values.map((v, i) => `${((i / Math.max(values.length - 1, 1)) * w).toFixed(1)},${(h - (v / max) * (h - 6) - 2).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">
+    <polygon points="0,${h} ${pts} ${w},${h}" fill="${color}" opacity="0.10"></polygon>
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.7"></polyline>
+  </svg>`;
+}
+
+function svgBarChart(values, labels, { color = "#8b7cf6" } = {}) {
+  const w = 600, h = 170, padB = 18, padT = 10, padL = 26, padR = 6;
+  const max = Math.max(...values, 1);
+  const innerW = w - padL - padR, innerH = h - padT - padB;
+  const bw = innerW / values.length;
+  const grid = [0.5, 1].map(f => {
+    const y = padT + innerH - innerH * f;
+    return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w - padR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3 4"></line>
+      <text x="${padL - 5}" y="${(y + 3).toFixed(1)}" font-size="8" fill="rgba(255,255,255,0.3)" text-anchor="end" font-family="JetBrains Mono, monospace">${Math.round(max * f)}</text>`;
+  }).join("");
+  const bars = values.map((v, i) => {
+    const bh = (v / max) * innerH;
+    const x = padL + i * bw + bw * 0.15;
+    const y = padT + innerH - bh;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw * 0.7).toFixed(1)}" height="${Math.max(bh, v > 0 ? 2 : 0).toFixed(1)}" rx="2" fill="${color}" opacity="${v > 0 ? 0.85 : 0.15}"><title>${labels[i]}: ${v}</title></rect>`;
+  }).join("");
+  const xLabels = values.map((_, i) => (i % 6 === 0 || i === values.length - 1)
+    ? `<text x="${(padL + i * bw + bw / 2).toFixed(1)}" y="${h - 4}" font-size="8" fill="rgba(255,255,255,0.35)" text-anchor="middle" font-family="JetBrains Mono, monospace">${labels[i].slice(5)}</text>`
+    : "").join("");
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:100%;display:block;">${grid}${bars}${xLabels}</svg>`;
+}
+
+function svgLineChart(values, labels, { color = "#22d3ee" } = {}) {
+  const w = 420, h = 170, padB = 18, padT = 10, padL = 26, padR = 8;
+  const max = Math.max(...values, 1);
+  const innerW = w - padL - padR, innerH = h - padT - padB;
+  const px = i => padL + (i / Math.max(values.length - 1, 1)) * innerW;
+  const py = v => padT + innerH - (v / max) * innerH;
+  const pts = values.map((v, i) => `${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(" ");
+  const grid = [0.5, 1].map(f => {
+    const y = padT + innerH - innerH * f;
+    return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w - padR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3 4"></line>
+      <text x="${padL - 5}" y="${(y + 3).toFixed(1)}" font-size="8" fill="rgba(255,255,255,0.3)" text-anchor="end" font-family="JetBrains Mono, monospace">${Math.round(max * f)}</text>`;
+  }).join("");
+  const dots = values.map((v, i) => v > 0 ? `<circle cx="${px(i).toFixed(1)}" cy="${py(v).toFixed(1)}" r="2" fill="${color}"><title>${labels[i]}: ${v}</title></circle>` : "").join("");
+  const xLabels = values.map((_, i) => (i % 6 === 0 || i === values.length - 1)
+    ? `<text x="${px(i).toFixed(1)}" y="${h - 4}" font-size="8" fill="rgba(255,255,255,0.35)" text-anchor="middle" font-family="JetBrains Mono, monospace">${labels[i].slice(5)}</text>`
+    : "").join("");
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:100%;display:block;">
+    ${grid}
+    <polygon points="${padL},${(padT + innerH).toFixed(1)} ${pts} ${(padL + innerW).toFixed(1)},${(padT + innerH).toFixed(1)}" fill="${color}" opacity="0.08"></polygon>
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.85"></polyline>
+    ${dots}${xLabels}
+  </svg>`;
+}
+
+function svgDonut(segments) {
+  const total = segments.reduce((s, x) => s + x.value, 0);
+  if (total === 0) return emptyDiv("No orders in the last 30 days.", "donut_small");
+  const R = 44, C = 2 * Math.PI * R;
+  let acc = 0;
+  const rings = segments.map(s => {
+    const frac = s.value / total;
+    const ring = `<circle r="${R}" cx="60" cy="60" fill="none" stroke="${s.color}" stroke-width="14" stroke-dasharray="${(frac * C).toFixed(2)} ${(C - frac * C).toFixed(2)}" stroke-dashoffset="${(-acc * C).toFixed(2)}" transform="rotate(-90 60 60)" opacity="0.9"><title>${escapeHtml(s.label)}: ${s.value}</title></circle>`;
+    acc += frac;
+    return ring;
+  }).join("");
+  const legend = segments.map(s => `<div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-secondary);"><span style="width:8px;height:8px;border-radius:50%;background:${s.color};flex-shrink:0;"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.label)}</span><span style="font-family:var(--font-mono);color:var(--text-muted);">${s.value}</span></div>`).join("");
+  return `<div style="display:flex;align-items:center;gap:14px;height:100%;">
+    <svg viewBox="0 0 120 120" style="width:120px;height:120px;flex-shrink:0;">${rings}
+      <text x="60" y="57" text-anchor="middle" font-size="20" font-weight="700" fill="#f2f3f7" font-family="JetBrains Mono, monospace">${total}</text>
+      <text x="60" y="72" text-anchor="middle" font-size="8" fill="rgba(255,255,255,0.4)" font-family="JetBrains Mono, monospace">ORDERS</text>
+    </svg>
+    <div style="display:flex;flex-direction:column;gap:5px;min-width:0;flex:1;">${legend}</div>
+  </div>`;
+}
+
+function navigateToTab(tab) {
+  document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.click();
+}
+
+let attentionFeedItems = []; // click handlers resolved by index
+
+async function fetchAndRenderMissionControl() {
+  if (!supabaseClient) return;
+  const barsEl = document.getElementById("chart-orders-daily");
+  const donutEl = document.getElementById("chart-platform-donut");
+  const lineEl = document.getElementById("chart-throughput");
+  const attentionEl = document.getElementById("overview-attention-list");
+  if (!barsEl && !attentionEl) return;
+
+  try {
+    const sinceIso = new Date(Date.now() - 30 * 86400000).toISOString();
+    const [ordersRes, jobsRes, holdsRes, lowStockRes, listingsRes, printersRes] = await Promise.all([
+      supabaseClient.from("orders").select("order_timestamp, created_at, sales_platform, shop_id").gte("created_at", sinceIso),
+      supabaseClient.from("print_jobs").select("created_at, job_execution_status").gte("created_at", sinceIso),
+      supabaseClient.from("orders").select("id, platform_order_id, customer_name, shop_id").eq("overall_order_status", "hold"),
+      supabaseClient.from("variants").select("id, variant_sku, stock_quantity, products(id, product_base_name, shop_id)").lte("stock_quantity", 5),
+      supabaseClient.from("listings").select("id, products(id, product_base_name, shop_id), listing_variations(id, variant_id)"),
+      supabaseClient.from("simplyprint_printers").select("id, name, online"),
+    ]);
+
+    const orders = (ordersRes.data || []).filter(o => passesShopScope(o.shop_id));
+    const jobs = jobsRes.data || [];
+    const holds = (holdsRes.data || []).filter(o => passesShopScope(o.shop_id));
+    const lowStock = (lowStockRes.data || []).filter(v => passesShopScope(v.products?.shop_id));
+    const listings = (listingsRes.data || []).filter(l => passesShopScope(l.products?.shop_id));
+    const printers = printersRes.data || [];
+
+    // --- Charts ---
+    const keys = dayBuckets(30);
+    const orderCounts = Object.fromEntries(keys.map(k => [k, 0]));
+    orders.forEach(o => {
+      const k = localDayKey(new Date(o.order_timestamp || o.created_at));
+      if (k in orderCounts) orderCounts[k]++;
+    });
+    const orderSeries = keys.map(k => orderCounts[k]);
+    if (barsEl) barsEl.innerHTML = svgBarChart(orderSeries, keys, { color: "#8b7cf6" });
+
+    const sparkEl = document.getElementById("spark-orders");
+    if (sparkEl) sparkEl.innerHTML = svgSparkline(orderSeries.slice(-14), { color: "#ff8c00" });
+
+    const platCounts = {};
+    orders.forEach(o => {
+      const plat = (o.sales_platform || "Unknown").trim() || "Unknown";
+      platCounts[plat] = (platCounts[plat] || 0) + 1;
+    });
+    const segments = Object.entries(platCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, value], i) => ({ label, value, color: chartPalette(i) }));
+    if (donutEl) donutEl.innerHTML = svgDonut(segments);
+
+    const jobCounts = Object.fromEntries(keys.map(k => [k, 0]));
+    jobs.forEach(j => {
+      if ((j.job_execution_status || "").toLowerCase() !== "completed") return;
+      const k = localDayKey(new Date(j.created_at));
+      if (k in jobCounts) jobCounts[k]++;
+    });
+    if (lineEl) lineEl.innerHTML = svgLineChart(keys.map(k => jobCounts[k]), keys, { color: "#22d3ee" });
+
+    // --- Attention feed ---
+    const items = [];
+    holds.forEach(o => items.push({
+      icon: "pause_circle", color: "#f5b942", chip: "Hold",
+      label: `Order ${o.platform_order_id || o.id} on hold${o.customer_name ? " — " + o.customer_name : ""}`,
+      go: () => { selectedOrderId = o.id; navigateToTab("orders"); },
+    }));
+    listings.forEach(l => {
+      const unmapped = (l.listing_variations || []).filter(lv => !lv.variant_id).length;
+      if (unmapped === 0 || !l.products) return;
+      items.push({
+        icon: "link_off", color: "#f2657a", chip: "Unmapped",
+        label: `${unmapped} unmapped variation${unmapped !== 1 ? "s" : ""} — ${l.products.product_base_name}`,
+        go: () => { selectedProductId = l.products.id; catalogAttentionFilter = "needs_attention"; navigateToTab("products"); },
+      });
+    });
+    lowStock.forEach(v => {
+      if (!v.products) return;
+      items.push({
+        icon: "inventory", color: "#f5b942", chip: "Low stock",
+        label: `${v.variant_sku} — ${v.stock_quantity} left (${v.products.product_base_name})`,
+        go: () => { selectedProductId = v.products.id; catalogAttentionFilter = "low_stock"; navigateToTab("products"); },
+      });
+    });
+    printers.filter(pr => !pr.online).forEach(pr => items.push({
+      icon: "wifi_off", color: "#f2657a", chip: "Printer",
+      label: `${pr.name} is offline`,
+      go: () => navigateToTab("operations"),
+    }));
+
+    attentionFeedItems = items;
+    const countEl = document.getElementById("overview-attention-count");
+    if (countEl) countEl.textContent = items.length ? `(${items.length})` : "";
+
+    if (attentionEl) {
+      if (items.length === 0) {
+        attentionEl.innerHTML = emptyDiv("All clear — nothing needs attention.", "verified");
+      } else {
+        attentionEl.innerHTML = items.map((it, i) => `
+          <div class="attention-row" data-attn-idx="${i}">
+            <span class="material-symbols-outlined" style="font-size:16px; color:${it.color}; flex-shrink:0;">${it.icon}</span>
+            <span class="attention-label">${escapeHtml(it.label)}</span>
+            <span class="attention-chip" style="color:${it.color}; border-color:${it.color}40; background:${it.color}14;">${it.chip}</span>
+            <span class="material-symbols-outlined" style="font-size:14px; color:var(--text-muted); flex-shrink:0;">chevron_right</span>
+          </div>
+        `).join("");
+        attentionEl.querySelectorAll(".attention-row").forEach(row => {
+          row.addEventListener("click", () => {
+            const it = attentionFeedItems[Number(row.getAttribute("data-attn-idx"))];
+            if (it) it.go();
+          });
+        });
+      }
+    }
+
+    markFresh("analytics");
+  } catch (err) {
+    console.error("Mission Control fetch failed:", err);
+  }
+}
+
 // Fetch and Render Waybills Archive
 async function fetchAndRenderWaybillsArchive() {
   if (!supabaseClient) return;
@@ -3874,9 +4100,8 @@ window.addEventListener("DOMContentLoaded", () => {
     fetchSummaryStats();
     fetchAgentHeartbeats();
     // Overview tab data — fetched eagerly since overview is the default tab
-    fetchAndRenderOverviewJobs();
-    fetchAndRenderOverviewLogs();
-    fetchAndRenderPrintersAndQueue();
+    fetchAndRenderPrintersAndQueue(); // feeds the Queue Depth KPI
+    fetchAndRenderMissionControl();
     // Orders are heavy (nested items + print_jobs); defer until the Orders tab is active
     // fetchAndRenderOrders() is called by setupTabs when the user switches to that tab
     
@@ -3894,9 +4119,8 @@ window.addEventListener("DOMContentLoaded", () => {
         fetchAndRenderWaybillsArchive();
       } else if (currentTab === "overview") {
         fetchAgentHeartbeats();
-        fetchAndRenderOverviewJobs();
-        fetchAndRenderOverviewLogs();
         fetchAndRenderPrintersAndQueue();
+        fetchAndRenderMissionControl();
         fetchAndRenderOrders();
       }
     }, 300000);
@@ -6505,6 +6729,7 @@ function setupListingsTab() {
   document.getElementById("edit-variation-close-btn")?.addEventListener("click", closeEditVariationModal);
   document.getElementById("edit-variation-cancel-btn")?.addEventListener("click", closeEditVariationModal);
   document.getElementById("edit-variation-save-btn")?.addEventListener("click", saveEditVariation);
+  document.getElementById("edit-variation-delete-btn")?.addEventListener("click", deleteEditVariation);
   document.getElementById("edit-variation-modal")?.addEventListener("click", e => { if (e.target === e.currentTarget) closeEditVariationModal(); });
 
   document.getElementById("btn-add-listing")?.addEventListener("click", openAddListingModal);
@@ -6562,6 +6787,7 @@ async function saveEditListing() {
     if (idx !== -1) cachedListings[idx] = { ...cachedListings[idx], ...updates };
     closeEditListingModal();
     renderListingsFromCache();
+    logAction(`Listing updated: ${updates.platform_listing_name}`, "info", { listing_id: id });
     showToast("Listing saved.", "success");
   } catch (err) {
     showToast(`Save failed: ${err.message}`, "error");
@@ -6599,12 +6825,58 @@ async function openEditVariationModal(dataset) {
     });
   }
   variantSelect.value = dataset.variantId || "";
+  // Remember the original link so save can stamp match_source='manual' only
+  // when a human actually re-points the variation at a different variant.
+  variantSelect.dataset.original = dataset.variantId || "";
+
+  document.getElementById("edit-variation-delete-btn")?.classList.toggle("hidden", isNew);
 
   document.getElementById("edit-variation-modal").classList.add("active");
 }
 
 function closeEditVariationModal() {
   document.getElementById("edit-variation-modal").classList.remove("active");
+}
+
+// Delete a listing variation mapping from the edit modal. Orders already matched
+// through it keep their variant links; only future Stage-1 matching is affected.
+async function deleteEditVariation() {
+  if (!supabaseClient) return;
+  const id = document.getElementById("edit-variation-id").value;
+  if (!id) return;
+  const name = document.getElementById("edit-variation-platform-name").value.trim();
+
+  const ok = await showConfirmModal(
+    "Delete Mapping",
+    `Delete the variation mapping "${name || "(unnamed)"}"? Scout will no longer exact-match incoming orders with this variation text — they'll fall through to fuzzy matching.`,
+    "Delete"
+  );
+  if (!ok) return;
+
+  try {
+    const { error } = await supabaseClient.from("listing_variations").delete().eq("id", id);
+    if (error) throw error;
+
+    for (const l of cachedListings) {
+      if (l.listing_variations) l.listing_variations = l.listing_variations.filter(v => v.id !== id);
+    }
+    logAction(`Listing variation mapping deleted: ${name}`, "warning", { listing_variation_id: id });
+    closeEditVariationModal();
+    renderListingsFromCache();
+    if (selectedProductId) {
+      const product = (lastRenderedProductsList || []).find(p => p.id === selectedProductId);
+      if (product) {
+        const panel = document.getElementById("product-detail-panel");
+        if (panel) {
+          panel.innerHTML = buildProductDetailPanel(product);
+          bindProductDetailPanelEvents(product);
+        }
+      }
+    }
+    showToast("Mapping deleted.", "success");
+  } catch (err) {
+    showToast(`Delete failed: ${err.message}`, "error");
+  }
 }
 
 async function saveEditVariation() {
@@ -6628,6 +6900,9 @@ async function saveEditVariation() {
         variant_id:  variantId,
         updated_at:  new Date().toISOString(),
       };
+      // A human re-pointing the link overrides Scout's recorded provenance.
+      const originalVariantId = document.getElementById("edit-variation-variant-id").dataset.original || null;
+      if (variantId !== originalVariantId) updates.match_source = "manual";
       const { data, error } = await supabaseClient.from("listing_variations").update(updates).eq("id", id).select().single();
       if (error) throw error;
       savedRow = data;
@@ -6681,6 +6956,7 @@ async function saveEditVariation() {
         }
       }
     }
+    logAction(`Listing variation ${id ? "updated" : "added"}: ${platformName || "(unnamed)"}`, "info", { listing_variation_id: savedRow?.id, variant_id: variantId });
     showToast("Variation saved.", "success");
   } catch (err) {
     showToast(`Save failed: ${err.message}`, "error");
