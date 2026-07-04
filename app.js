@@ -6514,19 +6514,104 @@ function setLaunchStep(n) {
   });
 }
 
+// Built-in product types. Each type's label doubles as the product category —
+// the category sent to the backend is the label of the first selected type.
+const LAUNCH_BUILTIN_TYPES = [
+  { code: 'DS',    label: 'Display Stand with Nameplate', category: 'Display Stand' },
+  { code: 'DS-NP', label: 'Display Stand, No Nameplate',  category: 'Display Stand (No Nameplate)' },
+  { code: 'WM',    label: 'Wall Mount',                   category: 'Wall Mount' },
+  { code: 'FWM',   label: 'Full Wall Mount',              category: 'Full Wall Mount' },
+];
+
+function getCustomLaunchTypes() {
+  try { return JSON.parse(localStorage.getItem('orbot_custom_product_types')) || []; }
+  catch { return []; }
+}
+
+function getAllLaunchTypes() {
+  return [...LAUNCH_BUILTIN_TYPES, ...getCustomLaunchTypes()];
+}
+
+function renderLaunchTypes() {
+  const list = document.getElementById('launch-types-list');
+  if (!list) return;
+  const checked = new Set([...list.querySelectorAll('input[data-ptype]:checked')].map(cb => cb.dataset.ptype));
+  const plaqueVal = document.getElementById('launch-plaque-count')?.value || '1';
+  list.innerHTML = getAllLaunchTypes().map(t => `
+    <div class="flex items-center justify-between">
+      <label class="flex items-center gap-3 cursor-pointer select-none">
+        <input type="checkbox" data-ptype="${escapeHtml(t.code)}" ${checked.has(t.code) ? 'checked' : ''} style="accent-color:#8b7cf6" />
+        <span class="text-sm text-white font-medium">${escapeHtml(t.code)}</span>
+        <span class="text-xs text-[#6b7280]">${escapeHtml(t.label)}</span>
+      </label>
+      ${t.code === 'DS' ? `
+        <div id="launch-plaque-row" class="${checked.has('DS') ? 'flex' : 'hidden'} items-center gap-2">
+          <span class="text-xs text-[#9ca3af]">Plaques:</span>
+          <input id="launch-plaque-count" type="text" value="${escapeHtml(plaqueVal)}" class="w-14 text-center" style="padding:0.375rem 0.5rem !important" />
+        </div>` : ''}
+      ${t.custom ? `
+        <button data-remove-type="${escapeHtml(t.code)}" class="text-xs text-[#6b7280] hover:text-red-400 transition-colors" title="Remove custom type">
+          <span class="material-symbols-outlined" style="font-size:14px">close</span>
+        </button>` : ''}
+    </div>`).join('');
+}
+
+function addCustomLaunchType() {
+  const codeEl  = document.getElementById('launch-new-type-code');
+  const labelEl = document.getElementById('launch-new-type-label');
+  let code    = (codeEl?.value || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  const label = (labelEl?.value || '').trim();
+  if (!label) { setLaunchStatus('error', 'Enter a category name, e.g. Light Kit.'); return; }
+  if (!code) {
+    // Derive a code from the name: initials for multi-word ("Light Kit" -> LK),
+    // first 3 letters for single-word; suffix a number if taken.
+    const words = label.toUpperCase().replace(/[^A-Z0-9 ]/g, '').split(/\s+/).filter(Boolean);
+    let base = words.length > 1 ? words.map(w => w[0]).join('') : words[0]?.slice(0, 3) || '';
+    if (!base) { setLaunchStatus('error', 'Enter a code (used in SKUs, e.g. LK) for this category.'); return; }
+    code = base;
+    for (let i = 2; getAllLaunchTypes().some(t => t.code === code); i++) code = `${base}${i}`;
+  }
+  if (getAllLaunchTypes().some(t => t.code === code)) { setLaunchStatus('error', `Type "${code}" already exists.`); return; }
+  const custom = getCustomLaunchTypes();
+  custom.push({ code, label, category: label, custom: true });
+  localStorage.setItem('orbot_custom_product_types', JSON.stringify(custom));
+  codeEl.value = ''; labelEl.value = '';
+  renderLaunchTypes();
+  document.querySelector(`#launch-types-list input[data-ptype="${code}"]`)?.click();
+}
+
 function initLaunchTab() {
   setLaunchStep(1);
   if (_launchTabReady) return;
   _launchTabReady = true;
 
   renderLaunchImageGrid();
+  renderLaunchTypes();
 
-  // DS checkbox toggles plaque count row
-  document.getElementById('launch-type-ds')?.addEventListener('change', (e) => {
+  // Delegated: single-select enforcement; DS checkbox toggles plaque count row; X removes a custom type
+  const typesList = document.getElementById('launch-types-list');
+  typesList?.addEventListener('change', (e) => {
+    if (!e.target.dataset?.ptype) return;
+    if (e.target.checked) {
+      typesList.querySelectorAll('input[data-ptype]:checked').forEach(cb => {
+        if (cb !== e.target) cb.checked = false;
+      });
+    }
+    const ds = typesList.querySelector('input[data-ptype="DS"]');
     const row = document.getElementById('launch-plaque-row');
-    if (row) row.classList.toggle('hidden', !e.target.checked);
-    if (!e.target.checked) row?.classList.remove('flex');
-    else row?.classList.add('flex');
+    row?.classList.toggle('hidden', !ds?.checked);
+    row?.classList.toggle('flex', !!ds?.checked);
+  });
+  typesList?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-remove-type]');
+    if (!btn) return;
+    const custom = getCustomLaunchTypes().filter(t => t.code !== btn.dataset.removeType);
+    localStorage.setItem('orbot_custom_product_types', JSON.stringify(custom));
+    renderLaunchTypes();
+  });
+  document.getElementById('launch-add-type-btn')?.addEventListener('click', addCustomLaunchType);
+  document.getElementById('launch-new-type-label')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addCustomLaunchType();
   });
 
   // Image grid: click empty slot → open picker
@@ -6720,11 +6805,7 @@ async function cleanLaunchImages(files) {
 let _launchVariants = [];
 
 function getLaunchFormData() {
-  const types = [];
-  if (document.getElementById('launch-type-ds')?.checked)   types.push('DS');
-  if (document.getElementById('launch-type-dsnp')?.checked) types.push('DS-NP');
-  if (document.getElementById('launch-type-wm')?.checked)   types.push('WM');
-  if (document.getElementById('launch-type-fwm')?.checked)  types.push('FWM');
+  const types = [...document.querySelectorAll('#launch-types-list input[data-ptype]:checked')].map(cb => cb.dataset.ptype);
   const platforms = [];
   if (document.getElementById('launch-plat-shopee')?.checked) platforms.push('shopee');
   if (document.getElementById('launch-plat-lazada')?.checked) platforms.push('lazada');
@@ -6733,7 +6814,7 @@ function getLaunchFormData() {
     set_number:       document.getElementById('launch-set-number')?.value.trim(),
     theme:            document.getElementById('launch-theme')?.value,
     brand_name:       document.getElementById('launch-brand-name')?.value.trim() || 'Blocked Off',
-    product_category: document.getElementById('launch-product-category')?.value.trim() || '',
+    product_category: getAllLaunchTypes().find(t => t.code === types[0])?.category || '',
     product_types: types,
     plaque_count: parseInt(document.getElementById('launch-plaque-count')?.value) || 1,
     price_myr:    priceOrNull(document.getElementById('launch-price')?.value),
@@ -6751,12 +6832,22 @@ function setLaunchStatus(type, msg) {
 }
 
 async function doLaunchPreview() {
-  const { set_name, set_number, theme, brand_name, product_types, plaque_count, price_myr, platforms } = getLaunchFormData();
-  if (!set_name || !set_number || !theme || product_types.length === 0) {
-    setLaunchStatus('error', 'Fill in set name, set number, theme, and select at least one product type.');
+  const { set_name, set_number, theme, brand_name, product_types, plaque_count, price_myr, price_sgd, platforms } = getLaunchFormData();
+  const missing = [];
+  if (!set_name)                 missing.push('set name');
+  if (!set_number)               missing.push('set number');
+  if (!theme)                    missing.push('theme');
+  if (!brand_name)               missing.push('brand name');
+  if (product_types.length === 0) missing.push('product type');
+  if (!plaque_count || plaque_count < 1) missing.push('plaque count');
+  if (price_myr == null)         missing.push('price (MYR)');
+  if (price_sgd == null)         missing.push('price (SGD)');
+  if (platforms.length === 0)    missing.push('platform');
+  if (_launchImages.length === 0) missing.push('product images');
+  if (missing.length > 0) {
+    setLaunchStatus('error', `Cannot generate preview — missing: ${missing.join(', ')}.`);
     return;
   }
-  if (platforms.length === 0) { setLaunchStatus('error', 'Select at least one platform.'); return; }
 
   const btn = document.getElementById('launch-preview-btn');
   btn.disabled = true;

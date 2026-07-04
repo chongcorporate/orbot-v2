@@ -1250,10 +1250,6 @@
                     </select>
                   </div>
                 </div>
-                <div>
-                  <label class="text-xs text-[#9ca3af] block mb-1">Product Category</label>
-                  <input id="launch-product-category" type="text" placeholder="e.g. Display Stand" class="w-full" />
-                </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="text-xs text-[#9ca3af] block mb-1">Price (MYR)</label>
@@ -1283,33 +1279,14 @@
             <!-- Product Types card -->
             <div class="glass-panel p-5">
               <p class="text-xs text-[#6b7280] uppercase tracking-widest mb-4">Product Types</p>
-              <div class="space-y-3">
-                <div class="flex items-center justify-between">
-                  <label class="flex items-center gap-3 cursor-pointer select-none">
-                    <input type="checkbox" id="launch-type-ds" style="accent-color:#8b7cf6" />
-                    <span class="text-sm text-white font-medium">DS</span>
-                    <span class="text-xs text-[#6b7280]">Display Stand with Nameplate</span>
-                  </label>
-                  <div id="launch-plaque-row" class="hidden items-center gap-2">
-                    <span class="text-xs text-[#9ca3af]">Plaques:</span>
-                    <input id="launch-plaque-count" type="text" value="1" class="w-14 text-center" style="padding:0.375rem 0.5rem !important" />
-                  </div>
-                </div>
-                <label class="flex items-center gap-3 cursor-pointer select-none">
-                  <input type="checkbox" id="launch-type-dsnp" style="accent-color:#8b7cf6" />
-                  <span class="text-sm text-white font-medium">DS-NP</span>
-                  <span class="text-xs text-[#6b7280]">Display Stand, No Nameplate</span>
-                </label>
-                <label class="flex items-center gap-3 cursor-pointer select-none">
-                  <input type="checkbox" id="launch-type-wm" style="accent-color:#8b7cf6" />
-                  <span class="text-sm text-white font-medium">WM</span>
-                  <span class="text-xs text-[#6b7280]">Wall Mount</span>
-                </label>
-                <label class="flex items-center gap-3 cursor-pointer select-none">
-                  <input type="checkbox" id="launch-type-fwm" style="accent-color:#8b7cf6" />
-                  <span class="text-sm text-white font-medium">FWM</span>
-                  <span class="text-xs text-[#6b7280]">Full Wall Mount</span>
-                </label>
+              <div id="launch-types-list" class="space-y-3"></div>
+              <div class="grid grid-cols-[80px_1fr_auto] gap-2 mt-4 pt-4 border-t border-white/5">
+                <input id="launch-new-type-code" type="text" placeholder="Code" class="w-full text-center" />
+                <input id="launch-new-type-label" type="text" placeholder="Category name, e.g. Light Kit" class="w-full" />
+                <button id="launch-add-type-btn" class="text-xs text-[#8b7cf6] hover:text-white transition-colors px-2 flex items-center gap-1">
+                  <span class="material-symbols-outlined" style="font-size:14px">add</span>
+                  Add
+                </button>
               </div>
             </div>
 
@@ -2231,6 +2208,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=1.12.5"></script>
+  <script src="app.js?v=1.13.3"></script>
 </body>
 </html>
