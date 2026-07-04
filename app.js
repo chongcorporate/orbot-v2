@@ -1866,7 +1866,9 @@ window.redispatchPrintFile = async function(simplyPrintFileId, printFileName, pr
     showToast("SimplyPrint dispatch is disabled in Settings.", "warning");
     return;
   }
-  if (btn) { btn.disabled = true; btn.querySelector(".material-symbols-outlined").textContent = "sync"; }
+  const icon = btn?.querySelector(".material-symbols-outlined");
+  const originalIcon = icon?.textContent;
+  if (btn) { btn.disabled = true; if (icon) icon.textContent = "sync"; }
   try {
     const res = await backendFetch(`/print-files/queue`, {
       method: "POST",
@@ -1884,12 +1886,12 @@ window.redispatchPrintFile = async function(simplyPrintFileId, printFileName, pr
       throw new Error(detail);
     }
     const data = JSON.parse(text);
-    showToast(`Re-dispatched: ${printFileName}`, "success");
-    logAction(`File re-dispatched to print queue: ${printFileName}`, "info", { simplyprint_file_id: simplyPrintFileId, job_id: data.simplyprint_job_id });
+    showToast(`Dispatched: ${printFileName}`, "success");
+    logAction(`File dispatched to print queue: ${printFileName}`, "info", { simplyprint_file_id: simplyPrintFileId, job_id: data.simplyprint_job_id });
   } catch (err) {
-    showToast(`Re-dispatch failed: ${err.message}`, "error");
+    showToast(`Dispatch failed: ${err.message}`, "error");
   } finally {
-    if (btn) { btn.disabled = false; btn.querySelector(".material-symbols-outlined").textContent = "refresh"; }
+    if (btn) { btn.disabled = false; if (icon) icon.textContent = originalIcon; }
   }
 };
 
@@ -2394,6 +2396,11 @@ function buildProductDetailPanel(product) {
         <span class="omd-vsku">${escapeHtml(v.variant_sku)}</span>
         <span class="omd-vname" title="${escapeHtml(v.variant_name)}">${escapeHtml(v.variant_name)}</span>
         <span class="omd-vfile">${fileText}</span>
+        <button class="omd-print-btn btn-send-to-print" data-variant-id="${v.id}"
+          title="${(v.print_files || []).length > 0 ? "Send print file to the SimplyPrint queue" : "No print files attached to this variant"}"
+          ${(v.print_files || []).length > 0 ? "" : "disabled"}>
+          <span class="material-symbols-outlined">print</span>Print
+        </button>
         <div class="omd-stock-stepper${isLow ? " low" : ""}">
           <div class="sb btn-stock-dec" data-variant-id="${v.id}">–</div>
           <div class="sv">${v.stock_quantity || 0}</div>
@@ -2551,6 +2558,27 @@ function bindProductDetailPanelEvents(product) {
     });
   });
 
+  // Send-to-print buttons — confirm, then dispatch every print file on the
+  // variant through the same /print-files/queue endpoint as re-dispatch.
+  panel.querySelectorAll(".btn-send-to-print").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const variantId = btn.getAttribute("data-variant-id");
+      const variant = product.variations.find(v => v.id === variantId);
+      const files = (variant?.print_files || []).filter(f => f.print_file_name);
+      if (!files.length) return;
+      const fileList = files.map(f => f.print_file_name).join(", ");
+      const confirmed = await showConfirmModal(
+        "Send to Print Queue",
+        `Send ${files.length > 1 ? `these ${files.length} files` : "this file"} to the SimplyPrint queue?\n\n${fileList}`,
+        "Send to Queue"
+      );
+      if (!confirmed) return;
+      for (const f of files) {
+        await window.redispatchPrintFile(f.simplyprint_file_id, f.print_file_name, null, btn);
+      }
+    });
+  });
+
   const detailsBtn = panel.querySelector(".btn-product-details");
   if (detailsBtn) detailsBtn.addEventListener("click", () => openCatalogDetailModal(product.id));
 
@@ -2559,9 +2587,13 @@ function bindProductDetailPanelEvents(product) {
 
   const addListingBtn = panel.querySelector(".btn-add-listing-for-product");
   if (addListingBtn) {
-    addListingBtn.addEventListener("click", () => {
-      const modal = document.getElementById("add-listing-modal");
-      if (modal) modal.classList.add("active");
+    addListingBtn.addEventListener("click", async () => {
+      await openAddListingModal();
+      const filterEl = document.getElementById("add-listing-product-filter");
+      const sel = document.getElementById("add-listing-product-id");
+      if (filterEl) filterEl.value = product.master_sku || "";
+      filterAddListingProducts(product.master_sku || "");
+      if (sel) sel.value = product.id;
     });
   }
 
@@ -3056,6 +3088,32 @@ function setupLogsFiltering() {
       activeStreamFilter = chip.getAttribute("data-stream");
       fetchAndRenderLogs();
     });
+  });
+}
+
+// Generic "x" clear button for search/filter inputs. Delegated on document so it
+// works for every input marked up with a sibling .search-clear-btn[data-clear-target],
+// including ones inside modals that don't exist yet at page load.
+function setupSearchClearButtons() {
+  document.querySelectorAll(".search-clear-btn").forEach(btn => {
+    const input = document.getElementById(btn.getAttribute("data-clear-target"));
+    if (input) btn.classList.toggle("hidden", !input.value);
+  });
+
+  document.addEventListener("input", (e) => {
+    if (!(e.target instanceof HTMLInputElement)) return;
+    const clearBtn = e.target.parentElement?.querySelector(":scope > .search-clear-btn");
+    if (clearBtn) clearBtn.classList.toggle("hidden", !e.target.value);
+  });
+
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".search-clear-btn");
+    if (!btn) return;
+    const input = document.getElementById(btn.getAttribute("data-clear-target"));
+    if (!input) return;
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
   });
 }
 
@@ -5144,6 +5202,7 @@ window.addEventListener("DOMContentLoaded", () => {
   setupCatalogEditModal();
   setupSystemErrorReset();
   setupListingsTab();
+  setupSearchClearButtons();
 
   // Waybill panel toggle (Orders ↔ Compiled PDFs)
   const waybillTabOrders = document.getElementById("waybill-tab-orders");
@@ -5658,8 +5717,11 @@ function setupCatalogDetailModal() {
   contentEl.addEventListener("click", async (e) => {
     const decBtn = e.target.closest(".btn-modal-stock-dec");
     const incBtn = e.target.closest(".btn-modal-stock-inc");
+    const dispatchBtn = e.target.closest(".btn-dispatch-print-file");
 
-    if (decBtn) {
+    if (dispatchBtn) {
+      redispatchPrintFile(dispatchBtn.getAttribute("data-sp-file-id") || null, dispatchBtn.getAttribute("data-file-name"), null, dispatchBtn);
+    } else if (decBtn) {
       const varId = decBtn.getAttribute("data-variant-id");
       const input = contentEl.querySelector(`.input-modal-stock-qty[data-variant-id="${varId}"]`);
       if (input) {
@@ -5754,6 +5816,10 @@ function openCatalogDetailModal(productId) {
               </div>
               <div class="flex items-center gap-3">
                 <span class="text-on-surface-variant/70">${f.weight_g}g | ${f.print_time_m}m</span>
+                <button type="button" class="btn-dispatch-print-file text-tertiary hover:underline flex items-center gap-0.5 cursor-pointer"
+                  data-sp-file-id="${f.simplyprint_file_id || ''}" data-file-name="${String(f.print_file_name ?? '').replace(/"/g, '&quot;')}">
+                  <span class="material-symbols-outlined text-xs">print</span> Dispatch
+                </button>
                 ${f.simplyprint_file_id ? `
                   <a href="https://simplyprint.io/panel/files?search=${encodeURIComponent(f.print_file_name)}" target="_blank" class="text-primary hover:underline flex items-center gap-0.5">
                     <span class="material-symbols-outlined text-xs">open_in_new</span> View
@@ -5919,10 +5985,16 @@ function openCatalogEditModal(productId) {
       <div class="flex flex-col gap-2 bg-black/20 border border-outline-variant/10 rounded-lg p-3">
         <div class="font-label-caps text-[9px] text-surface-tint uppercase tracking-widest flex items-center justify-between mb-1">
           <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[11px]">description</span> Print File</span>
-          <button class="btn-remove-print-file flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold text-error/60 hover:text-error hover:bg-error/10 transition-all cursor-pointer"
-            data-file-id="${f.id}" data-file-name="${String(f.print_file_name ?? "").replace(/"/g, "&quot;")}">
-            <span class="material-symbols-outlined text-[11px]">delete</span> Remove
-          </button>
+          <div class="flex items-center gap-1">
+            <button class="btn-dispatch-print-file flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold text-tertiary/70 hover:text-tertiary hover:bg-tertiary/10 transition-all cursor-pointer"
+              data-sp-file-id="${f.simplyprint_file_id || ''}" data-file-name="${String(f.print_file_name ?? "").replace(/"/g, "&quot;")}">
+              <span class="material-symbols-outlined text-[11px]">print</span> Dispatch
+            </button>
+            <button class="btn-remove-print-file flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold text-error/60 hover:text-error hover:bg-error/10 transition-all cursor-pointer"
+              data-file-id="${f.id}" data-file-name="${String(f.print_file_name ?? "").replace(/"/g, "&quot;")}">
+              <span class="material-symbols-outlined text-[11px]">delete</span> Remove
+            </button>
+          </div>
         </div>
         <div class="grid grid-cols-2 gap-2">
           ${field("File Name", "print_files", f.id, "print_file_name", f.print_file_name)}
@@ -6203,6 +6275,12 @@ function setupCatalogEditModal() {
     const addFileBtn = e.target.closest(".btn-add-print-file");
     if (addFileBtn) {
       addCatalogEditNewPrintFileBlock(addFileBtn.dataset.variantId, addFileBtn.dataset.variantSku);
+      return;
+    }
+
+    const dispatchFileBtn = e.target.closest(".btn-dispatch-print-file");
+    if (dispatchFileBtn) {
+      redispatchPrintFile(dispatchFileBtn.getAttribute("data-sp-file-id") || null, dispatchFileBtn.getAttribute("data-file-name"), null, dispatchFileBtn);
       return;
     }
 
@@ -6535,11 +6613,11 @@ function addLaunchImages(files) {
 let _launchSourceUrl = null;
 let _launchScrapedDescription = null;
 
-function b64ToFile(b64, name) {
+function b64ToFile(b64, name, mime = 'image/jpeg') {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new File([bytes], name, { type: 'image/jpeg' });
+  return new File([bytes], name, { type: mime });
 }
 
 function fileToB64(file) {
@@ -6580,7 +6658,11 @@ async function doLaunchScrape() {
     setIf('launch-set-number', data.set_number);
     setIf('launch-theme', data.theme_code);
 
-    const files = (data.images || []).map((img, i) => b64ToFile(img.image_b64, `scraped_${i + 1}.jpg`));
+    const files = (data.images || []).map((img, i) => {
+      const ext = img.format || 'jpg';
+      const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+      return b64ToFile(img.image_b64, `scraped_${i + 1}.${ext}`, mime);
+    });
     if (files.length) addLaunchImages(files);
 
     setLaunchStatus('success', `Fetched "${data.product_name}"` +
@@ -6612,7 +6694,7 @@ async function cleanLaunchImages(files) {
       const data = JSON.parse(await res.text());
       const idx = _launchImages.indexOf(file);
       if (res.ok && data.cleaned && idx !== -1) {
-        const cleanedFile = b64ToFile(data.image_b64, file.name.replace('.jpg', '_clean.jpg'));
+        const cleanedFile = b64ToFile(data.image_b64, file.name.replace(/\.[a-z0-9]+$/i, '') + '_clean.jpg');
         cleanedFile._cleaned = true;
         _launchImages[idx] = cleanedFile;
       } else if (data.reason) {
@@ -7167,9 +7249,17 @@ function setupListingsTab() {
   document.getElementById("add-listing-save-btn")?.addEventListener("click", saveAddListing);
   document.getElementById("add-listing-modal")?.addEventListener("click", e => { if (e.target === e.currentTarget) closeAddListingModal(); });
   document.getElementById("add-listing-product-filter")?.addEventListener("input", e => filterAddListingProducts(e.target.value));
+  document.getElementById("edit-listing-product-filter")?.addEventListener("input", e => filterProductSelect("edit-listing-product-id", e.target.value));
 }
 
-function openEditListingModal(listing) {
+async function openEditListingModal(listing) {
+  await populateProductSelect("edit-listing-product-id");
+  const filterEl = document.getElementById("edit-listing-product-filter");
+  if (filterEl) filterEl.value = "";
+  filterProductSelect("edit-listing-product-id", "");
+  const sel = document.getElementById("edit-listing-product-id");
+  if (sel) sel.value = listing.products?.id || listing.product_id || "";
+
   document.getElementById("edit-listing-id").value          = listing.id;
   document.getElementById("edit-listing-name").value        = listing.platform_listing_name || "";
   document.getElementById("edit-listing-description").value = listing.platform_listing_description || "";
@@ -7191,11 +7281,14 @@ function closeEditListingModal() {
 async function saveEditListing() {
   if (!supabaseClient) return;
   const id = document.getElementById("edit-listing-id").value;
+  const productId = document.getElementById("edit-listing-product-id")?.value || "";
+  if (!productId) { showToast("Select a product first.", "error"); return; }
   const saveBtn = document.getElementById("edit-listing-save-btn");
   saveBtn.disabled = true;
   saveBtn.innerHTML = `<span class="material-symbols-outlined text-sm animate-spin">sync</span> Saving…`;
 
   const updates = {
+    product_id:                    productId,
     platform_listing_name:        document.getElementById("edit-listing-name").value.trim(),
     platform_listing_description: document.getElementById("edit-listing-description").value,
     price_myr:   priceOrNull(document.getElementById("edit-listing-price-myr").value),
@@ -7213,10 +7306,13 @@ async function saveEditListing() {
     const { error } = await supabaseClient.from("listings").update(updates).eq("id", id);
     if (error) throw error;
     const idx = cachedListings.findIndex(l => l.id === id);
-    if (idx !== -1) cachedListings[idx] = { ...cachedListings[idx], ...updates };
+    if (idx !== -1) {
+      const linkedProduct = cachedProducts.find(p => p.id === productId) || cachedListings[idx].products;
+      cachedListings[idx] = { ...cachedListings[idx], ...updates, products: linkedProduct };
+    }
     closeEditListingModal();
     renderListingsFromCache();
-    logAction(`Listing updated: ${updates.platform_listing_name}`, "info", { listing_id: id });
+    logAction(`Listing updated: ${updates.platform_listing_name}`, "info", { listing_id: id, product_id: productId });
     showToast("Listing saved.", "success");
   } catch (err) {
     showToast(`Save failed: ${err.message}`, "error");
@@ -7395,25 +7491,38 @@ async function saveEditVariation() {
   }
 }
 
-async function openAddListingModal() {
-  const sel = document.getElementById("add-listing-product-id");
-  // Load products once
-  if (sel && sel.options.length === 0) {
-    if (cachedProducts.length === 0 && supabaseClient) {
-      const { data } = await supabaseClient
-        .from("products")
-        .select("id, master_sku, product_base_name, brand_name")
-        .order("master_sku", { ascending: true });
-      cachedProducts = data || [];
-    }
-    cachedProducts.forEach(p => {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = `${p.master_sku} — ${p.product_base_name}`;
-      opt.dataset.search = `${p.master_sku} ${p.product_base_name} ${p.brand_name || ""}`.toLowerCase();
-      sel.appendChild(opt);
-    });
+// Shared by the Add Listing and Edit Listing product pickers — populates a
+// <select> with every catalog product once (options persist across re-opens).
+async function populateProductSelect(selectId) {
+  const sel = document.getElementById(selectId);
+  if (!sel || sel.options.length > 0) return;
+  if (cachedProducts.length === 0 && supabaseClient) {
+    const { data } = await supabaseClient
+      .from("products")
+      .select("id, master_sku, product_base_name, brand_name")
+      .order("master_sku", { ascending: true });
+    cachedProducts = data || [];
   }
+  cachedProducts.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = `${p.master_sku} — ${p.product_base_name}`;
+    opt.dataset.search = `${p.master_sku} ${p.product_base_name} ${p.brand_name || ""}`.toLowerCase();
+    sel.appendChild(opt);
+  });
+}
+
+function filterProductSelect(selectId, query) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const q = query.toLowerCase().trim();
+  Array.from(sel.options).forEach(opt => {
+    opt.style.display = !q || (opt.dataset.search || "").includes(q) ? "" : "none";
+  });
+}
+
+async function openAddListingModal() {
+  await populateProductSelect("add-listing-product-id");
   // Reset all fields
   ["add-listing-name", "add-listing-description", "add-listing-price-myr", "add-listing-price-sgd",
    "add-listing-shopee-my", "add-listing-shopee-sg", "add-listing-shopee-ph", "add-listing-shopee-th",
@@ -7425,17 +7534,13 @@ async function openAddListingModal() {
   const filterEl = document.getElementById("add-listing-product-filter");
   if (filterEl) filterEl.value = "";
   filterAddListingProducts("");
+  const sel = document.getElementById("add-listing-product-id");
   if (sel) sel.selectedIndex = -1;
   document.getElementById("add-listing-modal").classList.add("active");
 }
 
 function filterAddListingProducts(query) {
-  const sel = document.getElementById("add-listing-product-id");
-  if (!sel) return;
-  const q = query.toLowerCase().trim();
-  Array.from(sel.options).forEach(opt => {
-    opt.style.display = !q || (opt.dataset.search || "").includes(q) ? "" : "none";
-  });
+  filterProductSelect("add-listing-product-id", query);
 }
 
 function closeAddListingModal() {

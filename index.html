@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.10.1">
+  <link rel="stylesheet" href="index.css?v=1.10.2">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -846,7 +846,8 @@
             <!-- Search bar -->
             <div class="relative w-full md:max-w-xs flex items-center">
               <span class="material-symbols-outlined absolute left-3 text-on-surface-variant/50 text-sm select-none">search</span>
-              <input type="text" id="orders-search-input" placeholder="Search Order ID, Customer, SKU..." class="w-full pl-9 pr-4 py-1.5 bg-surface-container-lowest border border-outline-variant/30 rounded-lg text-xs text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-primary/50 transition-all font-data-mono">
+              <input type="text" id="orders-search-input" placeholder="Search Order ID, Customer, SKU..." class="w-full pl-9 pr-8 py-1.5 bg-surface-container-lowest border border-outline-variant/30 rounded-lg text-xs text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-primary/50 transition-all font-data-mono">
+              <button type="button" class="search-clear-btn hidden absolute right-2 p-0.5 rounded-full hover:bg-white/10 text-on-surface-variant/50 hover:text-on-surface transition-all" data-clear-target="orders-search-input" aria-label="Clear search"><span class="material-symbols-outlined text-sm">close</span></button>
             </div>
 
             <!-- Date range filters -->
@@ -1012,7 +1013,8 @@
               <!-- Styled search input matching details -->
               <div class="relative w-full md:w-64">
                 <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm select-none">search</span>
-                <input class="w-full bg-surface-container/30 border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/40 rounded-lg pl-9 pr-4 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all font-body-md text-sm" placeholder="Search by SKU or Name..." id="catalog-search" type="text">
+                <input class="w-full bg-surface-container/30 border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/40 rounded-lg pl-9 pr-8 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all font-body-md text-sm" placeholder="Search by SKU or Name..." id="catalog-search" type="text">
+                <button type="button" class="search-clear-btn hidden absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-white/10 text-on-surface-variant/50 hover:text-on-surface transition-all" data-clear-target="catalog-search" aria-label="Clear search"><span class="material-symbols-outlined text-sm">close</span></button>
               </div>
               <!-- Premium Add Product Action -->
               <button class="px-5 py-2.5 rounded-lg flex items-center gap-1.5 font-label-caps tracking-wider transition-all duration-200 active:scale-95 bg-white/5 border border-outline-variant/30 text-on-surface hover:bg-white/10" id="add-catalog-item-btn">
@@ -1110,7 +1112,8 @@
               </button>
               <div class="relative w-full md:w-64">
                 <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm select-none">search</span>
-                <input class="w-full bg-surface-container/30 border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/40 rounded-lg pl-9 pr-4 py-2 focus:border-primary/50 transition-all font-body-md text-sm" placeholder="Search listing name, SKU..." id="listings-search" type="text">
+                <input class="w-full bg-surface-container/30 border border-outline-variant/30 text-on-surface placeholder:text-on-surface-variant/40 rounded-lg pl-9 pr-8 py-2 focus:border-primary/50 transition-all font-body-md text-sm" placeholder="Search listing name, SKU..." id="listings-search" type="text">
+                <button type="button" class="search-clear-btn hidden absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-white/10 text-on-surface-variant/50 hover:text-on-surface transition-all" data-clear-target="listings-search" aria-label="Clear search"><span class="material-symbols-outlined text-sm">close</span></button>
               </div>
             </div>
           </div>
@@ -2008,6 +2011,17 @@
       <div class="p-5 flex flex-col gap-4 overflow-y-auto flex-1">
         <input type="hidden" id="edit-listing-id">
         <div class="flex flex-col gap-1.5">
+          <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Product <span class="text-error">*</span></label>
+          <div class="relative flex items-center">
+            <input type="text" id="edit-listing-product-filter" placeholder="Filter by SKU or name…"
+              class="w-full bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg pl-3 pr-8 py-2 text-sm font-data-mono focus:border-primary/50 focus:outline-none transition-all">
+            <button type="button" class="search-clear-btn hidden absolute right-2 p-0.5 rounded-full hover:bg-white/10 text-on-surface-variant/50 hover:text-on-surface transition-all" data-clear-target="edit-listing-product-filter" aria-label="Clear search"><span class="material-symbols-outlined text-sm">close</span></button>
+          </div>
+          <select id="edit-listing-product-id" size="5"
+            class="bg-black/20 border border-outline-variant/30 text-on-surface rounded-lg px-2 py-1 text-[11px] font-data-mono focus:border-primary/50 focus:outline-none transition-all [&>option]:py-1 [&>option:checked]:bg-primary/20 [&>option:checked]:text-primary">
+          </select>
+        </div>
+        <div class="flex flex-col gap-1.5">
           <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Listing Name</label>
           <input type="text" id="edit-listing-name" placeholder="Platform listing name">
         </div>
@@ -2130,8 +2144,11 @@
         <!-- Product selector -->
         <div class="flex flex-col gap-1.5">
           <label class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-wider">Product <span class="text-error">*</span></label>
-          <input type="text" id="add-listing-product-filter" placeholder="Filter by SKU or name…"
-            class="bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg px-3 py-2 text-sm font-data-mono focus:border-primary/50 focus:outline-none transition-all">
+          <div class="relative flex items-center">
+            <input type="text" id="add-listing-product-filter" placeholder="Filter by SKU or name…"
+              class="w-full bg-black/20 border border-outline-variant/30 text-on-surface placeholder:text-outline/40 rounded-lg pl-3 pr-8 py-2 text-sm font-data-mono focus:border-primary/50 focus:outline-none transition-all">
+            <button type="button" class="search-clear-btn hidden absolute right-2 p-0.5 rounded-full hover:bg-white/10 text-on-surface-variant/50 hover:text-on-surface transition-all" data-clear-target="add-listing-product-filter" aria-label="Clear search"><span class="material-symbols-outlined text-sm">close</span></button>
+          </div>
           <select id="add-listing-product-id" size="5"
             class="bg-black/20 border border-outline-variant/30 text-on-surface rounded-lg px-2 py-1 text-[11px] font-data-mono focus:border-primary/50 focus:outline-none transition-all [&>option]:py-1 [&>option:checked]:bg-primary/20 [&>option:checked]:text-primary">
           </select>
@@ -2214,6 +2231,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=1.12.0"></script>
+  <script src="app.js?v=1.12.5"></script>
 </body>
 </html>
