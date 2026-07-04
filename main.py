@@ -4399,8 +4399,17 @@ async def catalog_scrape_product(request: Request):
             try:
                 r = http_session.get(img_url, headers={**_SCRAPE_HEADERS, "Referer": url}, timeout=30)
                 r.raise_for_status()
-                data = _launch_process_image(r.content)
-                images.append({"source_url": img_url, "image_b64": base64.b64encode(data).decode()})
+                # Keep the raw original — no crop/resize here. Launch processes to
+                # square 2000px later; verify it decodes so we never ship an HTML
+                # error page as an "image", and cap payload size for the b64 response.
+                raw = r.content
+                if len(raw) > 25 * 1024 * 1024:
+                    raise ValueError(f"image too large ({len(raw)} bytes)")
+                img = PILImage.open(BytesIO(raw))
+                fmt = (img.format or "JPEG").lower()
+                images.append({"source_url": img_url,
+                               "format": "jpg" if fmt == "jpeg" else fmt,
+                               "image_b64": base64.b64encode(raw).decode()})
             except Exception as ie:
                 log_system("warning", f"Product intake: image download failed ({img_url}): {ie}",
                            agent_name="Product Intake")
