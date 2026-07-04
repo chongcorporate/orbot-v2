@@ -1,10 +1,24 @@
 # Only the frontend static files are needed for Vercel deployment.
 # Everything else is backend / local-only.
 
+# Secrets (never ship to Vercel)
+.env
+credentials.json
+token.json
+
+# Claude Code local config (contains real API keys in permission entries)
+.claude/
+.agents/
+
 # Large local directories
 Blocked Off Print Files/
 Uploads/
 scratch/
+CSV/
+ui-concepts/
+
+# Misc backend/reference docs and scripts not needed on Vercel
+Other/
 
 # Backend Python files
 main.py
@@ -20,6 +34,7 @@ generate_google_refresh_token.py
 
 # Supabase local config (not needed at runtime)
 supabase/.temp/
+.vercel/
 
 # Generated cache / debug files
 sp_files.json

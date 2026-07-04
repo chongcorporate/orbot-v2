@@ -10,6 +10,18 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Shared-secret authentication: fail closed if ORBOT_API_KEY is unset.
+  // Invoked by the notify_system_log_event() trigger via net.http_post — see
+  // Other/setup_status_reporter_webhook.sql, which must send this header too.
+  const expectedKey = Deno.env.get("ORBOT_API_KEY");
+  const providedKey = req.headers.get("X-Orbot-Key");
+  if (!expectedKey || providedKey !== expectedKey) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const payload = await req.json();
     const logEntry = payload.record;
@@ -68,6 +80,7 @@ serve(async (req) => {
           timestamp: logEntry.created_at ?? new Date().toISOString(),
         }],
       }),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!discordRes.ok) {

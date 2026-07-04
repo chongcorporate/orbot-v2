@@ -12,6 +12,16 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Shared-secret authentication: fail closed if ORBOT_API_KEY is unset
+  const expectedKey = Deno.env.get("ORBOT_API_KEY");
+  const providedKey = req.headers.get("X-Orbot-Key");
+  if (!expectedKey || providedKey !== expectedKey) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     // 1. Receive Webhook
     const { email_body } = await req.json();
@@ -55,14 +65,15 @@ serve(async (req) => {
     `;
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiApiKey },
         body: JSON.stringify({
           contents: [{ parts: [{ text: geminiPrompt }] }],
           generationConfig: { response_mime_type: "application/json" }
         }),
+        signal: AbortSignal.timeout(30000),
       }
     );
 
@@ -73,28 +84,35 @@ serve(async (req) => {
     }
 
     // Log Gemini usage
-    try {
-      const usage = geminiData.usageMetadata;
-      if (usage) {
-        await supabase.from("gemini_usage_log").insert({
-          agent_name: "Scout Agent",
-          model_name: "gemini-3.1-flash-lite",
-          prompt_tokens: usage.promptTokenCount || 0,
-          completion_tokens: usage.candidatesTokenCount || 0,
-          total_tokens: usage.totalTokenCount || 0
-        });
+    const usage = geminiData.usageMetadata;
+    if (usage) {
+      const { error: usageLogError } = await supabase.from("gemini_usage_log").insert({
+        agent_name: "Scout Agent",
+        model_name: "gemini-3.1-flash-lite",
+        prompt_tokens: usage.promptTokenCount || 0,
+        completion_tokens: usage.candidatesTokenCount || 0,
+        total_tokens: usage.totalTokenCount || 0
+      });
+      if (usageLogError) {
+        console.error("Failed to log Gemini usage:", usageLogError);
+      } else {
         console.log(`Gemini usage logged: ${usage.totalTokenCount} tokens`);
       }
-    } catch (e) {
-      console.error("Failed to log Gemini usage:", e);
     }
 
-    const rawJsonText = geminiData.candidates[0].content.parts[0].text;
+    const rawJsonText = geminiData.candidates[0]?.content?.parts?.[0]?.text;
+    if (!rawJsonText) {
+      throw new Error(`Gemini response had no text part (finishReason: ${geminiData.candidates[0]?.finishReason ?? "unknown"})`);
+    }
     let cleanedJsonText = rawJsonText.trim();
     if (cleanedJsonText.startsWith("```")) {
       cleanedJsonText = cleanedJsonText.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
     }
     const orderData = JSON.parse(cleanedJsonText.trim());
+
+    if (!Array.isArray(orderData.items) || orderData.items.length === 0) {
+      throw new Error(`Gemini returned no order items for order ${orderData.platform_order_id ?? "(unknown)"} — refusing to ingest an empty order.`);
+    }
 
     // 3. Database Insertion & Bridging Table Matching
     
@@ -220,19 +238,22 @@ serve(async (req) => {
 
     if (hasMatchingFailure) {
       // Update overall status to hold
-      await supabase
+      const { error: holdUpdateError } = await supabase
         .from('orders')
         .update({ overall_order_status: 'hold' })
         .eq('id', orderId);
+      if (holdUpdateError) console.error("Failed to update order status to hold:", holdUpdateError);
     }
 
     if (hasFuzzyMatch && !hasMatchingFailure) {
       const warningMsg = `Order ${orderData.platform_order_id} ingested with fuzzy/fallback matching: ${fuzzyItemDetails}`;
-      await supabase.from('system_logs').insert({
+      const { error: fuzzyLogError } = await supabase.from('system_logs').insert({
         agent_name: 'Scout Edge Function',
         log_level: 'warning',
-        log_message: warningMsg
+        log_message: warningMsg,
+        additional_details: { fuzzy_match: true, platform_order_id: orderData.platform_order_id }
       });
+      if (fuzzyLogError) console.error("Failed to log fuzzy match warning:", fuzzyLogError);
     }
 
     if (hasMatchingFailure) {
@@ -241,22 +262,25 @@ serve(async (req) => {
     }
 
     // 4. Logging Success
-    await supabase.from('system_logs').insert({
+    const { error: successLogError } = await supabase.from('system_logs').insert({
       agent_name: 'Scout Edge Function',
       log_level: 'info',
       log_message: `Successfully ingested order ${orderData.platform_order_id} with ${orderData.items.length} items.`
     });
+    if (successLogError) console.error("Failed to log success:", successLogError);
 
-    return new Response(JSON.stringify({ 
-      status: hasFuzzyMatch ? "Order ingested on hold (fuzzy matched)." : "Order ingested, Foreman trigger activated." 
+    return new Response(JSON.stringify({
+      status: hasFuzzyMatch ? "Order ingested (fuzzy matched — verify SKU)." : "Order ingested, Foreman trigger activated."
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
 
   } catch (error: any) {
+    // Log the full error server-side only — never echo it back to the caller,
+    // since error messages can still contain sensitive details (e.g. upstream URLs).
     console.error(error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: "Internal error processing request" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,
     });
@@ -266,11 +290,23 @@ serve(async (req) => {
 // Helper function to insert error logs
 async function logSystemError(supabase: any, message: string) {
   console.error("Scout Error:", message);
-  await supabase.from('system_logs').insert({
+  const { error } = await supabase.from('system_logs').insert({
     agent_name: 'Scout Edge Function',
     log_level: 'error',
     log_message: message
   });
+  if (error) console.error("Failed to write system_logs entry:", error);
+}
+
+// Mirrors normalize_variation() in main.py: lowercase, " - " around hyphens,
+// no spaces around commas, collapsed whitespace. Keep the two in sync — the
+// Python matcher and its self-healed rows key on this exact form.
+function normalizeVariation(raw: string | null): string {
+  let s = (raw || "").trim().toLowerCase();
+  s = s.replace(/\s*-\s*/g, " - ");
+  s = s.replace(/\s*,\s*/g, ",");
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
 }
 
 function getF1SkuSuffix(variationName: string | null): string {
@@ -354,8 +390,8 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
         const { data: varRes } = await supabase
           .from('variants')
           .select('id')
-          .like('variant_sku', '%DS-NP%')
-          .like('variant_sku', `%${setNum}%`)
+          .eq('variant_type', 'DS-NP')
+          .eq('set_number', setNum)
           .limit(1);
         if (varRes && varRes.length > 0) {
           console.log(`[Matching] Star Wars rule Success: matched set ${setNum} to DS-NP variant = ${varRes[0].id}`);
@@ -372,8 +408,8 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
           const { data: varRes } = await supabase
             .from('variants')
             .select('id')
-            .like('variant_sku', '%DS-NP%')
-            .like('variant_sku', `%${firstSet}%`)
+            .eq('variant_type', 'DS-NP')
+            .eq('set_number', firstSet)
             .limit(1);
           if (varRes && varRes.length > 0) {
             console.log(`[Matching] Star Wars rule Success: matched title set ${firstSet} to DS-NP variant = ${varRes[0].id}`);
@@ -393,6 +429,19 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
     if (exactVar) {
       console.log(`[Matching] Stage 1 Success: found variant_id = ${exactVar.variant_id}`);
       return { variantId: exactVar.variant_id, isFuzzy: false };
+    }
+
+    // Stage 1b: normalized-form match — how the Python matcher and its
+    // self-healed rows store variations (case/spacing-insensitive)
+    const { data: normVarRows } = await supabase
+      .from('listing_variations')
+      .select('variant_id')
+      .eq('listing_id', listingId)
+      .eq('normalized_variation_name', normalizeVariation(variationName))
+      .limit(1);
+    if (normVarRows && normVarRows.length > 0) {
+      console.log(`[Matching] Stage 1b Success (normalized): found variant_id = ${normVarRows[0].variant_id}`);
+      return { variantId: normVarRows[0].variant_id, isFuzzy: false };
     }
 
     // Fallback 1.1: Single variation match for this listing
@@ -435,10 +484,12 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
     setNum = nonYears.length > 0 ? nonYears[0] : matches[0];
   }
   if (setNum) {
+    // Exact set_number match — a substring SKU LIKE would let 4-digit sets
+    // (e.g. 7519) collide with 5-digit ones (75190)
     const { data: matchedVariants } = await supabase
       .from('variants')
       .select('id, variant_sku, variant_name, variant_type')
-      .like('variant_sku', `%${setNum}%`);
+      .eq('set_number', setNum);
 
     if (matchedVariants && matchedVariants.length > 0) {
       const isWallMount = listingTitle.toLowerCase().includes("wall") || listingTitle.toLowerCase().includes("mount") || normVariation.toLowerCase().includes("wall") || normVariation.toLowerCase().includes("mount") || normVariation.toLowerCase().includes("wm") || normVariation.toLowerCase().includes("fwm");
@@ -459,24 +510,24 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
         bestVariant = matchedVariants.find((v: any) => v.variant_type === 'DS' || v.variant_type === 'BASE');
       }
 
-      if (!bestVariant) {
-        bestVariant = matchedVariants[0];
-      }
-
+      // No blind matchedVariants[0] fallback: if the type heuristics found
+      // nothing, fall through to the next stage instead of guessing.
       if (bestVariant) {
         console.log(`[Matching] Stage 2 Success: mapped set ${setNum} to variant "${bestVariant.variant_sku}"`);
-        
+
         if (exactListing) {
-          try {
-            await supabase.from('listing_variations').insert({
-              listing_id: exactListing.id,
-              variant_id: bestVariant.id,
-              platform_variation_name: normVariation,
-              reference_name: `${listingTitle} [${normVariation}]`
-            });
+          const { error: selfHealError } = await supabase.from('listing_variations').insert({
+            listing_id: exactListing.id,
+            variant_id: bestVariant.id,
+            platform_variation_name: normVariation,
+            normalized_variation_name: normalizeVariation(variationName),
+            match_source: 'self_heal',
+            reference_name: `${listingTitle} [${normVariation}]`
+          });
+          if (selfHealError) {
+            console.error(`[Matching] Self-heal error for "${listingTitle}":`, selfHealError);
+          } else {
             console.log(`[Matching] Self-healed listing variation for "${listingTitle}"`);
-          } catch (e) {
-            console.error(`[Matching] Self-heal error: ${e.message}`);
           }
         }
         return { variantId: bestVariant.id, isFuzzy: true };
@@ -493,7 +544,7 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
   if (isF1 && isSC && normVariation) {
     const tierSuffix = getF1MultiTierSuffix(normVariation, listingTitle);
     if (tierSuffix) {
-      const targetSku = `BO-SC-DS-F1-${tierSuffix}`;
+      const targetSku = `BLO-SC-DS-F1-${tierSuffix}`;
       console.log(`[Matching] F1 Multi-tier matching constructed target SKU "${targetSku}"`);
       const { data: matchedVariant } = await supabase
         .from('variants')
@@ -503,19 +554,21 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
       
       if (matchedVariant) {
         console.log(`[Matching] F1 Multi-tier Success: found variant_id = ${matchedVariant.id} for SKU "${targetSku}"`);
-        
+
         // Auto-heal/insert listing variation if listing exists
         if (exactListingId) {
-          try {
-            await supabase.from('listing_variations').insert({
-              listing_id: exactListingId,
-              variant_id: matchedVariant.id,
-              platform_variation_name: normVariation,
-              reference_name: `${listingTitle} [${normVariation}]`
-            });
+          const { error: selfHealError } = await supabase.from('listing_variations').insert({
+            listing_id: exactListingId,
+            variant_id: matchedVariant.id,
+            platform_variation_name: normVariation,
+            normalized_variation_name: normalizeVariation(variationName),
+            match_source: 'self_heal',
+            reference_name: `${listingTitle} [${normVariation}]`
+          });
+          if (selfHealError) {
+            console.error(`[Matching] Self-heal error for "${listingTitle}":`, selfHealError);
+          } else {
             console.log(`[Matching] Self-healed listing variation for "${listingTitle}"`);
-          } catch (e) {
-            console.error(`[Matching] Self-heal error: ${e.message}`);
           }
         }
         return { variantId: matchedVariant.id, isFuzzy: true };
@@ -527,7 +580,7 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
   if (isF1 && isSC && isVertical && normVariation) {
     const suffix = getF1SkuSuffix(normVariation);
     if (suffix) {
-      const targetSku = `BO-SC-VDS-F1-${suffix}`;
+      const targetSku = `BLO-SC-VDS-F1-${suffix}`;
       console.log(`[Matching] Stage 2.5: F1 Team matching constructed target SKU "${targetSku}"`);
       const { data: matchedVariant } = await supabase
         .from('variants')
@@ -537,19 +590,21 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
       
       if (matchedVariant) {
         console.log(`[Matching] Stage 2.5 Success: found variant_id = ${matchedVariant.id} for SKU "${targetSku}"`);
-        
+
         // Auto-heal/insert listing variation if listing exists
         if (exactListingId) {
-          try {
-            await supabase.from('listing_variations').insert({
-              listing_id: exactListingId,
-              variant_id: matchedVariant.id,
-              platform_variation_name: normVariation,
-              reference_name: `${listingTitle} [${normVariation}]`
-            });
+          const { error: selfHealError } = await supabase.from('listing_variations').insert({
+            listing_id: exactListingId,
+            variant_id: matchedVariant.id,
+            platform_variation_name: normVariation,
+            normalized_variation_name: normalizeVariation(variationName),
+            match_source: 'self_heal',
+            reference_name: `${listingTitle} [${normVariation}]`
+          });
+          if (selfHealError) {
+            console.error(`[Matching] Self-heal error for "${listingTitle}":`, selfHealError);
+          } else {
             console.log(`[Matching] Self-healed listing variation for "${listingTitle}"`);
-          } catch (e) {
-            console.error(`[Matching] Self-heal error: ${e.message}`);
           }
         }
         return { variantId: matchedVariant.id, isFuzzy: true };
@@ -595,11 +650,13 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
             if (wmVar) bestVar = wmVar;
           }
         }
-        if (!bestVar) {
-          bestVar = variations[0];
+        // Never guess: if no variation matched, fail the match rather than
+        // shipping the wrong item (contract: Stage 3 must not pick variations[0]).
+        if (bestVar) {
+          console.log(`[Matching] Stage 3 Success: mapped fuzzy listing to variant_id = ${bestVar.variant_id}`);
+          return { variantId: bestVar.variant_id, isFuzzy: true };
         }
-        console.log(`[Matching] Stage 3 Success: mapped fuzzy listing to variant_id = ${bestVar.variant_id}`);
-        return { variantId: bestVar.variant_id, isFuzzy: true };
+        console.log(`[Matching] Stage 3: fuzzy listing found but no variation matched — not guessing.`);
       }
     }
   }

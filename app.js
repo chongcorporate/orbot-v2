@@ -19,6 +19,10 @@ let ordersDateSortDirection = "desc"; // "desc" or "asc"
 let waybillsDateSortDirection = "desc"; // "desc" or "asc"
 let catalogSortOrder = "asc"; // "asc" or "desc"
 let cachedOrders = [];
+// Monotonic request token guarding fetchAndRenderOrders() against a stale in-flight
+// request (e.g. a slow manual refresh) overwriting a newer one (e.g. a rapid filter
+// change or the poll interval firing again) — same pattern as cpQueryToken/cpRemoteSearch.
+let ordersFetchToken = 0;
 let selectedOrderId = null; // Master-detail: which order's detail panel is showing
 let bulkSelectedOrderIds = new Set(); // Orders list: checkbox-selected rows for bulk actions
 let selectedProductId = null; // Master-detail: which product's detail panel is showing
@@ -58,6 +62,57 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
+// Rejects (returns "") any href/URL that resolves to a javascript: (or other
+// script-executing) scheme, tolerating whitespace/control-char obfuscation
+// (e.g. "java\tscript:"). Safe for use directly in an href="${...}" attribute
+// alongside escapeHtml. Non-string/empty input passes through as "".
+function sanitizeUrl(url) {
+  if (url == null) return "";
+  const raw = String(url);
+  // Strip whitespace/control characters browsers ignore when parsing a URL
+  // scheme, so a payload like "java\tscript:alert(1)" can't slip past a naive
+  // prefix check.
+  const stripped = raw.replace(/[\x00-\x1f\x7f\s]+/g, "");
+  if (/^javascript:/i.test(stripped) || /^data:/i.test(stripped) || /^vbscript:/i.test(stripped)) {
+    return "";
+  }
+  return raw;
+}
+
+// ---------------- Backend API (Railway) shared-secret auth ----------------
+// Every backend route except GET /, GET /status, GET /config now requires an
+// X-Orbot-Key header matching a server-side shared secret (set once here by
+// whoever runs the dashboard, not a per-user credential). backendFetch() is
+// the single call site every backend request should go through so the header
+// is never forgotten, and so a rotated/incorrect key is handled uniformly.
+function getBackendUrl() {
+  return (localStorage.getItem("orbot_backend_url") || DEFAULT_BACKEND_URL).replace(/\/$/, "");
+}
+
+function getOrbotApiKey() {
+  let key = localStorage.getItem("orbot_api_key");
+  if (!key) {
+    key = window.prompt("Enter the Orbot API key:") || "";
+    if (key) localStorage.setItem("orbot_api_key", key);
+  }
+  return key || "";
+}
+
+// Wraps fetch() for calls to the Railway backend: resolves the backend base
+// URL, attaches X-Orbot-Key, and if the backend replies 401 (missing/rotated
+// key) clears the stored key and re-prompts so the next call can succeed.
+async function backendFetch(path, opts = {}) {
+  const url = `${getBackendUrl()}${path}`;
+  const headers = { ...(opts.headers || {}), "X-Orbot-Key": localStorage.getItem("orbot_api_key") || "" };
+  const res = await fetch(url, { ...opts, headers });
+  if (res.status === 401) {
+    localStorage.removeItem("orbot_api_key");
+    showToast("Orbot API key was rejected — please re-enter it.", "warning");
+    getOrbotApiKey();
+  }
+  return res;
+}
+
 function showToast(message, type = "info") {
   let container = document.getElementById("toast-container");
   if (!container) {
@@ -93,7 +148,17 @@ async function logAction(message, level = "info", meta = {}) {
       log_message: message,
       additional_details: Object.keys(meta).length ? meta : null
     });
-  } catch (_) {}
+  } catch (e) {
+    // Best-effort, but never fully silent — a schema mismatch here once went
+    // unnoticed for weeks because this catch swallowed every failure.
+    console.warn("logAction failed:", e);
+  }
+}
+
+// parseFloat(x) || null turns a legitimate 0 into null — keep 0 prices.
+function priceOrNull(raw) {
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 // Skeleton shimmer placeholders (Aurora 3.0). Same call signatures as the
@@ -219,8 +284,12 @@ function updateDispatchIndicator() {
 async function initSupabase() {
   const localUrl = localStorage.getItem("orbot_supabase_url");
   const localKey = localStorage.getItem("orbot_supabase_key");
-  const localSpKey = localStorage.getItem("orbot_simplyprint_key");
-  const backendUrl = (localStorage.getItem("orbot_backend_url") || DEFAULT_BACKEND_URL).replace(/\/$/, "");
+  const backendUrl = getBackendUrl();
+
+  // Shared secret required by every backend route except GET /, /status, /config.
+  // Prompt once (if not already stored) so the very first backend call after
+  // this succeeds without a surprise 401.
+  getOrbotApiKey();
 
   let remote = null;
   try {
@@ -233,14 +302,16 @@ async function initSupabase() {
   const envUrl = window.ENV ? window.ENV.SUPABASE_URL : "";
   const envKey = window.ENV ? window.ENV.SUPABASE_SERVICE_ROLE_KEY : "";
   const supabaseUrl = localUrl || (remote && remote.supabase_url) || envUrl || "";
+  // NOTE: /config now returns the Supabase anon key (RLS-gated), not the service-role
+  // key — safe to store/display in Settings, no special secret handling needed.
   const supabaseKey = localKey || (remote && remote.supabase_key) || envKey || "";
-  const spKey = localSpKey || (remote && remote.simplyprint_key) || "";
   spDispatchEnabled = remote ? remote.sp_dispatch_enabled !== false : true;
 
   document.getElementById("setting-supabase-url").value = supabaseUrl;
   document.getElementById("setting-supabase-key").value = supabaseKey;
   document.getElementById("setting-backend-url").value = localStorage.getItem("orbot_backend_url") || "";
-  document.getElementById("setting-simplyprint-key").value = spKey;
+  const apiKeyField = document.getElementById("setting-orbot-api-key");
+  if (apiKeyField) apiKeyField.value = localStorage.getItem("orbot_api_key") || "";
   document.getElementById("setting-sp-dispatch").checked = spDispatchEnabled;
   updateDispatchIndicator();
 
@@ -343,40 +414,50 @@ function onShopChange() {
 }
 
 // Stats & General Refreshes
+// Builds an .or() filter string matching rows whose "effective timestamp"
+// (order_timestamp, falling back to created_at when null — same coalesce
+// semantics used everywhere else in this file) falls within [gte, lt).
+// Used so the stats counts below can be computed with count-only queries
+// instead of pulling every order row to Postgres-count in JS.
+function effectiveTimestampRangeFilter(gteIso, ltIso) {
+  return `and(order_timestamp.gte.${gteIso},order_timestamp.lt.${ltIso}),and(order_timestamp.is.null,created_at.gte.${gteIso},created_at.lt.${ltIso})`;
+}
+
 async function fetchSummaryStats() {
   if (!supabaseClient) return;
 
   try {
-    // 1. Fetch orders timestamps for filtering (scoped to the active shop)
-    const { data: ordersData, error: oError } = await scopeByShop(supabaseClient
-      .from("orders")
-      .select("order_timestamp, created_at, overall_order_status"));
-    
-    // 2. System Errors
-    const { count: errorsCount, error: eError } = await supabaseClient
-      .from("system_logs")
-      .select("*", { count: "exact", head: true })
-      .eq("log_level", "error");
-
-    if (oError || eError) throw new Error("Stats query failed");
-
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const startOfTomorrow = new Date(startOfToday.getTime() + 86400000);
     const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
+    const startOfTodayIso = startOfToday.toISOString();
+    const startOfTomorrowIso = startOfTomorrow.toISOString();
+    const startOfYesterdayIso = startOfYesterday.toISOString();
 
-    const ordersTodayCount = (ordersData || []).filter(o => {
-      const ts = new Date(o.order_timestamp || o.created_at);
-      return ts >= startOfToday && ts <= endOfToday;
-    }).length;
+    // Counts pulled directly from Postgres via count:'exact', head:true — no rows
+    // transferred — instead of fetching every order to count in JS.
+    const [todayRes, yesterdayRes, pendingRes, holdRes, errorsRes] = await Promise.all([
+      scopeByShop(supabaseClient.from("orders").select("id", { count: "exact", head: true })
+        .or(effectiveTimestampRangeFilter(startOfTodayIso, startOfTomorrowIso))),
+      scopeByShop(supabaseClient.from("orders").select("id", { count: "exact", head: true })
+        .or(effectiveTimestampRangeFilter(startOfYesterdayIso, startOfTodayIso))),
+      scopeByShop(supabaseClient.from("orders").select("id", { count: "exact", head: true })
+        .neq("overall_order_status", "completed")),
+      scopeByShop(supabaseClient.from("orders").select("id", { count: "exact", head: true })
+        .eq("overall_order_status", "hold")),
+      supabaseClient.from("system_logs").select("id", { count: "exact", head: true }).eq("log_level", "error"),
+    ]);
 
-    const ordersYesterdayCount = (ordersData || []).filter(o => {
-      const ts = new Date(o.order_timestamp || o.created_at);
-      return ts >= startOfYesterday && ts < startOfToday;
-    }).length;
+    if (todayRes.error || yesterdayRes.error || pendingRes.error || holdRes.error || errorsRes.error) {
+      throw new Error("Stats query failed");
+    }
 
-    const pendingOrdersCount = (ordersData || []).filter(o => o.overall_order_status !== 'completed').length;
-    const ordersOnHoldCount = (ordersData || []).filter(o => o.overall_order_status === 'hold').length;
+    const ordersTodayCount = todayRes.count ?? 0;
+    const ordersYesterdayCount = yesterdayRes.count ?? 0;
+    const pendingOrdersCount = pendingRes.count ?? 0;
+    const ordersOnHoldCount = holdRes.count ?? 0;
+    const errorsCount = errorsRes.count ?? 0;
 
     tickStat(document.getElementById("stats-orders"), ordersTodayCount);
 
@@ -516,12 +597,36 @@ async function fetchAndRenderGeminiUsage() {
   }
 }
 
+// Patches a single order's status in the in-memory cache and re-renders every
+// mounted orders view from that cache (no network round-trip) — avoids a full
+// refetch-and-rebuild of up to 200 nested orders (items + print_jobs + files)
+// after a single-row status change. fetchSummaryStats() is still called since
+// it's now a handful of lightweight count-only queries, not a full table scan.
+// The periodic poll interval will still resync cachedOrders from the network
+// on its own schedule, so any drift from this optimistic patch self-heals.
+function patchOrderStatusLocally(orderId, newStatus) {
+  const order = cachedOrders.find(o => o.id === orderId);
+  if (order) order.overall_order_status = newStatus;
+  fetchSummaryStats();
+  fetchAndRenderOrders(false);
+}
+
+// Same idea as patchOrderStatusLocally() but for a deleted order: drop it from
+// the in-memory cache and re-render from cache instead of a full network refetch.
+function patchOrderDeletedLocally(orderId) {
+  cachedOrders = cachedOrders.filter(o => o.id !== orderId);
+  fetchSummaryStats();
+  fetchAndRenderOrders(false);
+}
+
 // Fetch and Render Orders
 async function fetchAndRenderOrders(forceFetch = true) {
   if (!supabaseClient) return;
   const listContainer = document.getElementById("orders-list");
   const overviewContainer = document.getElementById("overview-orders-list");
   if (!listContainer && !overviewContainer) return;
+
+  const myToken = ++ordersFetchToken;
 
   if (listContainer) listContainer.innerHTML = loadingDiv();
 
@@ -544,6 +649,7 @@ async function fetchAndRenderOrders(forceFetch = true) {
       query = scopeByShop(query);
 
       const { data: orders, error } = await query;
+      if (myToken !== ordersFetchToken) return; // a newer fetch has since started — drop this stale response
       if (error) throw error;
       cachedOrders = orders || [];
     }
@@ -621,7 +727,7 @@ async function fetchAndRenderOrders(forceFetch = true) {
     renderHoldPanel(cachedOrders);
 
   } catch (err) {
-    const errMsg = emptyDiv(`Error loading orders: ${err.message}`, "error");
+    const errMsg = emptyDiv(`Error loading orders: ${escapeHtml(err.message)}`, "error");
     if (listContainer) listContainer.innerHTML = errMsg;
     if (overviewContainer) overviewContainer.innerHTML = errMsg;
   }
@@ -697,8 +803,8 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         ? `<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-[#ffaa00] font-bold border border-amber-500/30">x${qty}</span>`
         : `<span class="ml-1 opacity-50 text-[11px]">x${qty}</span>`;
       return `
-        <span class="order-item-inline flex items-center gap-1 select-none" title="${item.variant_name || item.variant_sku} (${item.variant_sku})">
-          <span class="font-medium">${item.variant_sku}</span>${qtyHtml}
+        <span class="order-item-inline flex items-center gap-1 select-none" title="${escapeHtml(item.variant_name || item.variant_sku)} (${escapeHtml(item.variant_sku)})">
+          <span class="font-medium">${escapeHtml(item.variant_sku)}</span>${qtyHtml}
         </span>
       `;
     }).join("");
@@ -730,7 +836,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         const dateStr = item.sent_to_print_timestamp ? new Date(item.sent_to_print_timestamp).toLocaleString() : "Not Dispatched";
         const stickerUrl = item.variants?.seal_sticker_gdrive_url || "";
         const stickerBtn = stickerUrl
-          ? `<a href="${stickerUrl}" target="_blank" rel="noopener"
+          ? `<a href="${escapeHtml(sanitizeUrl(stickerUrl))}" target="_blank" rel="noopener"
                class="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors font-semibold whitespace-nowrap">
                <span class="material-symbols-outlined text-xs">label</span> Sticker
              </a>`
@@ -778,11 +884,10 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
                 const etaText = j.job_execution_status !== "completed" && j.estimated_finish_time ? formatEta(j.estimated_finish_time) : "";
                 const etaHtml = etaText ? `<span class="text-on-surface-variant/60 font-data-mono text-[10px] ml-auto">${etaText}</span>` : "";
                 const spFileId = j.print_files?.simplyprint_file_id || "";
-                const safeFileName = (j.print_file_name || "").replace(/'/g, "\\'");
                 const safeJobId = j.id || "";
                 const redispatchBtn = j.print_file_name
-                  ? `<button onclick="redispatchPrintFile('${spFileId}','${safeFileName}','${safeJobId}',this)"
-                       class="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors font-semibold whitespace-nowrap">
+                  ? `<button class="btn-redispatch-file flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors font-semibold whitespace-nowrap"
+                       data-sp-file-id="${escapeHtml(spFileId)}" data-file-name="${escapeHtml(j.print_file_name)}" data-job-id="${escapeHtml(safeJobId)}">
                        <span class="material-symbols-outlined text-xs">refresh</span> Re-dispatch
                      </button>`
                   : "";
@@ -795,13 +900,13 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
                     <div class="flex flex-wrap items-center justify-between gap-2">
                       <div class="flex items-center gap-1.5 min-w-0 flex-1">
                         <span class="material-symbols-outlined text-surface-tint text-base flex-shrink-0">code</span>
-                        <div class="font-data-mono text-on-surface-variant break-all" title="${j.print_file_name}">${j.print_file_name}</div>
+                        <div class="font-data-mono text-on-surface-variant break-all" title="${escapeHtml(j.print_file_name)}">${escapeHtml(j.print_file_name)}</div>
                         ${printTimeHtml}
                       </div>
                       <div class="flex items-center gap-1.5 flex-wrap">
                         ${extraStatus}
                         ${etaHtml}
-                        <span class="badge ${badgeClass} text-[10px] py-0.5 px-2.5">${j.job_execution_status}</span>
+                        <span class="badge ${badgeClass} text-[10px] py-0.5 px-2.5">${escapeHtml(j.job_execution_status)}</span>
                         ${redispatchBtn}
                       </div>
                     </div>
@@ -824,8 +929,8 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
           <div class="flex flex-col md:flex-row justify-between items-start md:items-center p-3 rounded-lg bg-surface-container-low/40 border border-outline-variant/10 gap-3">
             <div class="flex-grow flex flex-col gap-1 min-w-0 w-full">
               <div class="flex flex-wrap items-center gap-2">
-                <span class="font-data-mono text-xs text-primary bg-primary/10 px-2 py-0.5 rounded font-bold">${item.variant_sku || 'UNKNOWN'}</span>
-                <span class="text-sm font-medium text-on-surface truncate">${item.variant_name || 'Generic Item'}</span>
+                <span class="font-data-mono text-xs text-primary bg-primary/10 px-2 py-0.5 rounded font-bold">${escapeHtml(item.variant_sku) || 'UNKNOWN'}</span>
+                <span class="text-sm font-medium text-on-surface truncate">${escapeHtml(item.variant_name) || 'Generic Item'}</span>
               </div>
               <div class="flex items-center gap-1.5 text-[11px] text-on-surface-variant/60 font-data-mono mt-0.5">
                 <span class="material-symbols-outlined text-xs select-none">local_shipping</span>
@@ -835,7 +940,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
             </div>
             <div class="flex flex-row md:flex-col items-center md:items-end justify-between w-full md:w-auto border-t md:border-t-0 border-outline-variant/5 pt-2 md:pt-0 mt-1 md:mt-0 gap-3">
               <span class="text-sm font-bold text-on-surface font-data-mono">Qty: ${item.purchased_quantity}</span>
-              <span class="badge ${item.item_print_status.toLowerCase() === 'printing' ? 'printing' : (item.item_print_status.toLowerCase() === 'pending' ? 'pending' : 'completed')}">${item.item_print_status}</span>
+              <span class="badge ${item.item_print_status.toLowerCase() === 'printing' ? 'printing' : (item.item_print_status.toLowerCase() === 'pending' ? 'pending' : 'completed')}">${escapeHtml(item.item_print_status)}</span>
               ${stickerBtn}
             </div>
           </div>
@@ -882,7 +987,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         <td class="py-2.5 px-3 border-r border-outline-variant/10">
           <div class="flex flex-wrap gap-1">${itemsHtml}</div>
         </td>
-        <td class="py-2.5 px-3 border-r border-outline-variant/10 font-data-mono text-on-surface-variant/80">${order.order_subtotal} ${order.order_currency}</td>
+        <td class="py-2.5 px-3 border-r border-outline-variant/10 font-data-mono text-on-surface-variant/80">${escapeHtml(order.order_subtotal)} ${escapeHtml(order.order_currency)}</td>
         <td class="py-2.5 px-3 border-r border-outline-variant/10 text-center">
           <span class="badge ${waybillStatusClass} text-[10px] py-0.5 px-2.5 uppercase font-bold tracking-wide">${waybillStatusDisplay}</span>
         </td>
@@ -921,7 +1026,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
       e.stopPropagation();
       const orderId = select.getAttribute("data-order-id");
       const newStatus = e.target.value;
-      
+
       try {
         select.disabled = true;
         const { error } = await supabaseClient
@@ -931,8 +1036,9 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         if (error) throw error;
 
         logAction(`Order status changed: ${orderId} → ${newStatus}`, "info", { order_id: orderId, new_status: newStatus });
-        fetchSummaryStats();
-        fetchAndRenderOrders();
+        // Patch in place instead of a full refetch + re-render of up to 200 nested
+        // orders — the periodic poll will resync anyway.
+        patchOrderStatusLocally(orderId, newStatus);
       } catch (err) {
         showToast("Error updating order status: " + err.message, "error");
         fetchAndRenderOrders(); // Refresh to restore old value
@@ -950,6 +1056,20 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
       }
       const orderId = row.getAttribute("data-order-id");
       toggleOrderDetails(orderId, row, prefix);
+    });
+  });
+
+  // Bind click listeners to re-dispatch buttons (delegated: dataset values are
+  // already HTML-escaped by escapeHtml() at render time, unlike the old inline
+  // onclick="redispatchPrintFile('...')" string interpolation which only
+  // neutralized single quotes and could be broken out of by a double quote).
+  container.querySelectorAll(".btn-redispatch-file").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const spFileId = btn.getAttribute("data-sp-file-id");
+      const fileName = btn.getAttribute("data-file-name");
+      const jobId = btn.getAttribute("data-job-id");
+      redispatchPrintFile(spFileId, fileName, jobId, btn);
     });
   });
 
@@ -998,8 +1118,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         if (oErr) throw oErr;
 
         logAction(`Order deleted: ${platformOrderId}`, "warning", { order_id: orderId, platform_order_id: platformOrderId });
-        fetchSummaryStats();
-        fetchAndRenderOrders();
+        patchOrderDeletedLocally(orderId);
       } catch (err) {
         showToast("Error deleting order: " + err.message, "error");
         btn.disabled = false;
@@ -1105,7 +1224,7 @@ function renderOrdersMasterDetail(filtered) {
         </div>
         <div class="text-xs font-medium text-on-surface truncate">${escapeHtml(order.customer_name) || "N/A"}</div>
         <div class="omd-items-cell">${itemsHtml}</div>
-        <div class="omd-subtotal-cell">${order.order_subtotal} ${order.order_currency}</div>
+        <div class="omd-subtotal-cell">${escapeHtml(order.order_subtotal)} ${escapeHtml(order.order_currency)}</div>
         <div><span class="badge ${statusClass}" style="font-size:9.5px; padding:3px 9px;">${escapeHtml(order.overall_order_status || "pending")}</span></div>
         <div><span class="badge ${waybillStatusClass}" style="font-size:9.5px; padding:3px 9px;">${escapeHtml(waybillStatusDisplay)}</span></div>
       </div>
@@ -1176,7 +1295,7 @@ function buildOrderDetailPanel(order) {
       const dispatchedStr = item.sent_to_print_timestamp ? new Date(item.sent_to_print_timestamp).toLocaleString() : "Not dispatched";
       const stickerUrl = item.variants?.seal_sticker_gdrive_url || "";
       const stickerBtn = stickerUrl
-        ? `<a href="${stickerUrl}" target="_blank" rel="noopener" class="omd-tag-btn"><span class="material-symbols-outlined">label</span>Sticker</a>`
+        ? `<a href="${escapeHtml(sanitizeUrl(stickerUrl))}" target="_blank" rel="noopener" class="omd-tag-btn"><span class="material-symbols-outlined">label</span>Sticker</a>`
         : `<span class="omd-tag-btn off"><span class="material-symbols-outlined">label_off</span>Sticker</span>`;
 
       const jobs = item.print_jobs || [];
@@ -1188,10 +1307,9 @@ function buildOrderDetailPanel(order) {
 
         const etaText = j.job_execution_status !== "completed" && j.estimated_finish_time ? formatEta(j.estimated_finish_time) : "";
         const spFileId = j.print_files?.simplyprint_file_id || "";
-        const safeFileName = (j.print_file_name || "").replace(/'/g, "\\'");
         const safeJobId = j.id || "";
         const redispatchBtn = j.print_file_name
-          ? `<button onclick="redispatchPrintFile('${spFileId}','${safeFileName}','${safeJobId}',this)" class="omd-tag-btn"><span class="material-symbols-outlined">refresh</span>Re-dispatch</button>`
+          ? `<button class="omd-tag-btn btn-redispatch-file" data-sp-file-id="${escapeHtml(spFileId)}" data-file-name="${escapeHtml(j.print_file_name)}" data-job-id="${escapeHtml(safeJobId)}"><span class="material-symbols-outlined">refresh</span>Re-dispatch</button>`
           : "";
         const progressHtml = j.job_execution_status === "printing"
           ? `<div class="omd-job-bar"><i style="width:${j.percent_complete || 0}%"></i></div>`
@@ -1240,10 +1358,10 @@ function buildOrderDetailPanel(order) {
   if (waybillStatusDisplay.toLowerCase() === "ready to print") waybillStatusDisplay = "ready";
 
   const rawPdfBtn = order.raw_waybill_gdrive_url
-    ? `<a href="${order.raw_waybill_gdrive_url}" target="_blank" rel="noopener" class="omd-tag-btn"><span class="material-symbols-outlined">description</span>Raw PDF</a>`
+    ? `<a href="${escapeHtml(sanitizeUrl(order.raw_waybill_gdrive_url))}" target="_blank" rel="noopener" class="omd-tag-btn"><span class="material-symbols-outlined">description</span>Raw PDF</a>`
     : `<span class="omd-tag-btn off"><span class="material-symbols-outlined">block</span>Raw PDF</span>`;
   const processedPdfBtn = order.processed_waybill_gdrive_url
-    ? `<a href="${order.processed_waybill_gdrive_url}" target="_blank" rel="noopener" class="omd-tag-btn"><span class="material-symbols-outlined">description</span>Processed</a>`
+    ? `<a href="${escapeHtml(sanitizeUrl(order.processed_waybill_gdrive_url))}" target="_blank" rel="noopener" class="omd-tag-btn"><span class="material-symbols-outlined">description</span>Processed</a>`
     : `<span class="omd-tag-btn off"><span class="material-symbols-outlined">block</span>Processed — n/a</span>`;
 
   // Timeline — derived entirely from real fields (created_at / order_timestamp,
@@ -1312,7 +1430,7 @@ function buildOrderDetailPanel(order) {
       </div>
     </div>
 
-    <div style="flex:1; min-height:0;">
+    <div>
       <div class="omd-section-title"><span class="material-symbols-outlined">history</span>Order Timeline</div>
       ${tlHtml}
     </div>
@@ -1353,6 +1471,19 @@ function bindOrderDetailPanelEvents() {
     });
   }
 
+  // Re-dispatch buttons (one per print job). data-* values are HTML-escaped at
+  // render time, so reading via dataset here avoids the inline onclick's
+  // quote-breakout risk.
+  panel.querySelectorAll(".btn-redispatch-file").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const spFileId = btn.getAttribute("data-sp-file-id");
+      const fileName = btn.getAttribute("data-file-name");
+      const jobId = btn.getAttribute("data-job-id");
+      redispatchPrintFile(spFileId, fileName, jobId, btn);
+    });
+  });
+
   // One-click advance: sets the select to the next pipeline status and fires
   // its existing change handler (DB update + re-render + badge flash).
   const advanceBtn = panel.querySelector(".status-advance-btn");
@@ -1378,11 +1509,10 @@ function bindOrderDetailPanelEvents() {
           .eq("id", orderId);
         if (error) throw error;
         logAction(`Order status changed: ${orderId} → ${newStatus}`, "info", { order_id: orderId, new_status: newStatus });
-        fetchSummaryStats();
-        fetchAndRenderOrders().then(() => {
-          // Flash the updated row's status badge so the change is visible
-          document.querySelector(`#orders-list .omd-row[data-order-id="${orderId}"] .badge`)?.classList.add("flash-update");
-        });
+        // Patch the row in place instead of a full refetch + re-render of up to 200
+        // nested orders — the periodic poll will resync anyway.
+        patchOrderStatusLocally(orderId, newStatus);
+        document.querySelector(`#orders-list .omd-row[data-order-id="${orderId}"] .badge`)?.classList.add("flash-update");
       } catch (err) {
         showToast("Error updating order status: " + err.message, "error");
         fetchAndRenderOrders();
@@ -1428,8 +1558,7 @@ function bindOrderDetailPanelEvents() {
 
         logAction(`Order deleted: ${platformOrderId}`, "warning", { order_id: orderId, platform_order_id: platformOrderId });
         selectedOrderId = null;
-        fetchSummaryStats();
-        fetchAndRenderOrders();
+        patchOrderDeletedLocally(orderId);
       } catch (err) {
         showToast("Error deleting order: " + err.message, "error");
         deleteBtn.disabled = false;
@@ -1456,14 +1585,14 @@ function renderHoldPanel(allOrdersList) {
       holdHtml += `
         <div class="hold-item" id="hold-item-${order.id}">
           <div style="display: flex; flex-direction: column; gap: 0.2rem;">
-            <div style="font-weight: bold; font-family: monospace; font-size: 0.95rem;">Order #${order.platform_order_id}</div>
+            <div style="font-weight: bold; font-family: monospace; font-size: 0.95rem;">Order #${escapeHtml(order.platform_order_id)}</div>
             <div style="font-size: 0.8rem; color: var(--text-secondary);" id="discrepancy-${order.id}">Loading discrepancy details...</div>
           </div>
           <div style="display: flex; gap: 0.5rem;">
-            <button class="btn-secondary rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-xs btn-reset-hold" data-order-id="${order.id}" data-platform-id="${order.platform_order_id}">
+            <button class="btn-secondary rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-xs btn-reset-hold" data-order-id="${order.id}" data-platform-id="${escapeHtml(order.platform_order_id)}">
               <span class="material-symbols-outlined text-xs select-none">rotate_left</span> Reset to Pending
             </button>
-            <button class="btn-primary rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-xs btn-force-approve" data-order-id="${order.id}" data-platform-id="${order.platform_order_id}">
+            <button class="btn-primary rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-xs btn-force-approve" data-order-id="${order.id}" data-platform-id="${escapeHtml(order.platform_order_id)}">
               <span class="material-symbols-outlined text-xs select-none">check</span> Force Release
             </button>
           </div>
@@ -1601,14 +1730,33 @@ function setupOrderFilters() {
     completeAllOrdersBtn.addEventListener("click", async () => {
       if (!supabaseClient) return;
 
-      const confirmed = await showConfirmModal("Complete All Orders", "Are you sure you want to mark all orders as completed? This cannot be undone.", "Complete All");
+      // Count exactly what the scoped update below will affect (all orders in the
+      // active shop scope, not just the current status/search filter) so the confirm
+      // dialog never undersells/oversells the blast radius of this action.
+      let affectedCount = null;
+      try {
+        const { count, error: countErr } = await scopeByShop(
+          supabaseClient.from("orders").select("id", { count: "exact", head: true })
+        );
+        if (!countErr) affectedCount = count;
+      } catch (_) { /* best-effort; fall back to generic wording below */ }
+
+      const scopeLabel = currentShop === "all" ? "all shops" : currentShop === "unassigned" ? "unassigned orders" : shopName(currentShop);
+      const countLabel = affectedCount === null ? "all" : affectedCount;
+      const confirmed = await showConfirmModal(
+        "Complete All Orders",
+        `Are you sure you want to mark ${countLabel} order${affectedCount === 1 ? "" : "s"} (${scopeLabel}) as completed? This cannot be undone.`,
+        "Complete All"
+      );
       if (!confirmed) return;
 
       try {
         completeAllOrdersBtn.disabled = true;
-        const { error } = await supabaseClient.from("orders")
-          .update({ overall_order_status: "completed" })
-          .neq("id", "00000000-0000-0000-0000-000000000000");
+        const { error } = await scopeByShop(
+          supabaseClient.from("orders")
+            .update({ overall_order_status: "completed" })
+            .neq("id", "00000000-0000-0000-0000-000000000000")
+        );
         if (error) throw error;
         showToast("All orders marked as completed.", "success");
         bulkSelectedOrderIds.clear();
@@ -1718,14 +1866,11 @@ window.redispatchPrintFile = async function(simplyPrintFileId, printFileName, pr
     showToast("SimplyPrint dispatch is disabled in Settings.", "warning");
     return;
   }
-  const backendUrl = (localStorage.getItem("orbot_backend_url") || DEFAULT_BACKEND_URL).replace(/\/$/, "");
-  if (!backendUrl) { showToast("Backend URL not set in Settings.", "warning"); return; }
-  const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
   if (btn) { btn.disabled = true; btn.querySelector(".material-symbols-outlined").textContent = "sync"; }
   try {
-    const res = await fetch(`${backendUrl}/print-files/queue`, {
+    const res = await backendFetch(`/print-files/queue`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         print_file_name: printFileName,
         ...(simplyPrintFileId && { simplyprint_file_id: simplyPrintFileId }),
@@ -1860,7 +2005,7 @@ async function fetchAndRenderLogs() {
 
     markFresh("activity");
   } catch (err) {
-    box.innerHTML = emptyDiv(`Error loading activity: ${err.message}`, "error");
+    box.innerHTML = emptyDiv(`Error loading activity: ${escapeHtml(err.message)}`, "error");
   }
 }
 
@@ -1996,7 +2141,7 @@ async function fetchAndRenderCatalog() {
     markFresh("products");
 
   } catch (err) {
-    if (tbody) tbody.innerHTML = emptyDiv(`Error loading catalog: ${err.message}`, "error");
+    if (tbody) tbody.innerHTML = emptyDiv(`Error loading catalog: ${escapeHtml(err.message)}`, "error");
   }
 }
 
@@ -2348,7 +2493,7 @@ function buildProductDetailPanel(product) {
         <div class="omd-meta" style="margin-top:4px;">${escapeHtml(product.brand_name)} · ${escapeHtml(product.product_category)}</div>
       </div>
       <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-        ${picsUrl ? `<a href="${picsUrl}" target="_blank" rel="noopener" class="p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center" title="Open product photos (Google Drive)"><span class="material-symbols-outlined text-[16px]">photo_library</span></a>` : ""}
+        ${picsUrl ? `<a href="${escapeHtml(sanitizeUrl(picsUrl))}" target="_blank" rel="noopener" class="p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center" title="Open product photos (Google Drive)"><span class="material-symbols-outlined text-[16px]">photo_library</span></a>` : ""}
         <button class="btn-product-details p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center cursor-pointer" data-product-id="${product.id}" title="View Full Details">
           <span class="material-symbols-outlined text-[16px]">info</span>
         </button>
@@ -2476,7 +2621,7 @@ async function clearDatabase() {
   try {
     const button = document.getElementById("clear-db-btn");
     button.disabled = true;
-    button.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Clearing...`;
+    button.innerHTML = `<span class="material-symbols-outlined animate-spin" style="font-size:16px;vertical-align:middle;">progress_activity</span> Clearing...`;
 
     // Delete records from database directly using Cascade deletes
     const { error: pjError } = await supabaseClient.from("print_jobs").delete().neq("id", "00000000-0000-0000-0000-000000000000");
@@ -2841,28 +2986,37 @@ function setupSettings() {
       backendUrl = "https://" + backendUrl;
       document.getElementById("setting-backend-url").value = backendUrl;
     }
-    const spKey = document.getElementById("setting-simplyprint-key").value.trim();
+    const apiKeyField = document.getElementById("setting-orbot-api-key");
+    const apiKey = apiKeyField ? apiKeyField.value.trim() : "";
     const spDispatchChecked = document.getElementById("setting-sp-dispatch").checked;
 
     // These are local-dev overrides only (blank = defer to the backend's /config
-    // defaults, which is what every browser uses out of the box).
+    // defaults, which is what every browser uses out of the box). The Supabase key
+    // is the anon key (RLS-gated) — safe to store like any other config value.
     localStorage.setItem("orbot_supabase_url", url);
     localStorage.setItem("orbot_supabase_key", key);
     localStorage.setItem("orbot_backend_url", backendUrl);
-    localStorage.setItem("orbot_simplyprint_key", spKey);
+    if (apiKeyField) {
+      if (apiKey) localStorage.setItem("orbot_api_key", apiKey);
+      else localStorage.removeItem("orbot_api_key");
+    }
 
     // The dispatch toggle is a shared feature flag, not a per-browser credential —
     // persist it on the backend so flipping it here applies on every device.
-    const effectiveBackendUrl = (backendUrl || DEFAULT_BACKEND_URL).replace(/\/$/, "");
     try {
-      await fetch(`${effectiveBackendUrl}/config/sp-dispatch`, {
+      const res = await backendFetch(`/config/sp-dispatch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: spDispatchChecked }),
       });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try { detail = (JSON.parse(await res.text())).detail || detail; } catch (_) {}
+        throw new Error(detail);
+      }
     } catch (error) {
       console.error("Failed to persist SimplyPrint dispatch toggle:", error);
-      showToast("Failed to save dispatch toggle to the server", "error");
+      showToast(`Failed to save dispatch toggle to the server: ${error.message}`, "error");
     }
 
     closeModal();
@@ -3235,7 +3389,7 @@ function setupCatalogModal() {
 
     try {
       saveBtn.disabled = true;
-      saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+      saveBtn.innerHTML = `<span class="material-symbols-outlined animate-spin" style="font-size:16px;vertical-align:middle;">progress_activity</span> Saving...`;
 
       let productId = null;
 
@@ -3547,16 +3701,12 @@ function setupWaybillProcessing() {
     // Instantly update Overview queue if active
     if (currentTab === "overview") fetchAndRenderOverviewJobs();
 
-    const backendUrl = (localStorage.getItem("orbot_backend_url") || DEFAULT_BACKEND_URL).replace(/\/$/, "");
-
     try {
-      if (!backendUrl) throw new Error("Backend URL not set. Add your Railway URL in Settings.");
-      const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
       const spDispatch = isSpDispatchEnabled();
       if (!spDispatch) writeWaybillConsole("[DRY RUN] SimplyPrint dispatch is disabled — files will be processed but not sent to printers.", "warning");
-      const response = await fetch(`${backendUrl}/foreman/dispatch`, {
+      const response = await backendFetch(`/foreman/dispatch`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dry_run: !spDispatch })
       });
       const rawText2 = await response.text();
@@ -3618,9 +3768,13 @@ function setupWaybillProcessing() {
           if (currentTab === "orders") fetchAndRenderOrders();
           if (currentTab === "operations") fetchAndRenderJobs();
           if (currentTab === "orders") {
-            fetchAndRenderWaybillsArchive();
             fetchAndRenderMasterPDFs();
-            document.getElementById("waybill-tab-pdfs")?.click();
+            // Old #waybill-tab-pdfs panel is gone — expand the Waybill Tools
+            // drawer so the freshly compiled PDF is visible.
+            const drawerBody = document.querySelector(".waybill-tools-body");
+            if (drawerBody && drawerBody.classList.contains("hidden")) {
+              document.getElementById("waybill-tools-toggle")?.click();
+            }
           }
           if (currentTab === "overview") {
             fetchAndRenderOverviewJobs();
@@ -3708,20 +3862,21 @@ async function fetchAndRenderJobs() {
       let resultStr = "-";
       if (j.result) {
         if (j.result.error) {
-          resultStr = `<span style="color: var(--error-color); font-weight: 500;">Error: ${j.result.error}</span>`;
+          resultStr = `<span style="color: var(--error-color); font-weight: 500;">Error: ${escapeHtml(j.result.error)}</span>`;
         } else if (j.result.url) {
-          resultStr = `<a href="${j.result.url}" target="_blank" class="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-[#8b7cf6] rounded border border-primary/30 transition-all duration-150 inline-flex items-center gap-1.5 select-none no-underline text-[10px] font-semibold"><span class="material-symbols-outlined text-[12px] select-none">download</span> Download Batch</a>`;
+          resultStr = `<a href="${escapeHtml(sanitizeUrl(j.result.url))}" target="_blank" class="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-[#8b7cf6] rounded border border-primary/30 transition-all duration-150 inline-flex items-center gap-1.5 select-none no-underline text-[10px] font-semibold"><span class="material-symbols-outlined text-[12px] select-none">download</span> Download Batch</a>`;
         } else {
-          resultStr = JSON.stringify(j.result);
+          resultStr = escapeHtml(JSON.stringify(j.result));
         }
       }
+      const safePayloadStr = escapeHtml(payloadStr);
 
       return `
         <tr class="group transition-all duration-150">
-          <td class="py-2.5 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-l border-outline-variant/15 rounded-l-lg font-data-mono text-xs text-on-surface select-all" title="${j.id}">${j.id.substring(0, 8)}...</td>
-          <td class="py-2.5 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15"><span class="badge secondary text-[10px] py-0.5 px-2 bg-white/5 uppercase select-none">${j.job_type}</span></td>
-          <td class="py-2.5 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15"><span class="badge ${statusClass} text-[10px] py-0.5 px-2 uppercase select-none">${j.status}</span></td>
-          <td class="py-2.5 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15 font-data-mono text-xs max-w-[150px] truncate text-on-surface-variant/70 select-all" title='${payloadStr}'>${payloadStr}</td>
+          <td class="py-2.5 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-l border-outline-variant/15 rounded-l-lg font-data-mono text-xs text-on-surface select-all" title="${escapeHtml(j.id)}">${escapeHtml(j.id.substring(0, 8))}...</td>
+          <td class="py-2.5 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15"><span class="badge secondary text-[10px] py-0.5 px-2 bg-white/5 uppercase select-none">${escapeHtml(j.job_type)}</span></td>
+          <td class="py-2.5 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15"><span class="badge ${statusClass} text-[10px] py-0.5 px-2 uppercase select-none">${escapeHtml(j.status)}</span></td>
+          <td class="py-2.5 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15 font-data-mono text-xs max-w-[150px] truncate text-on-surface-variant/70 select-all" title='${safePayloadStr}'>${safePayloadStr}</td>
           <td class="py-2.5 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15 text-xs text-on-surface-variant/80 select-all">${resultStr}</td>
           <td class="py-2.5 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-r border-outline-variant/15 rounded-r-lg font-data-mono text-xs text-on-surface-variant/60">${dateStr}</td>
         </tr>
@@ -3729,7 +3884,7 @@ async function fetchAndRenderJobs() {
     }).join("");
 
   } catch (err) {
-    tbody.innerHTML = emptyRow(`Error loading jobs: ${err.message}`, "error", 6);
+    tbody.innerHTML = emptyRow(`Error loading jobs: ${escapeHtml(err.message)}`, "error", 6);
   }
 }
 
@@ -3837,19 +3992,16 @@ async function fetchAndRenderOverviewJobs() {
   if (!tbody) return;
 
   try {
-    // Fetch 10 most recent jobs
-    const { data: jobs, error: jError } = await supabaseClient
-      .from("waybill_jobs")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(10);
-
-    // Fetch 10 most recent logs
-    const { data: logs, error: lError } = await supabaseClient
-      .from("system_logs")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(10);
+    // Jobs and logs are independent queries — fetch concurrently instead of
+    // sequentially (the second await previously only started after the first
+    // resolved even though neither depends on the other).
+    const [
+      { data: jobs, error: jError },
+      { data: logs, error: lError },
+    ] = await Promise.all([
+      supabaseClient.from("waybill_jobs").select("*").order("created_at", { ascending: false }).limit(10),
+      supabaseClient.from("system_logs").select("*").order("created_at", { ascending: false }).limit(10),
+    ]);
 
     if (jError) throw jError;
     if (lError) throw lError;
@@ -3863,9 +4015,9 @@ async function fetchAndRenderOverviewJobs() {
           source: `Job: ${j.job_type}`,
           badgeText: j.status,
           badgeClass: j.status === "pending" ? "pending" : (j.status === "processing" ? "printing" : (j.status === "failed" ? "hold" : "completed")),
-          detail: j.result && j.result.error 
-            ? `Failed: ${j.result.error}` 
-            : (j.result && j.result.url ? `Batch compiled. <a href="${j.result.url}" target="_blank" class="text-primary hover:underline font-bold">Download</a>` : `Job ${j.status}.`)
+          detail: j.result && j.result.error
+            ? `Failed: ${escapeHtml(j.result.error)}`
+            : (j.result && j.result.url ? `Batch compiled. <a href="${escapeHtml(sanitizeUrl(j.result.url))}" target="_blank" class="text-primary hover:underline font-bold">Download</a>` : `Job ${escapeHtml(j.status)}.`)
         });
       });
     }
@@ -3878,7 +4030,7 @@ async function fetchAndRenderOverviewJobs() {
           source: l.agent_name,
           badgeText: l.log_level,
           badgeClass: lvl === "error" || lvl === "failed" ? "hold" : (lvl === "warning" ? "pending" : "completed"),
-          detail: l.log_message
+          detail: escapeHtml(l.log_message)
         });
       });
     }
@@ -3899,16 +4051,16 @@ async function fetchAndRenderOverviewJobs() {
       return `
         <tr class="group transition-all duration-150">
           <td class="py-2 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-l border-outline-variant/15 rounded-l-lg font-data-mono text-[11px] text-on-surface-variant/70">${dateStr}</td>
-          <td class="py-2 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15 font-semibold text-on-surface">${item.source}</td>
-          <td class="py-2 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15"><span class="badge ${item.badgeClass} text-[9px] py-0.5 px-2 uppercase select-none">${item.badgeText}</span></td>
-          <td class="py-2 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-r border-outline-variant/15 rounded-r-lg text-on-surface-variant/80 text-[11px] max-w-[280px] truncate select-all" title="${item.detail.replace(/"/g, '&quot;')}">${item.detail}</td>
+          <td class="py-2 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15 font-semibold text-on-surface">${escapeHtml(item.source)}</td>
+          <td class="py-2 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15"><span class="badge ${item.badgeClass} text-[9px] py-0.5 px-2 uppercase select-none">${escapeHtml(item.badgeText)}</span></td>
+          <td class="py-2 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-r border-outline-variant/15 rounded-r-lg text-on-surface-variant/80 text-[11px] max-w-[280px] truncate select-all" title="${escapeHtml(item.detail)}">${item.detail}</td>
         </tr>
       `;
     }).join("");
 
   } catch (err) {
     console.error("Error fetching overview activity:", err);
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--error-color); padding: 2rem;">Error loading activity: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--error-color); padding: 2rem;">Error loading activity: ${escapeHtml(err.message)}</td></tr>`;
   }
 }
 
@@ -4144,12 +4296,12 @@ async function fetchAndRenderWaybillsArchive() {
       else if (statusLower === "pending") statusClass = "pending";
       else if (statusLower === "on hold" || statusLower === "hold" || statusLower === "failed") statusClass = "hold";
 
-      const rawBtn = order.raw_waybill_gdrive_url 
-        ? `<a href="${order.raw_waybill_gdrive_url}" target="_blank" class="px-2.5 py-1.5 rounded btn-archive-raw text-xs font-semibold transition-all duration-150 inline-flex items-center gap-1.5 select-none no-underline"><span class="material-symbols-outlined text-sm select-none">download</span> Download</a>`
+      const rawBtn = order.raw_waybill_gdrive_url
+        ? `<a href="${escapeHtml(sanitizeUrl(order.raw_waybill_gdrive_url))}" target="_blank" class="px-2.5 py-1.5 rounded btn-archive-raw text-xs font-semibold transition-all duration-150 inline-flex items-center gap-1.5 select-none no-underline"><span class="material-symbols-outlined text-sm select-none">download</span> Download</a>`
         : `<span class="text-on-surface-variant/40 font-data-mono text-xs select-none">-</span>`;
- 
-      const processedBtn = order.processed_waybill_gdrive_url 
-        ? `<a href="${order.processed_waybill_gdrive_url}" target="_blank" class="px-2.5 py-1.5 rounded btn-archive-processed text-xs font-bold transition-all duration-150 inline-flex items-center gap-1.5 select-none no-underline"><span class="material-symbols-outlined text-sm select-none">download</span> Download</a>`
+
+      const processedBtn = order.processed_waybill_gdrive_url
+        ? `<a href="${escapeHtml(sanitizeUrl(order.processed_waybill_gdrive_url))}" target="_blank" class="px-2.5 py-1.5 rounded btn-archive-processed text-xs font-bold transition-all duration-150 inline-flex items-center gap-1.5 select-none no-underline"><span class="material-symbols-outlined text-sm select-none">download</span> Download</a>`
         : `<span class="text-on-surface-variant/40 font-data-mono text-xs select-none">-</span>`;
 
       const selectHtml = `
@@ -4210,7 +4362,7 @@ async function fetchAndRenderWaybillsArchive() {
     }
 
   } catch (err) {
-    tbody.innerHTML = emptyRow(`Error loading waybills: ${err.message}`, "error", 6);
+    tbody.innerHTML = emptyRow(`Error loading waybills: ${escapeHtml(err.message)}`, "error", 6);
   }
 }
 
@@ -4366,9 +4518,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     // Orders are heavy (nested items + print_jobs); defer until the Orders tab is active
     // fetchAndRenderOrders() is called by setupTabs when the user switches to that tab
     
-    // Poll stats and heartbeats
-    setInterval(fetchSummaryStats, 300000);
+    // Poll stats and heartbeats — skip entirely while the tab is backgrounded, same
+    // guard as the 60s overview poll below (no point paying for network/render work
+    // nobody's looking at).
     setInterval(() => {
+      if (!document.hidden) fetchSummaryStats();
+    }, 300000);
+    setInterval(() => {
+      if (document.hidden) return;
       if (currentTab === "operations") {
         fetchAgentHeartbeats();
         fetchAndRenderJobs();
@@ -4377,7 +4534,9 @@ window.addEventListener("DOMContentLoaded", async () => {
         fetchAndRenderPrintJobs();
       } else if (currentTab === "orders") {
         fetchAgentHeartbeats();
-        fetchAndRenderWaybillsArchive();
+        // fetchAndRenderWaybillsArchive is a dead no-op since the redesign —
+        // refresh the orders list itself so the tab isn't frozen in time
+        fetchAndRenderOrders();
       } else if (currentTab === "overview") {
         fetchAgentHeartbeats();
         fetchAndRenderPrintersAndQueue();
@@ -4558,11 +4717,11 @@ function renderGanttChart(printers, queue, jobs) {
 
       const tooltip = `
         <div class="gantt-tooltip" style="${ttPos}">
-          <div class="text-primary font-bold text-[10px] border-b border-white/10 pb-1.5 mb-1.5 truncate">${sku || disp}</div>
+          <div class="text-primary font-bold text-[10px] border-b border-white/10 pb-1.5 mb-1.5 truncate">${escapeHtml(sku || disp)}</div>
           <div class="space-y-0.5 text-[9px] text-on-surface-variant">
-            <div class="truncate"><span class="opacity-50">File</span>&nbsp;${disp}</div>
-            ${oid  ? `<div><span class="opacity-50">Order</span>&nbsp;${oid}</div>` : ''}
-            ${cust ? `<div><span class="opacity-50">Customer</span>&nbsp;${cust}</div>` : ''}
+            <div class="truncate"><span class="opacity-50">File</span>&nbsp;${escapeHtml(disp)}</div>
+            ${oid  ? `<div><span class="opacity-50">Order</span>&nbsp;${escapeHtml(oid)}</div>` : ''}
+            ${cust ? `<div><span class="opacity-50">Customer</span>&nbsp;${escapeHtml(cust)}</div>` : ''}
             <div><span class="opacity-50">Duration</span>&nbsp;${dur}</div>
             <div><span class="opacity-50">${block.type === 'active' ? 'Finishes' : 'Starts ~'}</span>&nbsp;${fmtTime(block.type === 'active' ? block.end : block.start)}</div>
             ${block.type === 'active' ? `<div class="text-primary font-bold mt-0.5">${block.percent}% complete</div>` : ''}
@@ -4571,7 +4730,7 @@ function renderGanttChart(printers, queue, jobs) {
 
       blocksHtml += `
         <div class="gantt-block ${cls}" style="left:${lp.toFixed(2)}%;width:${wp.toFixed(2)}%;${bgStyle}">
-          ${wp > 5 ? `<span class="gantt-block-title">${disp}</span>` : ''}
+          ${wp > 5 ? `<span class="gantt-block-title">${escapeHtml(disp)}</span>` : ''}
           ${tooltip}
         </div>`;
     });
@@ -4587,7 +4746,7 @@ function renderGanttChart(printers, queue, jobs) {
         <div class="gantt-printer-col">
           <div class="flex items-center gap-1.5 min-w-0">
             ${badge}
-            <span class="truncate text-[11px] font-semibold" title="${p.name}">${p.name}</span>
+            <span class="truncate text-[11px] font-semibold" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
           </div>
           ${offline ? '<span class="text-[9px] text-error/60 mt-0.5 block">offline</span>' : ''}
         </div>
@@ -4612,19 +4771,28 @@ async function fetchAndRenderPrintersAndQueue() {
   const overviewQueueContainer = document.getElementById("overview-printers-queue-list");
 
   try {
-    // 1. Fetch Printers
-    const { data: printers, error: printersError } = await supabaseClient
-      .from("simplyprint_printers")
-      .select("*")
-      .order("name", { ascending: true });
+    // Printers, queue, and active/pending print jobs are three independent queries
+    // (none depends on another's result — renderGanttChart just needs all three
+    // results together) so fetch them concurrently instead of sequentially.
+    const [
+      { data: printers, error: printersError },
+      { data: queue, error: queueError },
+      { data: activeJobs, error: jobsError },
+    ] = await Promise.all([
+      supabaseClient.from("simplyprint_printers").select("*").order("name", { ascending: true }),
+      supabaseClient.from("simplyprint_queue").select("*").order("position", { ascending: true }),
+      supabaseClient.from("print_jobs")
+        .select("*, order_items(variant_sku, variant_name, orders(platform_order_id, customer_name)), print_files(print_time_m)")
+        .in("job_execution_status", ["pending", "printing"]),
+    ]);
 
     if (printersError) throw printersError;
 
     // Update printer error notification boxes
     const offlineOrErrorPrinters = (printers || []).filter(p => !p.online || (p.state && p.state.toLowerCase().includes("error")));
     const errorListHtml = offlineOrErrorPrinters.map(p => {
-      const reason = !p.online ? "Printer is offline" : `Error state: ${p.state}`;
-      return `<li><strong>${p.name}</strong>: ${reason}</li>`;
+      const reason = !p.online ? "Printer is offline" : `Error state: ${escapeHtml(p.state)}`;
+      return `<li><strong>${escapeHtml(p.name)}</strong>: ${reason}</li>`;
     }).join("");
 
     const ovErrorBox = document.getElementById("overview-printers-error-box");
@@ -4763,12 +4931,6 @@ async function fetchAndRenderPrintersAndQueue() {
     if (printersContainer) printersContainer.innerHTML = renderPrintersHtml("main-");
     if (overviewPrintersContainer) overviewPrintersContainer.innerHTML = renderPrintersHtml("overview-");
 
-    // 2. Fetch Queue
-    const { data: queue, error: queueError } = await supabaseClient
-      .from("simplyprint_queue")
-      .select("*")
-      .order("position", { ascending: true });
-
     if (queueError) throw queueError;
 
     // Render Queue
@@ -4793,9 +4955,9 @@ async function fetchAndRenderPrintersAndQueue() {
                    interestfor="tooltip-${prefix}queue-${q.id}" 
                    id="trigger-${prefix}queue-${q.id}" 
                    tabindex="0" 
-                   style="anchor-name: --tooltip-${prefix}queue-${q.id};">${q.name}</p>
+                   style="anchor-name: --tooltip-${prefix}queue-${q.id};">${escapeHtml(q.name)}</p>
                 <div popover="hint" id="tooltip-${prefix}queue-${q.id}" style="position-anchor: --tooltip-${prefix}queue-${q.id}; top: anchor(bottom); left: anchor(left); margin: unset;">
-                  ${q.name}
+                  ${escapeHtml(q.name)}
                 </div>
                 <p class="text-[9px] text-outline font-data-mono mt-0.5">SimplyPrint ID: ${q.id}</p>
               </div>
@@ -4809,13 +4971,8 @@ async function fetchAndRenderPrintersAndQueue() {
     if (queueContainer) queueContainer.innerHTML = renderQueueHtml("main-");
     if (overviewQueueContainer) overviewQueueContainer.innerHTML = renderQueueHtml("overview-");
 
-    // Fetch active/pending print jobs for Gantt timeline
+    // Render Gantt timeline from the print jobs fetched above alongside printers/queue.
     try {
-      const { data: activeJobs, error: jobsError } = await supabaseClient
-        .from("print_jobs")
-        .select("*, order_items(variant_sku, variant_name, orders(platform_order_id, customer_name)), print_files(print_time_m)")
-        .in("job_execution_status", ["pending", "printing"]);
-
       if (jobsError) throw jobsError;
       renderGanttChart(printers, queue, activeJobs);
     } catch (jErr) {
@@ -5055,14 +5212,15 @@ window.addEventListener("DOMContentLoaded", () => {
   const qoBatchPdfsBtn = document.getElementById("overview-qo-batch-pdfs");
   if (qoBatchPdfsBtn) qoBatchPdfsBtn.addEventListener("click", () => {
     navigateToTab("orders");
-    document.getElementById("waybill-tab-pdfs")?.click();
+    // The old #waybill-tab-pdfs panel is gone — the compiled PDFs list now
+    // lives in the Waybill Tools drawer; expand it if collapsed.
+    const body = document.querySelector(".waybill-tools-body");
+    if (body && body.classList.contains("hidden")) {
+      document.getElementById("waybill-tools-toggle")?.click();
+    }
   });
 
-  // Stat card navigation
-  function navigateToTab(tabId) {
-    const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
-    if (btn) btn.click();
-  }
+  // Stat card navigation (uses the top-level navigateToTab)
   const statCardMap = {
     "stat-card-orders-today": "orders",
     "stat-card-pending": "orders",
@@ -5152,6 +5310,12 @@ async function updateStockInDb(variantId, newQty) {
 
   } catch (err) {
     showToast("Failed to update stock quantity: " + err.message, "error");
+    // Callers (both the catalog table stepper and the product-detail-panel stepper)
+    // optimistically write the failed value into cachedVariants / the DOM before this
+    // update lands, so fetchAndRenderCatalog()'s "skip network if cache is warm" guard
+    // would otherwise just re-render the same wrong value from cache. Force it to hit
+    // the network for the real, authoritative value instead.
+    cachedVariants = [];
     fetchAndRenderCatalog();
   }
 }
@@ -5186,15 +5350,12 @@ function setupCatalogStockListeners() {
       e.stopPropagation();
       const spFileId = printFileBtn.getAttribute("data-sp-file-id");
       const fileName = printFileBtn.getAttribute("data-file-name");
-      const backendUrl = (localStorage.getItem("orbot_backend_url") || DEFAULT_BACKEND_URL).replace(/\/$/, "");
-      if (!backendUrl) { showToast("Backend URL not set in Settings.", "warning"); return; }
-      const spKey = localStorage.getItem("orbot_simplyprint_key") || "";
       printFileBtn.disabled = true;
       printFileBtn.querySelector(".material-symbols-outlined").textContent = "sync";
       try {
-        const res = await fetch(`${backendUrl}/print-files/queue`, {
+        const res = await backendFetch(`/print-files/queue`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...(spKey && { "X-SimplyPrint-Key": spKey }) },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ simplyprint_file_id: spFileId, print_file_name: fileName })
         });
         const rawText = await res.text();
@@ -5363,14 +5524,14 @@ async function fetchAndRenderPrintJobs() {
 
       html += `
         <tr class="border-b border-outline-variant/10 hover:bg-surface-container/20 transition-colors font-data-mono">
-          <td class="py-2 px-3 border-r border-outline-variant/10 font-bold text-on-surface">${job.simplyprint_job_id || "PENDING"}</td>
-          <td class="py-2 px-3 border-r border-outline-variant/10 text-primary">${sku}</td>
-          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant max-w-[200px] truncate" title="${job.print_file_name || ''}">${job.print_file_name || 'N/A'}</td>
-          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant">${printer}</td>
+          <td class="py-2 px-3 border-r border-outline-variant/10 font-bold text-on-surface">${escapeHtml(job.simplyprint_job_id) || "PENDING"}</td>
+          <td class="py-2 px-3 border-r border-outline-variant/10 text-primary">${escapeHtml(sku)}</td>
+          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant max-w-[200px] truncate" title="${escapeHtml(job.print_file_name || '')}">${escapeHtml(job.print_file_name) || 'N/A'}</td>
+          <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant">${escapeHtml(printer)}</td>
           <td class="py-2 px-3 border-r border-outline-variant/10">${progressHtml}</td>
           <td class="py-2 px-3 border-r border-outline-variant/10 text-on-surface-variant">${finishStr}</td>
           <td class="py-2 px-3">
-            <span class="badge ${statusClass}" style="text-transform: capitalize;">${job.job_execution_status || 'Pending'}</span>
+            <span class="badge ${statusClass}" style="text-transform: capitalize;">${escapeHtml(job.job_execution_status) || 'Pending'}</span>
           </td>
         </tr>
       `;
@@ -5386,7 +5547,7 @@ async function fetchAndRenderPrintJobs() {
 
   } catch (err) {
     console.error("Failed to render print jobs table:", err);
-    listContainer.innerHTML = `<div class="font-data-mono text-xs text-error text-center py-12">Error loading print jobs: ${err.message}</div>`;
+    listContainer.innerHTML = `<div class="font-data-mono text-xs text-error text-center py-12">Error loading print jobs: ${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -6234,10 +6395,10 @@ async function fetchAndRenderMasterPDFs() {
       html += `
         <tr class="border-b border-outline-variant/10 hover:bg-surface-container/20 transition-colors font-data-mono">
           <td class="py-2.5 px-3 border-r border-outline-variant/10 text-on-surface font-medium">${dateStr}</td>
-          <td class="py-2.5 px-3 border-r border-outline-variant/10 text-on-surface-variant/70 text-xs">${job.id}</td>
-          <td class="py-2.5 px-3 border-r border-outline-variant/10 text-on-surface-variant">${details}</td>
+          <td class="py-2.5 px-3 border-r border-outline-variant/10 text-on-surface-variant/70 text-xs">${escapeHtml(job.id)}</td>
+          <td class="py-2.5 px-3 border-r border-outline-variant/10 text-on-surface-variant">${escapeHtml(details)}</td>
           <td class="py-2.5 px-3 text-center">
-            <a href="${fileUrl}" target="_blank" class="px-2.5 py-1 rounded bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary hover:scale-105 transition-transform flex items-center justify-center gap-1.5 cursor-pointer select-none mx-auto no-underline w-fit">
+            <a href="${escapeHtml(sanitizeUrl(fileUrl))}" target="_blank" class="px-2.5 py-1 rounded bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary hover:scale-105 transition-transform flex items-center justify-center gap-1.5 cursor-pointer select-none mx-auto no-underline w-fit">
               <span class="material-symbols-outlined text-[14px]">download</span> Download
             </a>
           </td>
@@ -6255,7 +6416,7 @@ async function fetchAndRenderMasterPDFs() {
     console.error("Failed to fetch master PDFs:", err);
     container.innerHTML = `
       <div class="font-data-mono text-xs text-error text-center py-12">
-        Error loading compiled master PDFs: ${err.message}
+        Error loading compiled master PDFs: ${escapeHtml(err.message)}
       </div>
     `;
   }
@@ -6403,8 +6564,7 @@ async function doLaunchScrape() {
   document.getElementById('launch-status')?.classList.add('hidden');
 
   try {
-    const backendUrl = localStorage.getItem('orbot_backend_url') || DEFAULT_BACKEND_URL;
-    const res = await fetch(`${backendUrl}/catalog/scrape-product`, {
+    const res = await backendFetch(`/catalog/scrape-product`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
@@ -6439,13 +6599,12 @@ async function doLaunchScrape() {
 // Runs one /catalog/clean-image call per file in parallel; swaps each grid tile
 // to the cleaned version as it lands. Files the user removed mid-flight are skipped.
 async function cleanLaunchImages(files) {
-  const backendUrl = localStorage.getItem('orbot_backend_url') || DEFAULT_BACKEND_URL;
   let lastReason = null;
   await Promise.all(files.map(async (file) => {
     file._cleaning = true;
     renderLaunchImageGrid();
     try {
-      const res = await fetch(`${backendUrl}/catalog/clean-image`, {
+      const res = await backendFetch(`/catalog/clean-image`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image_b64: await fileToB64(file) }),
@@ -6495,8 +6654,8 @@ function getLaunchFormData() {
     product_category: document.getElementById('launch-product-category')?.value.trim() || '',
     product_types: types,
     plaque_count: parseInt(document.getElementById('launch-plaque-count')?.value) || 1,
-    price_myr:    parseFloat(document.getElementById('launch-price')?.value) || null,
-    price_sgd:    parseFloat(document.getElementById('launch-price-sgd')?.value) || null,
+    price_myr:    priceOrNull(document.getElementById('launch-price')?.value),
+    price_sgd:    priceOrNull(document.getElementById('launch-price-sgd')?.value),
     platforms,
   };
 }
@@ -6523,8 +6682,7 @@ async function doLaunchPreview() {
   document.getElementById('launch-status')?.classList.add('hidden');
 
   try {
-    const backendUrl = localStorage.getItem('orbot_backend_url') || DEFAULT_BACKEND_URL;
-    const res = await fetch(`${backendUrl}/catalog/preview-product`, {
+    const res = await backendFetch(`/catalog/preview-product`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ set_name, set_number, theme, brand_name, product_types, plaque_count, price_myr, platforms }),
@@ -6588,7 +6746,6 @@ async function doLaunchDownload() {
   document.getElementById('launch-status')?.classList.add('hidden');
 
   try {
-    const backendUrl = localStorage.getItem('orbot_backend_url') || DEFAULT_BACKEND_URL;
     const fd = new FormData();
     fd.append('set_name', set_name);
     fd.append('set_number', set_number);
@@ -6612,7 +6769,7 @@ async function doLaunchDownload() {
     if (_launchScrapedDescription) fd.append('source_description', _launchScrapedDescription);
     _launchImages.forEach(f => fd.append('images', f));
 
-    const res = await fetch(`${backendUrl}/catalog/launch-product`, { method: 'POST', body: fd });
+    const res = await backendFetch(`/catalog/launch-product`, { method: 'POST', body: fd });
     if (!res.ok) throw new Error(await res.text());
 
     const blob = await res.blob();
@@ -6686,7 +6843,7 @@ async function fetchAndRenderListings(useCache = false) {
       // opens, refresh the catalog list now that listings have actually arrived.
       if (currentTab === "products" && cachedVariants.length > 0) fetchAndRenderCatalog();
     } catch (err) {
-      tbody.innerHTML = emptyDiv(`Error loading listings: ${err.message}`, "error");
+      tbody.innerHTML = emptyDiv(`Error loading listings: ${escapeHtml(err.message)}`, "error");
       return;
     }
   }
@@ -7041,8 +7198,8 @@ async function saveEditListing() {
   const updates = {
     platform_listing_name:        document.getElementById("edit-listing-name").value.trim(),
     platform_listing_description: document.getElementById("edit-listing-description").value,
-    price_myr:   parseFloat(document.getElementById("edit-listing-price-myr").value) || null,
-    price_sgd:   parseFloat(document.getElementById("edit-listing-price-sgd").value) || null,
+    price_myr:   priceOrNull(document.getElementById("edit-listing-price-myr").value),
+    price_sgd:   priceOrNull(document.getElementById("edit-listing-price-sgd").value),
     shopee_my:   document.getElementById("edit-listing-shopee-my").value.trim() || null,
     shopee_sg:   document.getElementById("edit-listing-shopee-sg").value.trim() || null,
     shopee_ph:   document.getElementById("edit-listing-shopee-ph").value.trim() || null,
@@ -7302,8 +7459,8 @@ async function saveAddListing() {
     product_id:                   productId,
     platform_listing_name:        name,
     platform_listing_description: document.getElementById("add-listing-description").value || null,
-    price_myr:  parseFloat(document.getElementById("add-listing-price-myr").value) || null,
-    price_sgd:  parseFloat(document.getElementById("add-listing-price-sgd").value) || null,
+    price_myr:  priceOrNull(document.getElementById("add-listing-price-myr").value),
+    price_sgd:  priceOrNull(document.getElementById("add-listing-price-sgd").value),
     shopee_my:  document.getElementById("add-listing-shopee-my").value.trim() || null,
     shopee_sg:  document.getElementById("add-listing-shopee-sg").value.trim() || null,
     shopee_ph:  document.getElementById("add-listing-shopee-ph").value.trim() || null,

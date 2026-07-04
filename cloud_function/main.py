@@ -10,6 +10,12 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+# Secret token registered with Telegram's setWebhook `secret_token` param. Telegram echoes
+# this back in the X-Telegram-Bot-Api-Secret-Token header on every webhook POST, letting us
+# reject requests that didn't actually come from Telegram.
+TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
+# Shared secret for the Orbot edge functions / Railway backend (X-Orbot-Key header)
+ORBOT_API_KEY = os.environ.get("ORBOT_API_KEY")
 
 # Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
@@ -59,11 +65,16 @@ def telegram_webhook(request):
     if request.method != 'POST':
         return 'Only POST is accepted', 405
 
+    # Security: verify Telegram's secret token. Telegram includes this header on every
+    # webhook POST when a secret_token was set via setWebhook. Reject if it's missing,
+    # wrong, or if we don't have a secret configured at all (fail closed).
+    provided_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+    if not TELEGRAM_WEBHOOK_SECRET or provided_secret != TELEGRAM_WEBHOOK_SECRET:
+        return 'Unauthorized', 401
+
     request_json = request.get_json(silent=True)
     if not request_json:
         return 'No JSON payload', 400
-
-    print("Received update:", json.dumps(request_json))
 
     # Extract message details
     message = request_json.get("message")
@@ -91,6 +102,10 @@ def telegram_webhook(request):
     parts = text.split(" ")
     cmd = parts[0].split("@")[0].lower()
 
+    # Log only the command being actioned, not the raw payload (which can contain
+    # the chat id and message content).
+    print(f"Handling command {cmd!r}")
+
     if cmd in ["/start", "/help"]:
         help_text = (
             "🤖 *Orbot System Control Bot*\n\n"
@@ -112,16 +127,19 @@ def telegram_webhook(request):
             
             now = datetime.now(timezone.utc)
             status_lines = []
-            agents = ["scout", "foreman", "waybill_agent", "archivist"]
-            
-            for agent in agents:
+            # The backend writes two heartbeats: 'orbot_service' (main daemon loop, ~5s
+            # cadence) and 'scout' (Gmail poll, ~300s cadence). Thresholds allow one
+            # missed cycle plus slack; the old scout/foreman/waybill_agent/archivist @30s
+            # list showed everything permanently Offline/Never-reported.
+            agents = [("orbot_service", 60), ("scout", 700)]
+
+            for agent, threshold in agents:
                 hb = next((h for h in heartbeats if h["agent_name"] == agent), None)
                 if hb and hb.get("last_heartbeat"):
                     hb_time = parse_iso_datetime(hb["last_heartbeat"])
                     if hb_time:
                         diff = (now - hb_time).total_seconds()
-                        # Within 30 seconds threshold is considered Online
-                        if diff < 30:
+                        if diff < threshold:
                             status_lines.append(f"🟢 *{agent.upper()}*: Online (last active {int(diff)}s ago)")
                         else:
                             status_lines.append(f"🔴 *{agent.upper()}*: Offline (last active {int(diff)}s ago)")
@@ -181,9 +199,13 @@ def telegram_webhook(request):
     elif cmd == "/dispatch":
         try:
             foreman_url = f"{SUPABASE_URL}/functions/v1/foreman"
+            # The foreman edge function authenticates via the X-Orbot-Key shared secret
+            # (and forwards it to Railway); the Bearer token only satisfies the platform
+            # JWT check. Without ORBOT_API_KEY set, this call gets a 401.
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"
+                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                "X-Orbot-Key": ORBOT_API_KEY or ""
             }
             send_telegram_reply(chat_id, "⏳ Triggering Foreman print dispatch Edge function...", message_id)
             r = requests.post(foreman_url, headers=headers, json={}, timeout=20)

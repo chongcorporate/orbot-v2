@@ -11,6 +11,16 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // Shared-secret authentication: fail closed if ORBOT_API_KEY is unset
+  const expectedKey = Deno.env.get("ORBOT_API_KEY");
+  const providedKey = req.headers.get("X-Orbot-Key");
+  if (!expectedKey || providedKey !== expectedKey) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -44,8 +54,8 @@ Deno.serve(async (req) => {
     }
 
     // 2. LLM Parsing (Gemini Flash)
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${geminiApiKey}`;
-    
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent`;
+
     const prompt = `
       You are a data extraction assistant for an order ingestion system.
       Parse the following order confirmation email and extract the details into a strict JSON format.
@@ -75,6 +85,7 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-goog-api-key": geminiApiKey,
       },
       body: JSON.stringify({
         contents: [{
@@ -83,7 +94,8 @@ Deno.serve(async (req) => {
         generationConfig: {
           response_mime_type: "application/json",
         }
-      })
+      }),
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!geminiResponse.ok) {
@@ -94,20 +106,20 @@ Deno.serve(async (req) => {
     const geminiData = await geminiResponse.json();
 
     // Log Gemini usage
-    try {
-      const usage = geminiData.usageMetadata;
-      if (usage) {
-        await supabase.from("gemini_usage_log").insert({
-          agent_name: "Scout Webhook",
-          model_name: "gemini-3.1-flash-lite",
-          prompt_tokens: usage.promptTokenCount || 0,
-          completion_tokens: usage.candidatesTokenCount || 0,
-          total_tokens: usage.totalTokenCount || 0
-        });
+    const usage = geminiData.usageMetadata;
+    if (usage) {
+      const { error: usageLogError } = await supabase.from("gemini_usage_log").insert({
+        agent_name: "Scout Webhook",
+        model_name: "gemini-3.1-flash-lite",
+        prompt_tokens: usage.promptTokenCount || 0,
+        completion_tokens: usage.candidatesTokenCount || 0,
+        total_tokens: usage.totalTokenCount || 0
+      });
+      if (usageLogError) {
+        console.error("Failed to log Gemini usage:", usageLogError);
+      } else {
         console.log(`Gemini usage logged: ${usage.totalTokenCount} tokens`);
       }
-    } catch (e) {
-      console.error("Failed to log Gemini usage:", e);
     }
 
     const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -137,27 +149,56 @@ Deno.serve(async (req) => {
       items
     } = parsedData;
 
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error(`Gemini returned no order items for order ${platform_order_id ?? "(unknown)"} — refusing to ingest an empty order.`);
+    }
+
+    const platformOrderId = String(platform_order_id).trim();
+
+    // Check for duplicate order ID first, before running the expensive matching
+    // pipeline (which includes self-heal inserts) — mirrors scout/index.ts.
+    const { data: existingOrder, error: existingOrderError } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('platform_order_id', platformOrderId)
+      .maybeSingle();
+
+    if (existingOrderError) {
+      console.error("Failed to check for existing order:", existingOrderError);
+    }
+
+    if (existingOrder) {
+      console.log(`Order ${platformOrderId} already exists. Skipping ingestion.`);
+      return new Response(JSON.stringify({ status: "Order already exists. Skipping ingestion." }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // 3. Translation Dictionary Matching
     const validOrderItems = [];
     let hasMatchingFailure = false;
+    let hasFuzzyMatch = false;
     let missingItemDetails = "";
+    let fuzzyItemDetails = "";
     let itemIndex = 0;
-    
+
     for (const item of items) {
       const { listing_title, variation_name, purchased_quantity } = item;
 
-      const variantId = await resolveVariantId(supabase, listing_title, variation_name);
+      const { variantId, isFuzzy } = await resolveVariantId(supabase, listing_title, variation_name);
 
       if (!variantId) {
         hasMatchingFailure = true;
         missingItemDetails += `Listing: "${listing_title}" (Variation: "${variation_name || 'None'}"); `;
-        
-        await supabase.from('system_logs').insert({
+
+        const { error: missingLogError } = await supabase.from('system_logs').insert({
           agent_name: 'scout',
           log_level: 'error',
           log_message: `Listing or variation not found: ${listing_title} (Variation: ${variation_name || 'None'}) for order ${platform_order_id}`,
-          additional_details: JSON.stringify(item)
+          additional_details: item
         });
+        if (missingLogError) console.error("Failed to log missing item warning:", missingLogError);
 
         validOrderItems.push({
           variant_id: `non_existent_${itemIndex++}`,
@@ -168,28 +209,16 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      if (isFuzzy) {
+        hasFuzzyMatch = true;
+        fuzzyItemDetails += `Listing: "${listing_title}" (Variation: "${variation_name || 'None'}"); `;
+      }
+
       validOrderItems.push({
         variant_id: variantId,
         purchased_quantity,
         variation_name,
         isFake: false
-      });
-    }
-
-    const platformOrderId = String(platform_order_id).trim();
-
-    // Check for duplicate order ID first
-    const { data: existingOrder } = await supabase
-      .from('orders')
-      .select('id')
-      .eq('platform_order_id', platformOrderId)
-      .maybeSingle();
-
-    if (existingOrder) {
-      console.log(`Order ${platformOrderId} already exists. Skipping ingestion.`);
-      return new Response(JSON.stringify({ status: "Order already exists. Skipping ingestion." }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -204,7 +233,7 @@ Deno.serve(async (req) => {
         customer_name,
         order_subtotal,
         order_currency: order_currency || 'MYR',
-        overall_order_status: 'Pending'
+        overall_order_status: 'pending'
       })
       .select('id')
       .single();
@@ -241,11 +270,12 @@ Deno.serve(async (req) => {
         let vName = "item does not exist";
         
         if (!details.isFake) {
-          const { data: variantInfo } = await supabase
+          const { data: variantInfo, error: variantInfoError } = await supabase
             .from('variants')
             .select('variant_sku, variant_name')
             .eq('id', variantId)
             .single();
+          if (variantInfoError) console.error(`Failed to look up variant ${variantId}:`, variantInfoError);
           vSku = variantInfo?.variant_sku ?? null;
           vName = variantInfo?.variant_name ?? null;
         }
@@ -262,7 +292,9 @@ Deno.serve(async (req) => {
           variant_sku: vSku,
           variant_name: finalName,
           purchased_quantity: details.quantity,
-          item_print_status: 'Pending'
+          // Fake placeholder rows must be not_applicable, or the order-status
+          // roll-up waits forever on an item that can never print
+          item_print_status: details.isFake ? 'not_applicable' : 'pending'
         });
       }
 
@@ -276,21 +308,33 @@ Deno.serve(async (req) => {
     }
 
     if (hasMatchingFailure) {
-      await supabase
+      const { error: holdUpdateError } = await supabase
         .from('orders')
         .update({ overall_order_status: 'hold' })
         .eq('id', orderId);
-        
+      if (holdUpdateError) console.error("Failed to update order status to hold:", holdUpdateError);
+
       throw new Error(`Order ${platformOrderId} ingested, but some items do not exist: ${missingItemDetails}`);
     }
 
+    if (hasFuzzyMatch) {
+      const { error: fuzzyLogError } = await supabase.from('system_logs').insert({
+        agent_name: 'scout',
+        log_level: 'warning',
+        log_message: `Order ${platformOrderId} ingested with fuzzy/fallback matching: ${fuzzyItemDetails}`,
+        additional_details: { fuzzy_match: true, platform_order_id: platformOrderId }
+      });
+      if (fuzzyLogError) console.error("Failed to log fuzzy match warning:", fuzzyLogError);
+    }
+
     // 6. Logging
-    await supabase.from('system_logs').insert({
+    const { error: successLogError } = await supabase.from('system_logs').insert({
       agent_name: 'scout',
       log_level: 'info',
       log_message: `Successfully ingested order ${platform_order_id} from ${sales_platform}`,
-      additional_details: JSON.stringify({ orderId, matchedItemCount: validOrderItems.length })
+      additional_details: { orderId, matchedItemCount: validOrderItems.length }
     });
+    if (successLogError) console.error("Failed to log success:", successLogError);
 
     // 5. The Handoff
     return new Response(JSON.stringify({ status: "Order ingested, Foreman trigger activated." }), {
@@ -299,12 +343,11 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
+    // Log the full error server-side only — never echo it back to the caller,
+    // since error messages can still contain sensitive details (e.g. upstream URLs).
     console.error("Error processing request:", error);
-    
-    // Handle unexpected errors globally
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    
-    return new Response(JSON.stringify({ error: "Internal Server Error", details: errorMessage }), {
+
+    return new Response(JSON.stringify({ error: "Internal error processing request" }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -362,8 +405,20 @@ function getF1MultiTierSuffix(variationName: string | null, listingTitle: string
   return "";
 }
 
-// Multi-stage robust variant matching
-async function resolveVariantId(supabase: any, listingTitle: string, variationName: string | null): Promise<string | null> {
+// Mirrors normalize_variation() in main.py: lowercase, " - " around hyphens,
+// no spaces around commas, collapsed whitespace. Keep the two in sync — the
+// Python matcher and its self-healed rows key on this exact form.
+function normalizeVariation(raw: string | null): string {
+  let s = (raw || "").trim().toLowerCase();
+  s = s.replace(/\s*-\s*/g, " - ");
+  s = s.replace(/\s*,\s*/g, ",");
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
+}
+
+// Multi-stage robust variant matching. isFuzzy=true means a fallback rule
+// guessed the SKU — callers must surface a "verify SKU" warning.
+async function resolveVariantId(supabase: any, listingTitle: string, variationName: string | null): Promise<{ variantId: string | null; isFuzzy: boolean }> {
   const normVariation = (variationName || "").trim();
   let exactListingId: string | null = null;
 
@@ -388,7 +443,20 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
 
     if (exactVar) {
       console.log(`[Matching] Stage 1 Success: found variant_id = ${exactVar.variant_id}`);
-      return exactVar.variant_id;
+      return { variantId: exactVar.variant_id, isFuzzy: false };
+    }
+
+    // Stage 1b: normalized-form match — how the Python matcher and its
+    // self-healed rows store variations (case/spacing-insensitive)
+    const { data: normVarRows } = await supabase
+      .from('listing_variations')
+      .select('variant_id')
+      .eq('listing_id', listingId)
+      .eq('normalized_variation_name', normalizeVariation(variationName))
+      .limit(1);
+    if (normVarRows && normVarRows.length > 0) {
+      console.log(`[Matching] Stage 1b Success (normalized): found variant_id = ${normVarRows[0].variant_id}`);
+      return { variantId: normVarRows[0].variant_id, isFuzzy: false };
     }
 
     // Fallback 1.1: Single variation match for this listing
@@ -401,7 +469,7 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
       const dbVarName = variations[0].platform_variation_name.trim();
       if (dbVarName === "" || dbVarName.toLowerCase() === "default" || normVariation === "") {
         console.log(`[Matching] Fallback 1.1: Single variation match - defaulting to "${variations[0].platform_variation_name}"`);
-        return variations[0].variant_id;
+        return { variantId: variations[0].variant_id, isFuzzy: true };
       }
     }
 
@@ -417,11 +485,10 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
       }
       if (matchedVar) {
         console.log(`[Matching] Fallback 1.2: Mapped variation "${normVariation}" to "${matchedVar.platform_variation_name}"`);
-        return matchedVar.variant_id;
+        return { variantId: matchedVar.variant_id, isFuzzy: true };
       }
     }
   }
-  return null;
 
   // STAGE 2: Set Number fallback matching
   console.log(`[Matching] Stage 2: Set number fallback match for "${listingTitle}"`);
@@ -432,10 +499,12 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
     setNum = nonYears.length > 0 ? nonYears[0] : matches[0];
   }
   if (setNum) {
+    // Exact set_number match — a substring SKU LIKE would let 4-digit sets
+    // (e.g. 7519) collide with 5-digit ones (75190)
     const { data: matchedVariants } = await supabase
       .from('variants')
       .select('id, variant_sku, variant_name, variant_type')
-      .like('variant_sku', `%${setNum}%`);
+      .eq('set_number', setNum);
 
     if (matchedVariants && matchedVariants.length > 0) {
       const isWallMount = listingTitle.toLowerCase().includes("wall") || listingTitle.toLowerCase().includes("mount") || normVariation.toLowerCase().includes("wall") || normVariation.toLowerCase().includes("mount") || normVariation.toLowerCase().includes("wm") || normVariation.toLowerCase().includes("fwm");
@@ -456,27 +525,27 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
         bestVariant = matchedVariants.find((v: any) => v.variant_type === 'DS' || v.variant_type === 'BASE');
       }
 
-      if (!bestVariant) {
-        bestVariant = matchedVariants[0];
-      }
-
+      // No blind matchedVariants[0] fallback: if the type heuristics found
+      // nothing, fall through to the next stage instead of guessing.
       if (bestVariant) {
         console.log(`[Matching] Stage 2 Success: mapped set ${setNum} to variant "${bestVariant.variant_sku}"`);
-        
+
         if (exactListing) {
-          try {
-            await supabase.from('listing_variations').insert({
-              listing_id: exactListing.id,
-              variant_id: bestVariant.id,
-              platform_variation_name: normVariation,
-              reference_name: `${listingTitle} [${normVariation}]`
-            });
+          const { error: selfHealError } = await supabase.from('listing_variations').insert({
+            listing_id: exactListing.id,
+            variant_id: bestVariant.id,
+            platform_variation_name: normVariation,
+            normalized_variation_name: normalizeVariation(variationName),
+            match_source: 'self_heal',
+            reference_name: `${listingTitle} [${normVariation}]`
+          });
+          if (selfHealError) {
+            console.error(`[Matching] Self-heal error for "${listingTitle}":`, selfHealError);
+          } else {
             console.log(`[Matching] Self-healed listing variation for "${listingTitle}"`);
-          } catch (e) {
-            console.error(`[Matching] Self-heal error: ${e.message}`);
           }
         }
-        return bestVariant.id;
+        return { variantId: bestVariant.id, isFuzzy: true };
       }
     }
   }
@@ -490,7 +559,7 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
   if (isF1 && isSC && normVariation) {
     const tierSuffix = getF1MultiTierSuffix(normVariation, listingTitle);
     if (tierSuffix) {
-      const targetSku = `BO-SC-DS-F1-${tierSuffix}`;
+      const targetSku = `BLO-SC-DS-F1-${tierSuffix}`;
       console.log(`[Matching] F1 Multi-tier matching constructed target SKU "${targetSku}"`);
       const { data: matchedVariant } = await supabase
         .from('variants')
@@ -500,22 +569,24 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
       
       if (matchedVariant) {
         console.log(`[Matching] F1 Multi-tier Success: found variant_id = ${matchedVariant.id} for SKU "${targetSku}"`);
-        
+
         // Auto-heal/insert listing variation if listing exists
         if (exactListingId) {
-          try {
-            await supabase.from('listing_variations').insert({
-              listing_id: exactListingId,
-              variant_id: matchedVariant.id,
-              platform_variation_name: normVariation,
-              reference_name: `${listingTitle} [${normVariation}]`
-            });
+          const { error: selfHealError } = await supabase.from('listing_variations').insert({
+            listing_id: exactListingId,
+            variant_id: matchedVariant.id,
+            platform_variation_name: normVariation,
+            normalized_variation_name: normalizeVariation(variationName),
+            match_source: 'self_heal',
+            reference_name: `${listingTitle} [${normVariation}]`
+          });
+          if (selfHealError) {
+            console.error(`[Matching] Self-heal error for "${listingTitle}":`, selfHealError);
+          } else {
             console.log(`[Matching] Self-healed listing variation for "${listingTitle}"`);
-          } catch (e) {
-            console.error(`[Matching] Self-heal error: ${e.message}`);
           }
         }
-        return matchedVariant.id;
+        return { variantId: matchedVariant.id, isFuzzy: true };
       }
     }
   }
@@ -524,7 +595,7 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
   if (isF1 && isSC && isVertical && normVariation) {
     const suffix = getF1SkuSuffix(normVariation);
     if (suffix) {
-      const targetSku = `BO-SC-VDS-F1-${suffix}`;
+      const targetSku = `BLO-SC-VDS-F1-${suffix}`;
       console.log(`[Matching] Stage 2.5: F1 Team matching constructed target SKU "${targetSku}"`);
       const { data: matchedVariant } = await supabase
         .from('variants')
@@ -534,22 +605,24 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
       
       if (matchedVariant) {
         console.log(`[Matching] Stage 2.5 Success: found variant_id = ${matchedVariant.id} for SKU "${targetSku}"`);
-        
+
         // Auto-heal/insert listing variation if listing exists
         if (exactListingId) {
-          try {
-            await supabase.from('listing_variations').insert({
-              listing_id: exactListingId,
-              variant_id: matchedVariant.id,
-              platform_variation_name: normVariation,
-              reference_name: `${listingTitle} [${normVariation}]`
-            });
+          const { error: selfHealError } = await supabase.from('listing_variations').insert({
+            listing_id: exactListingId,
+            variant_id: matchedVariant.id,
+            platform_variation_name: normVariation,
+            normalized_variation_name: normalizeVariation(variationName),
+            match_source: 'self_heal',
+            reference_name: `${listingTitle} [${normVariation}]`
+          });
+          if (selfHealError) {
+            console.error(`[Matching] Self-heal error for "${listingTitle}":`, selfHealError);
+          } else {
             console.log(`[Matching] Self-healed listing variation for "${listingTitle}"`);
-          } catch (e) {
-            console.error(`[Matching] Self-heal error: ${e.message}`);
           }
         }
-        return matchedVariant.id;
+        return { variantId: matchedVariant.id, isFuzzy: true };
       }
     }
   }
@@ -592,14 +665,16 @@ async function resolveVariantId(supabase: any, listingTitle: string, variationNa
             if (wmVar) bestVar = wmVar;
           }
         }
-        if (!bestVar) {
-          bestVar = variations[0];
+        // Never guess: if no variation matched, fail the match rather than
+        // shipping the wrong item (contract: Stage 3 must not pick variations[0]).
+        if (bestVar) {
+          console.log(`[Matching] Stage 3 Success: mapped fuzzy listing to variant_id = ${bestVar.variant_id}`);
+          return { variantId: bestVar.variant_id, isFuzzy: true };
         }
-        console.log(`[Matching] Stage 3 Success: mapped fuzzy listing to variant_id = ${bestVar.variant_id}`);
-        return bestVar.variant_id;
+        console.log(`[Matching] Stage 3: fuzzy listing found but no variation matched — not guessing.`);
       }
     }
   }
 
-  return null;
+  return { variantId: null, isFuzzy: false };
 }

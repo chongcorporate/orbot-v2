@@ -3,6 +3,17 @@
 token.json
 credentials.json
 
+# ── Claude Code local config (settings.local.json embeds real API keys) ─────
+.claude/settings.local.json
+.claude/worktrees/
+.agents/
+
+# ── Supabase local config (leaks a Postgres pooler connection string) ───────
+supabase/.temp/
+
+# ── Local throwaway scripts (may contain DB creds — keep out of git) ─────────
+scratch/
+
 # ── Runtime / generated cache files ──────────────────────────────────────────
 scout.lock
 sp_files.json

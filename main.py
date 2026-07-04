@@ -12,12 +12,15 @@ import logging
 import mimetypes
 import tempfile
 import traceback
+import ipaddress
+import socket
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from datetime import datetime, date, timedelta
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional, Dict, Any
+from urllib.parse import urlparse
 
 # Third-party imports
 import requests
@@ -30,7 +33,7 @@ from google.genai import types as genai_types
 from pydantic import BaseModel, Field, field_validator
 
 # FastAPI imports
-from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -77,6 +80,15 @@ if _creds_env and not (_base_dir / "credentials.json").exists():
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+# Shared-secret auth for backend routes. Every route except the health checks, the public
+# /config bootstrap endpoint, and inbound webhooks that third parties call directly
+# (which can't send a custom header) requires this in the X-Orbot-Key header. Fails
+# CLOSED: if unset, require_api_key() rejects every request rather than skipping the check.
+ORBOT_API_KEY = os.environ.get("ORBOT_API_KEY")
+
+# CORS: explicit allowlist of origins permitted to call this API, comma-separated.
+ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY / SUPABASE_KEY in environment variables.")
@@ -509,6 +521,13 @@ def extract_variant_intent(norm_var: str, listing_title: str = '') -> dict:
         set_override = extract_set_number_from_text(norm_var)
         return {"variant_type": "DS-NP", "plaque_count": None, "set_number_override": set_override}
 
+    # Variation gave no type signal at all (blank/None variation) — fall back to the
+    # listing title: a "Wall Mount for ..." listing with an unnamed variation is a WM,
+    # not a DS (e.g. order 260703PRBGA7CS: "Wall Mount for Lego NASA Space Shuttle
+    # Discovery (10283)" with variation None missed its WM variant in Stage 2).
+    if not norm_var and re.search(r'wall\s*mount|\bwm\b|\bfwm\b', listing_title.lower()):
+        return {"variant_type": "WM", "plaque_count": None, "set_number_override": None}
+
     return {"variant_type": "DS", "plaque_count": None, "set_number_override": None}
 
 def _self_heal_listing_variation(supabase_client, listing_id: Optional[str], listing_title: str,
@@ -634,9 +653,23 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
                 else:
                     q = q.in_("variant_type", ["DS", "BASE"])
 
-                result = q.limit(1).execute()
-                if result.data:
-                    variant = result.data[0]
+                result = q.limit(5).execute()
+                rows = result.data or []
+                variant = None
+                if len(rows) == 1:
+                    variant = rows[0]
+                elif len(rows) > 1:
+                    # WM/FWM intents span both mount types — prefer the exact type asked
+                    # for. Any other ambiguity (e.g. DS-1 vs DS-2 with no plaque count in
+                    # the variation) means guessing, which would self-heal a wrong mapping
+                    # permanently — fall through to the next stage instead.
+                    if vtype in ("WM", "FWM"):
+                        preferred = [r for r in rows if r.get("variant_type") == vtype]
+                        if len(preferred) == 1:
+                            variant = preferred[0]
+                    if variant is None:
+                        logger.info(f"[Matching] Stage 2: set {set_num} {intent} matched {len(rows)} variants — not guessing.")
+                if variant:
                     logger.info(f"[Matching] Stage 2 Success: set {set_num} {intent} → '{variant['variant_sku']}'")
                     _self_heal_listing_variation(supabase_client, exact_listing_id, listing_title,
                                                  variant["id"], norm_var, variation_name)
@@ -1162,6 +1195,11 @@ def process_catalog(file_path: str):
                     "listing_id": listing_id,
                     "variant_id": variant_id,
                     "platform_variation_name": platform_variation,
+                    # Stage 1 matching keys on normalized_variation_name — without it
+                    # the column defaults to '' and every imported variation falls
+                    # through to fuzzy fallbacks forever
+                    "normalized_variation_name": normalize_variation(platform_variation),
+                    "match_source": "catalog",
                     "reference_name": ref_name
                 })
                 supabase.table("listing_variations").upsert(bridge_data, on_conflict="listing_id, platform_variation_name").execute()
@@ -1366,6 +1404,16 @@ class TransientLLMError(Exception):
     pass
 
 
+class OrderHeldForReview(Exception):
+    """Raised by process_order() when the order row WAS created but needs manual review
+    (matching failure or an incomplete item-insert) — i.e. a deliberate hold, not a crash.
+    The source email is still safe to mark processed: the order exists in the DB (as
+    'hold') and re-running the scan would just re-parse the same email without changing
+    the outcome. Distinct from a bare Exception, which signals an unexpected failure where
+    we do NOT know the order was safely recorded, so the email must be left unread/retried."""
+    pass
+
+
 class ScoutAgent:
     def __init__(self):
         self.agent_name = "Scout"
@@ -1401,8 +1449,12 @@ class ScoutAgent:
                 self._held_thread_lock = True
                 return True
         except Exception as e:
+            # Fail CLOSED: if we can't even create/open the lock file, we cannot guarantee
+            # exclusivity, so treat this as "lock not acquired" rather than proceeding as if
+            # it were — the previous `return True` here gave false confidence of exclusivity
+            # and could let two Scout runs execute concurrently.
             logger.error(f"Failed to create lock file: {e}")
-            return True
+            return False
 
     def _authenticate_gmail(self):
         """Returns the (module-level cached) Gmail API service object. See
@@ -1754,7 +1806,25 @@ class ScoutAgent:
                 return
         except Exception as e:
             logger.error(f"Error checking order duplication: {e}")
-            
+
+        # Validate the parsed Gemini payload before inserting anything — an order with no
+        # items, or items with non-numeric/non-positive quantities, is a bad parse, not a
+        # real order. Treat it like any other failure (don't insert, let run() retry/hold
+        # the source email) rather than creating an empty/broken order row.
+        if not order_details.items:
+            msg = f"Rejected order {platform_order_id}: parsed payload has no items."
+            logger.error(msg)
+            self.log_to_db("error", msg, {"platform_order_id": platform_order_id})
+            raise ValueError(msg)
+        for it in order_details.items:
+            qty = it.purchased_quantity
+            if not isinstance(qty, int) or isinstance(qty, bool) or qty <= 0:
+                msg = (f"Rejected order {platform_order_id}: item '{it.listing_title}' has an invalid "
+                       f"quantity ({qty!r}).")
+                logger.error(msg)
+                self.log_to_db("error", msg, {"platform_order_id": platform_order_id, "listing_title": it.listing_title})
+                raise ValueError(msg)
+
         # Resolve which of our shops this order belongs to, from the seller shop name the
         # LLM extracted. No match → shop_id stays None ("Unassigned"), surfaced in the UI.
         shop = resolve_shop(getattr(order_details, "shop_name", None))
@@ -1791,7 +1861,9 @@ class ScoutAgent:
             msg = f"Failed to insert order {order_details.platform_order_id}: {e}"
             logger.error(msg)
             self.log_to_db("error", msg, {"order_details": order_details.model_dump()})
-            return
+            # Re-raise so run() leaves the source email unread for retry — returning
+            # normally here would mark the email processed and silently lose the order.
+            raise
 
         resolved_items = {}
         has_matching_failure = False
@@ -1929,7 +2001,16 @@ class ScoutAgent:
                 logger.error(msg)
                 self.log_to_db("error", msg, {"variant_id": variant_id, "order_id": order_id})
 
-        if has_matching_failure:
+        expected_items = len(resolved_items)
+        insert_incomplete = successful_items < expected_items
+        if insert_incomplete:
+            msg = (f"Order {order_details.platform_order_id}: only {successful_items}/{expected_items} "
+                   f"resolved item(s) were successfully inserted into order_items.")
+            logger.error(msg)
+            self.log_to_db("error", msg, {"platform_order_id": order_details.platform_order_id,
+                                           "successful_items": successful_items, "expected_items": expected_items})
+
+        if has_matching_failure or insert_incomplete:
             try:
                 self.supabase.table("orders").update({"overall_order_status": "hold"}).eq("id", order_id).execute()
             except Exception as e:
@@ -1953,7 +2034,10 @@ class ScoutAgent:
             })
 
         if has_matching_failure:
-            raise Exception(f"Order {order_details.platform_order_id} ingested with missing items: {missing_item_details}")
+            raise OrderHeldForReview(f"Order {order_details.platform_order_id} ingested with missing items: {missing_item_details}")
+        if insert_incomplete:
+            raise OrderHeldForReview(f"Order {order_details.platform_order_id} ingested with only "
+                             f"{successful_items}/{expected_items} items inserted — set to hold.")
 
         if successful_items > 0:
             self.log_to_db("info", f"Successfully ingested order {order_details.platform_order_id} with {successful_items} items.", {"platform_order_id": order_details.platform_order_id})
@@ -1998,9 +2082,18 @@ class ScoutAgent:
                     if order_details:
                         try:
                             self.process_order(order_details)
+                        except OrderHeldForReview as e:
+                            # Order row was created (as 'hold') — safe to mark processed;
+                            # re-scanning won't change the outcome.
+                            logger.warning(f"Order {order_details.platform_order_id} held for review: {e}")
+                            self.mark_email_as_read(email['id'])
                         except Exception as e:
+                            # Unexpected failure — we don't know the order was safely
+                            # recorded, so leave the email unread for retry rather than
+                            # silently marking it processed.
                             logger.error(f"Error processing order {order_details.platform_order_id}: {e}")
-                        self.mark_email_as_read(email['id'])
+                        else:
+                            self.mark_email_as_read(email['id'])
                     else:
                         logger.error(f"Permanent parse failure for email {email['id']}. Marking read to skip.")
                         self.mark_email_as_read(email['id'])
@@ -2273,7 +2366,12 @@ def get_product_parent_folder_id(service):
         print(f"[-] get_product_parent_folder_id failed: {e}")
     return None
 
-def upload_to_drive(service, local_path, name, parent_folder_id, mimetype=None):
+def upload_to_drive(service, local_path, name, parent_folder_id, mimetype=None, make_public=True):
+    """Uploads a local file to Google Drive. By default grants 'anyone with the link' read
+    access (make_public=True), matching prior behavior for non-PII uploads (e.g. print
+    files, product images). Waybill uploads contain customer name/address/phone and must
+    pass make_public=False so they stay private (accessible only to the authenticated
+    Drive account) instead of being world-readable."""
     try:
         date_suffix = datetime.now().strftime("%Y-%m-%d")
         base, ext = os.path.splitext(name)
@@ -2288,12 +2386,13 @@ def upload_to_drive(service, local_path, name, parent_folder_id, mimetype=None):
         media = MediaFileUpload(local_path, mimetype=mimetype)
         file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         file_id = file.get('id')
-        
-        service.permissions().create(
-            fileId=file_id,
-            body={'type': 'anyone', 'role': 'reader'}
-        ).execute()
-        
+
+        if make_public:
+            service.permissions().create(
+                fileId=file_id,
+                body={'type': 'anyone', 'role': 'reader'}
+            ).execute()
+
         file_info = service.files().get(fileId=file_id, fields='webViewLink').execute()
         return file_info.get('webViewLink')
     except Exception as e:
@@ -2453,7 +2552,11 @@ def process_ingestion(service, waybill_pdf_path, packing_list_pdf_path=None, way
                     order_id = None
             if order_id:
                 order_id = "".join(order_id.split())
-                order_id = re.sub(r'^[A-Za-z]+', '', order_id)
+                # Only strip a leading alpha prefix when the remainder is a pure numeric
+                # Shopee-style ID; preserve Lazada IDs that legitimately start with letters.
+                _stripped = re.sub(r'^[A-Za-z]+', '', order_id)
+                if _stripped and _stripped.isdigit():
+                    order_id = _stripped
                 waybill_pages.append((page, order_id))
             else:
                 print(f"[-] Warning: No Order ID identified on page {i+1}.")
@@ -2479,7 +2582,8 @@ def process_ingestion(service, waybill_pdf_path, packing_list_pdf_path=None, way
             raw_writer.write(f)
             
         print(f"[*] Uploading raw waybill for {order_id}...")
-        raw_gdrive_url = upload_to_drive(service, raw_pdf_path, f"Raw_Waybill_{order_id}.pdf", raw_folder_id)
+        # Waybills contain customer name/address/phone — never make them publicly readable.
+        raw_gdrive_url = upload_to_drive(service, raw_pdf_path, f"Raw_Waybill_{order_id}.pdf", raw_folder_id, make_public=False)
         
         processed_writer = PdfWriter()
         processed_writer.add_page(page)
@@ -2513,7 +2617,8 @@ def process_ingestion(service, waybill_pdf_path, packing_list_pdf_path=None, way
             processed_writer.write(f)
             
         print(f"[*] Uploading processed waybill for {order_id}...")
-        processed_gdrive_url = upload_to_drive(service, processed_pdf_path, f"Processed_Waybill_{order_id}.pdf", processed_folder_id)
+        # Waybills contain customer name/address/phone — never make them publicly readable.
+        processed_gdrive_url = upload_to_drive(service, processed_pdf_path, f"Processed_Waybill_{order_id}.pdf", processed_folder_id, make_public=False)
 
         if processed_gdrive_url:
             supabase.table('orders').update({
@@ -2615,7 +2720,9 @@ def run_batch_print(service):
         raise RuntimeError("Could not get or create 'Orbot_Stitched_Batches' folder in Google Drive.")
 
     print(f"[*] Uploading compiled batch PDF to Google Drive...")
-    batch_url = upload_to_drive(service, batch_pdf_path, batch_filename, batch_folder_id)
+    # This batch PDF is a compilation of raw waybills — also contains customer PII, so
+    # keep it private like the individual waybill uploads above.
+    batch_url = upload_to_drive(service, batch_pdf_path, batch_filename, batch_folder_id, make_public=False)
 
     if batch_url:
         print(f"\n==========================================")
@@ -2734,51 +2841,6 @@ def check_and_update_item_completion(order_item_id):
     except Exception as e:
         log_system("error", f"check_and_update_item_completion failed for item {order_item_id}: {e}", agent_name="Waybill Agent")
 
-# --- SimplyPrint file compatibility cache ---
-# Maps simplyprint_file_id (hex str) → is_a1_mini (bool).
-# Populated by _rebuild_sp_file_compat_cache(); checked at dispatch time.
-_sp_file_compat_cache: dict = {}
-_sp_file_cache_last_built: float = 0.0
-
-def _rebuild_sp_file_compat_cache(api_key: str, max_seconds: float = 30.0):
-    """Recursively traverses SimplyPrint folders and populates the file→printer-type cache."""
-    global _sp_file_compat_cache, _sp_file_cache_last_built
-    headers = {"X-API-KEY": api_key, "Accept": "application/json", "Content-Type": "application/json"}
-    base = f"https://api.simplyprint.io/{SIMPLYPRINT_COMPANY_ID}"
-    cache: dict = {}
-    deadline = time.time() + max_seconds
-
-    def _traverse(folder_id: int):
-        if time.time() > deadline:
-            return
-        try:
-            r = http_session.post(f"{base}/files/GetFiles", headers=headers, json={"f": folder_id}, timeout=10)
-            if r.status_code != 200 or not r.json().get("status"):
-                return
-            data = r.json()
-            for file in data.get("files", []):
-                fid = file.get("id")
-                if not fid:
-                    continue
-                gca = file.get("gcodeAnalysis") or {}
-                printer_model_str = (gca.get("forPrinterModel") or "").lower()
-                if "mini" in printer_model_str:
-                    cache[fid] = True   # A1 Mini
-                elif printer_model_str:
-                    cache[fid] = False  # Regular A1
-            for sub in data.get("folders", []):
-                if time.time() > deadline:
-                    return
-                time.sleep(0.05)
-                _traverse(sub.get("id"))
-        except Exception as e:
-            print(f"[-] SP file cache: error traversing folder {folder_id}: {e}")
-
-    _traverse(0)
-    _sp_file_compat_cache = cache
-    _sp_file_cache_last_built = time.time()
-    print(f"[+] SP file compat cache built: {len(cache)} files indexed")
-
 
 def sync_simplyprint_printers_and_queue(printers_data, queue_data):
     try:
@@ -2840,11 +2902,15 @@ def sync_simplyprint_printers_and_queue(printers_data, queue_data):
         print(f"[-] Error syncing simplyprint_printers table: {pe}")
         
     try:
-        supabase.table('simplyprint_queue').delete().neq('id', -1).execute()
+        # Upsert current rows by natural key (id), then delete only rows no longer present
+        # in the latest fetch — matches the printers-table sync pattern above. Avoids the
+        # delete-all-then-reinsert window where a concurrent reader could briefly see an
+        # empty queue table.
+        active_queue_ids = []
         for idx, q_item in enumerate(queue_data):
             q_id = q_item.get("id")
             duration_seconds = q_item.get("analysis", {}).get("estimate", 0)
-            
+
             queue_row = {
                 "id": q_id,
                 "name": q_item.get("filename") or q_item.get("name", "Unknown"),
@@ -2853,6 +2919,12 @@ def sync_simplyprint_printers_and_queue(printers_data, queue_data):
                 "updated_at": datetime.now().isoformat()
             }
             supabase.table('simplyprint_queue').upsert(queue_row).execute()
+            active_queue_ids.append(q_id)
+
+        if active_queue_ids:
+            supabase.table('simplyprint_queue').delete().not_.in_('id', active_queue_ids).execute()
+        else:
+            supabase.table('simplyprint_queue').delete().neq('id', -1).execute()
     except Exception as qe:
         print(f"[-] Error syncing simplyprint_queue table: {qe}")
 
@@ -2948,7 +3020,9 @@ def sync_simplyprint_jobs():
             job_db_id = job.get("id")
             sp_job_id = job.get("simplyprint_job_id")
 
-            if not sp_job_id or sp_job_id.startswith("MOCK_JOB_"):
+            # Skip placeholder ids that don't correspond to a real SimplyPrint job —
+            # they'd fall through to the not-found fallback and be fake-completed.
+            if not sp_job_id or not sp_job_id.isdigit():
                 continue
 
             if sp_job_id in active_printer_jobs:
@@ -3073,14 +3147,6 @@ async def run_waybill_daemon_async():
             except Exception as spe:
                 print(f"[-] Error syncing SimplyPrint status: {spe}")
 
-            # Rebuild file compat cache every 30 min (6 × 5-min sync cycles)
-            try:
-                sp_api_key = os.getenv("SIMPLYPRINT_API_KEY")
-                if sp_api_key and (current_time - _sp_file_cache_last_built >= 1800):
-                    await asyncio.to_thread(_rebuild_sp_file_compat_cache, sp_api_key)
-            except Exception as fce:
-                print(f"[-] Error rebuilding SP file compat cache: {fce}")
-
             try:
                 await asyncio.to_thread(run_retention_cleanup)
             except Exception as rce:
@@ -3096,10 +3162,21 @@ async def run_waybill_daemon_async():
                 job_id = job['id']
                 job_type = job['job_type']
                 payload = job.get('payload') or {}
-                
+
+                # Atomic claim: only proceed if this call is the one that actually flips
+                # status pending -> processing. If another worker claimed it first (zero
+                # rows updated), skip it instead of processing it twice.
+                claim_res = await asyncio.to_thread(
+                    supabase.table('waybill_jobs').update({'status': 'processing'})
+                    .eq('id', job_id).eq('status', 'pending').execute
+                )
+                if not claim_res.data:
+                    print(f"[*] Job {job_id} was already claimed by another worker — skipping.")
+                    await asyncio.sleep(5)
+                    continue
+
                 print(f"[*] Processing job {job_id} of type '{job_type}'...")
-                await asyncio.to_thread(supabase.table('waybill_jobs').update({'status': 'processing'}).eq('id', job_id).execute)
-                
+
                 try:
                     result_data = {}
                     if job_type in ('waybill_ingest', 'waybill_batch_print'):
@@ -3441,16 +3518,66 @@ def check_overall_order_status(order_id: str):
 #
 _foreman_dispatch_lock = threading.Lock()
 
-def run_foreman_dispatch(sp_key: Optional[str] = None, dry_run: bool = False) -> dict:
+def run_foreman_dispatch(dry_run: bool = False) -> dict:
     """Dispatches pending order items to SimplyPrint in order-arrival sequence. Serializes
     concurrent callers (see module comment above) so runs never interleave."""
     with _foreman_dispatch_lock:
-        return _run_foreman_dispatch_locked(sp_key=sp_key, dry_run=dry_run)
+        return _run_foreman_dispatch_locked(dry_run=dry_run)
 
-def _run_foreman_dispatch_locked(sp_key: Optional[str] = None, dry_run: bool = False) -> dict:
+def _restock_variant(variant_id: str, qty: int, max_attempts: int = 5) -> None:
+    """Atomically adds qty back to variants.stock_quantity (compare-and-swap retry loop,
+    same pattern as the decrement in _run_foreman_dispatch_locked)."""
+    for _ in range(max_attempts):
+        cur_res = supabase.table('variants').select('stock_quantity').eq('id', variant_id).single().execute()
+        cur = (cur_res.data or {}).get('stock_quantity') or 0
+        upd = supabase.table('variants') \
+            .update({'stock_quantity': cur + qty}) \
+            .eq('id', variant_id).eq('stock_quantity', cur) \
+            .execute()
+        if upd.data:
+            return
+    raise RuntimeError(f"Could not restock variant {variant_id} (+{qty}) after {max_attempts} attempts.")
+
+
+def _sp_dispatch_enabled() -> bool:
+    """Reads the shared sp_dispatch_enabled kill switch from app_settings.
+    Fails open (enabled) on read errors, matching /config's behavior."""
+    try:
+        res = supabase.table("app_settings").select("value").eq("key", "sp_dispatch_enabled").limit(1).execute()
+        if res.data:
+            return res.data[0]["value"] != "false"
+    except Exception as e:
+        logging.warning(f"Failed to load app_settings.sp_dispatch_enabled, defaulting to enabled: {e}")
+    return True
+
+
+def _run_foreman_dispatch_locked(dry_run: bool = False) -> dict:
     """Fetches pending order items and dispatches their print files to the SimplyPrint queue."""
-    api_key = sp_key or os.getenv("SIMPLYPRINT_API_KEY")
-    if not api_key and not dry_run:
+    # Server-side kill switch: gates EVERY dispatch path (Scout auto-dispatch included),
+    # not just browser-initiated calls that pass dry_run. When disabled, this must be a
+    # true no-op — no stock decrements, no print_jobs rows, no status changes — so items
+    # stay 'pending' and dispatch cleanly when the switch is turned back on.
+    if not _sp_dispatch_enabled():
+        logger.info("[Foreman] Dispatch skipped: sp_dispatch_enabled is false.")
+        return {"status": "skipped",
+                "message": "SimplyPrint dispatch is disabled (sp_dispatch_enabled=false). No items were dispatched or modified."}
+
+    if dry_run:
+        # True no-op preview: report what would be dispatched without mutating anything.
+        # (Previously dry_run still decremented stock, inserted DRY_RUN print_jobs rows and
+        # flipped items to 'printing' — which telemetry then fake-completed.)
+        res = supabase.table('order_items') \
+            .select('id, orders!inner(overall_order_status)') \
+            .eq('item_print_status', 'pending') \
+            .filter('variant_id', 'not.is', 'null') \
+            .execute()
+        n = len([i for i in (res.data or [])
+                 if i.get('orders', {}).get('overall_order_status') in ('pending', 'printing')])
+        return {"status": "dry_run", "pending_items": n,
+                "message": f"[DRY RUN] {n} pending order item(s) would be dispatched. Nothing was modified."}
+
+    api_key = os.getenv("SIMPLYPRINT_API_KEY")
+    if not api_key:
         raise ValueError("SIMPLYPRINT_API_KEY is not set.")
 
     sp_headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
@@ -3504,6 +3631,7 @@ def _run_foreman_dispatch_locked(sp_key: Optional[str] = None, dry_run: bool = F
 
         item_files_dispatched = 0
         remaining_to_print = item['purchased_quantity']
+        fulfilled_from_stock = 0
 
         try:
             var_res = supabase.table('variants') \
@@ -3514,14 +3642,32 @@ def _run_foreman_dispatch_locked(sp_key: Optional[str] = None, dry_run: bool = F
                 raise ValueError(f"Variant {item['variant_id']} not found.")
 
             stock_qty = variant.get('stock_quantity') or 0
-            fulfilled_from_stock = 0
 
-            if stock_qty > 0:
-                fulfilled_from_stock = min(remaining_to_print, stock_qty)
-                remaining_to_print -= fulfilled_from_stock
-                new_stock = stock_qty - fulfilled_from_stock
-                supabase.table('variants').update({'stock_quantity': new_stock}).eq('id', item['variant_id']).execute()
-                log_system('info', f"Fulfilled {fulfilled_from_stock}x {variant['variant_sku']} from stock. Remaining to print: {remaining_to_print}. New stock: {new_stock}.", agent_name='Foreman')
+            # Atomic conditional decrement instead of read-then-write: the .eq(...).gte(...)
+            # predicate is evaluated by Postgres at update time, so a concurrent dispatcher
+            # decrementing the same variant can't cause both callers to believe they
+            # fulfilled from the same stock (lost-update race). We retry with a smaller
+            # attempted amount, re-checking freshly each time, until either the update
+            # succeeds or there's no stock left worth attempting.
+            attempt_qty = min(remaining_to_print, stock_qty) if stock_qty > 0 else 0
+            while attempt_qty > 0:
+                upd_res = supabase.table('variants') \
+                    .update({'stock_quantity': stock_qty - attempt_qty}) \
+                    .eq('id', item['variant_id']) \
+                    .gte('stock_quantity', attempt_qty) \
+                    .execute()
+                if upd_res.data:
+                    fulfilled_from_stock = attempt_qty
+                    remaining_to_print -= fulfilled_from_stock
+                    log_system('info', f"Fulfilled {fulfilled_from_stock}x {variant['variant_sku']} from stock. "
+                                        f"Remaining to print: {remaining_to_print}. New stock: {stock_qty - attempt_qty}.",
+                               agent_name='Foreman')
+                    break
+                # Someone else changed stock_quantity between our read and this update —
+                # re-read the current value and retry with the new ceiling.
+                refresh_res = supabase.table('variants').select('stock_quantity').eq('id', item['variant_id']).single().execute()
+                stock_qty = (refresh_res.data or {}).get('stock_quantity') or 0
+                attempt_qty = min(remaining_to_print, stock_qty) if stock_qty > 0 else 0
 
             if remaining_to_print == 0:
                 supabase.table('order_items').update({
@@ -3569,21 +3715,17 @@ def _run_foreman_dispatch_locked(sp_key: Optional[str] = None, dry_run: bool = F
 
                     for_printers = [38959, 38960] if is_a1_mini else [38961, 39538]
 
-                    if dry_run:
-                        sp_job_id = "DRY_RUN"
-                        log_system('info', f"[DRY RUN] Would dispatch {file['print_file_name']} to printers {for_printers}. SP dispatch disabled.", agent_name='Foreman')
-                    else:
-                        sp_res = http_session.post(f"{base_url}/queue/AddItem", headers=sp_headers, json={
-                            "filesystem": file['simplyprint_file_id'],
-                            "amount": 1,
-                            "for_printers": for_printers,
-                            "position": "bottom"
-                        }, timeout=15)
+                    sp_res = http_session.post(f"{base_url}/queue/AddItem", headers=sp_headers, json={
+                        "filesystem": file['simplyprint_file_id'],
+                        "amount": 1,
+                        "for_printers": for_printers,
+                        "position": "bottom"
+                    }, timeout=15)
 
-                        if not sp_res.ok:
-                            raise ValueError(f"SimplyPrint AddItem failed for {file['print_file_name']}: HTTP {sp_res.status_code}")
+                    if not sp_res.ok:
+                        raise ValueError(f"SimplyPrint AddItem failed for {file['print_file_name']}: HTTP {sp_res.status_code}")
 
-                        sp_job_id = str(sp_res.json().get('created_id', 'UNKNOWN_JOB_ID'))
+                    sp_job_id = str(sp_res.json().get('created_id', 'UNKNOWN_JOB_ID'))
                     supabase.table('print_jobs').insert({
                         'order_item_id': item['id'],
                         'print_file_id': file['id'],
@@ -3607,6 +3749,17 @@ def _run_foreman_dispatch_locked(sp_key: Optional[str] = None, dry_run: bool = F
         except Exception as e:
             logger.error(f"Foreman error on item {item['id']}: {e}")
             supabase.table('order_items').update({'item_print_status': 'pending'}).eq('id', item['id']).execute()
+            # Roll back this pass's stock decrement: the item is back to 'pending' and the
+            # next pass restarts from the full purchased_quantity, so leaving the decrement
+            # in place would both lose stock and over-print on retry.
+            if fulfilled_from_stock > 0:
+                try:
+                    _restock_variant(item['variant_id'], fulfilled_from_stock)
+                    log_system('warning', f"Rolled back stock decrement of {fulfilled_from_stock} for variant "
+                                          f"{item['variant_id']} after dispatch failure.", agent_name='Foreman')
+                except Exception as re_err:
+                    log_system('error', f"FAILED to roll back stock decrement of {fulfilled_from_stock} for variant "
+                                        f"{item['variant_id']}: {re_err}. Stock is now understated.", agent_name='Foreman')
             log_system('error', f"Error processing item {item['id']}: {e}", agent_name='Foreman')
             order_pid = item.get('orders', {}).get('platform_order_id', item.get('order_id'))
             skipped_orders.append({'platform_order_id': order_pid, 'reason': str(e)})
@@ -3619,9 +3772,18 @@ def _run_foreman_dispatch_locked(sp_key: Optional[str] = None, dry_run: bool = F
     }
 
 
-def _do_cancel_order(order_id: str, platform_order_id: Optional[str] = None, sp_key: Optional[str] = None):
-    """Shared logic: cancel SimplyPrint jobs and mark an order cancelled in the database."""
-    api_key = sp_key or os.getenv("SIMPLYPRINT_API_KEY")
+def _do_cancel_order(order_id: str, platform_order_id: Optional[str] = None) -> dict:
+    """Shared logic: cancel SimplyPrint jobs and mark an order cancelled in the database.
+
+    Tracks success/failure per print job's SimplyPrint DeleteItem/Cancel call. Only jobs
+    whose own SimplyPrint call succeeded (or that had no real SimplyPrint job to cancel)
+    are deleted from print_jobs. Jobs whose cancellation could not be confirmed are left
+    in place with job_execution_status='failed' and logged, so a printer that's
+    still actually printing doesn't silently show as "cancelled" in the UI. The overall
+    order is only marked 'cancelled' when there were no hard failures; otherwise it's set
+    to 'hold' so the unresolved job is surfaced for manual follow-up.
+    """
+    api_key = os.getenv("SIMPLYPRINT_API_KEY")
     sp_headers = {"X-API-KEY": api_key, "Accept": "application/json"} if api_key else {}
     company_id = SIMPLYPRINT_COMPANY_ID
 
@@ -3632,8 +3794,8 @@ def _do_cancel_order(order_id: str, platform_order_id: Optional[str] = None, sp_
     items_res = supabase.table('order_items').select('id').eq('order_id', order_id).execute()
     order_items = items_res.data or []
 
+    active_printers = []
     if api_key:
-        active_printers = []
         try:
             r_pr = http_session.post(f"https://api.simplyprint.io/{company_id}/printers/Get", headers=sp_headers, json={}, timeout=10)
             if r_pr.status_code == 200:
@@ -3641,34 +3803,91 @@ def _do_cancel_order(order_id: str, platform_order_id: Optional[str] = None, sp_
         except Exception as pe:
             logger.error(f"Failed to fetch SimplyPrint printers: {pe}")
 
-        for item in order_items:
-            jobs_res = supabase.table('print_jobs').select('id, simplyprint_job_id').eq('order_item_id', item['id']).execute()
-            for job in (jobs_res.data or []):
-                job_id = job.get('simplyprint_job_id')
-                if not job_id or job_id == "UNKNOWN_JOB_ID" or job_id.startswith("MOCK_"):
-                    continue
-                try:
-                    r_q = http_session.post(f"https://api.simplyprint.io/{company_id}/queue/DeleteItem?job={job_id}", headers=sp_headers, timeout=10)
-                    if r_q.status_code != 200:
-                        for p in active_printers:
-                            p_job = p.get("job")
-                            if p_job and str(p_job.get("id")) == str(job_id):
-                                pid = p.get("printer", {}).get("id")
-                                if pid:
-                                    http_session.post(f"https://api.simplyprint.io/{company_id}/printers/actions/Cancel?pid={pid}", headers=sp_headers, timeout=10)
-                                break
-                except Exception as je:
-                    logger.error(f"Error cancelling SimplyPrint job {job_id}: {je}")
+    cancelled_job_ids = []
+    failed_job_ids = []
 
-    item_ids = [item['id'] for item in order_items]
-    if item_ids:
-        supabase.table('print_jobs').delete().in_('order_item_id', item_ids).execute()
+    for item in order_items:
+        jobs_res = supabase.table('print_jobs').select('id, simplyprint_job_id').eq('order_item_id', item['id']).execute()
+        for job in (jobs_res.data or []):
+            job_row_id = job['id']
+            sp_job_id = job.get('simplyprint_job_id')
+
+            # No real SimplyPrint job was ever created for this row — nothing to cancel
+            # remotely, safe to remove.
+            if not sp_job_id or sp_job_id == "UNKNOWN_JOB_ID" or sp_job_id.startswith("MOCK_"):
+                cancelled_job_ids.append(job_row_id)
+                continue
+
+            if not api_key:
+                # Can't confirm cancellation without the API key — don't pretend it worked.
+                failed_job_ids.append(job_row_id)
+                log_system('error', f"Cannot cancel SimplyPrint job {sp_job_id}: SIMPLYPRINT_API_KEY not set.",
+                           agent_name='Cancellation')
+                continue
+
+            job_cancelled = False
+            try:
+                r_q = http_session.post(f"https://api.simplyprint.io/{company_id}/queue/DeleteItem?job={sp_job_id}", headers=sp_headers, timeout=10)
+                if r_q.status_code == 200:
+                    job_cancelled = True
+                else:
+                    # Not in the queue anymore — check if it's actively printing and stop it.
+                    for p in active_printers:
+                        p_job = p.get("job")
+                        if p_job and str(p_job.get("id")) == str(sp_job_id):
+                            pid = p.get("printer", {}).get("id")
+                            if pid:
+                                r_c = http_session.post(f"https://api.simplyprint.io/{company_id}/printers/actions/Cancel?pid={pid}", headers=sp_headers, timeout=10)
+                                job_cancelled = r_c.status_code == 200
+                            break
+                    else:
+                        # DeleteItem failed and the job isn't on any active printer either —
+                        # most likely it already finished/was removed. Not a hard failure.
+                        job_cancelled = True
+            except Exception as je:
+                logger.error(f"Error cancelling SimplyPrint job {sp_job_id}: {je}")
+                job_cancelled = False
+
+            if job_cancelled:
+                cancelled_job_ids.append(job_row_id)
+            else:
+                failed_job_ids.append(job_row_id)
+                log_system('error', f"Failed to cancel SimplyPrint job {sp_job_id} (print_job {job_row_id}) "
+                                    f"for order {platform_order_id} — leaving job in place.",
+                           agent_name='Cancellation')
+
+    if cancelled_job_ids:
+        supabase.table('print_jobs').delete().in_('id', cancelled_job_ids).execute()
+    if failed_job_ids:
+        # 'failed' — chk_job_execution_status only allows pending/printing/completed/failed;
+        # writing 'cancel_failed' raised 23514 and aborted before the order could be held
+        supabase.table('print_jobs').update({'job_execution_status': 'failed'}).in_('id', failed_job_ids).execute()
+
+    if failed_job_ids:
+        # Don't silently show "cancelled" while a printer may still be printing — surface
+        # the order for manual follow-up instead.
+        supabase.table('orders').update({"overall_order_status": "hold"}).eq('id', order_id).execute()
+        log_system('error', f"Order {platform_order_id} cancel incomplete — {len(failed_job_ids)} print job(s) "
+                            f"could not be confirmed cancelled. Order set to 'hold' for manual review.",
+                   agent_name='Cancellation')
+        return {"cancelled": False, "platform_order_id": platform_order_id,
+                "failed_job_count": len(failed_job_ids), "cancelled_job_count": len(cancelled_job_ids)}
 
     supabase.table('orders').update({"overall_order_status": "cancelled"}).eq('id', order_id).execute()
     log_system('info', f"Cancelled order {platform_order_id}.", agent_name='Cancellation')
+    return {"cancelled": True, "platform_order_id": platform_order_id,
+            "failed_job_count": 0, "cancelled_job_count": len(cancelled_job_ids)}
 
 
 # ----------------- FastAPI Web Server Routes -----------------
+
+def require_api_key(request: Request):
+    """Shared-secret auth dependency. Applied to every route except the health checks,
+    the public /config bootstrap endpoint, and inbound webhooks (Gmail Pub/Sub push)
+    that can't send a custom header. Fails CLOSED — if ORBOT_API_KEY isn't configured,
+    every dependent request is rejected rather than the check being silently skipped."""
+    if not ORBOT_API_KEY or request.headers.get("X-Orbot-Key") != ORBOT_API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 app = FastAPI(
     title="Orbot Unified Service",
@@ -3678,7 +3897,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -3716,8 +3935,7 @@ def get_config():
 
     return {
         "supabase_url": SUPABASE_URL,
-        "supabase_key": SUPABASE_KEY,
-        "simplyprint_key": os.getenv("SIMPLYPRINT_API_KEY", ""),
+        "supabase_key": os.environ.get("SUPABASE_ANON_KEY", ""),
         "sp_dispatch_enabled": sp_dispatch_enabled,
     }
 
@@ -3726,7 +3944,7 @@ class SpDispatchRequest(BaseModel):
     enabled: bool
 
 
-@app.post("/config/sp-dispatch")
+@app.post("/config/sp-dispatch", dependencies=[Depends(require_api_key)])
 def set_sp_dispatch(body: SpDispatchRequest):
     """Persists the SimplyPrint dispatch on/off toggle so it applies everywhere,
     not just the browser it was flipped in."""
@@ -3738,13 +3956,13 @@ def set_sp_dispatch(body: SpDispatchRequest):
     return {"status": "ok", "sp_dispatch_enabled": body.enabled}
 
 
-@app.post("/scout/poll")
+@app.post("/scout/poll", dependencies=[Depends(require_api_key)])
 def scout_poll(background_tasks: BackgroundTasks):
     """Manually triggers Scout Gmail unread orders poll cycle in a background thread."""
     background_tasks.add_task(_trigger_scout_scan)
     return {"status": "Scout Gmail poll triggered"}
 
-@app.post("/scout/watch")
+@app.post("/scout/watch", dependencies=[Depends(require_api_key)])
 def scout_watch():
     """Manually (re)registers the Gmail push-notification watch. Useful for first-time
     setup and debugging. Renewal otherwise happens automatically on a daily loop."""
@@ -3763,7 +3981,9 @@ async def gmail_notifications(request: Request, background_tasks: BackgroundTask
     dedup'd Scout scan in the background. The push body's historyId is not needed — the
     scan uses the '-label:orbot-processed' query, which is idempotent."""
     # Reject spoofed calls: the push subscription URL carries ?token=<GMAIL_PUSH_TOKEN>.
-    if GMAIL_PUSH_TOKEN and token != GMAIL_PUSH_TOKEN:
+    # Fails CLOSED — if GMAIL_PUSH_TOKEN isn't configured, reject every push rather than
+    # silently accepting unauthenticated requests to this webhook.
+    if not GMAIL_PUSH_TOKEN or token != GMAIL_PUSH_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid push token.")
 
     # Ack the message even if the body is malformed, so Pub/Sub doesn't redeliver forever.
@@ -3777,7 +3997,7 @@ async def gmail_notifications(request: Request, background_tasks: BackgroundTask
     background_tasks.add_task(_trigger_scout_scan)
     return {"status": "ok"}
 
-@app.post("/scout/ingest-order")
+@app.post("/scout/ingest-order", dependencies=[Depends(require_api_key)])
 def scout_ingest_order(order: dict):
     """Manually ingests an order payload using Scout matching and database ingestion logic."""
     try:
@@ -3791,12 +4011,15 @@ def scout_ingest_order(order: dict):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to process order ingestion: {e}")
 
-@app.post("/catalog/import")
+@app.post("/catalog/import", dependencies=[Depends(require_api_key)])
 async def catalog_import(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     """Uploads a product catalog CSV/XLSX and triggers product manager ingestion in the background."""
     temp_dir = "/tmp" if os.name != "nt" else os.environ.get("TEMP", ".")
     os.makedirs(temp_dir, exist_ok=True)
-    temp_file_path = os.path.join(temp_dir, file.filename)
+    safe_filename = os.path.basename(file.filename or "")
+    if not safe_filename:
+        raise HTTPException(status_code=400, detail="Invalid or missing filename.")
+    temp_file_path = os.path.join(temp_dir, safe_filename)
 
     with open(temp_file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -3816,7 +4039,7 @@ async def catalog_import(background_tasks: BackgroundTasks, file: UploadFile = F
         "filename": file.filename
     }
 
-@app.post("/waybill/batch-print")
+@app.post("/waybill/batch-print", dependencies=[Depends(require_api_key)])
 def waybill_batch_print(background_tasks: BackgroundTasks):
     """Manually triggers compilation of ready-to-print waybills into a single batch PDF."""
     def run_batch():
@@ -3829,7 +4052,7 @@ def waybill_batch_print(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_batch)
     return {"status": "Batch printing compilation triggered"}
 
-@app.post("/telemetry/sync")
+@app.post("/telemetry/sync", dependencies=[Depends(require_api_key)])
 def telemetry_sync(background_tasks: BackgroundTasks):
     """Manually triggers SimplyPrint printer and queue status sync to Supabase database."""
     def run_sync():
@@ -3841,7 +4064,7 @@ def telemetry_sync(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_sync)
     return {"status": "SimplyPrint telemetry sync triggered"}
 
-@app.get("/diagnostics/simplyprint")
+@app.get("/diagnostics/simplyprint", dependencies=[Depends(require_api_key)])
 def diagnostics_simplyprint():
     """Returns raw SimplyPrint printer list for diagnosing connectivity issues."""
     api_key = os.getenv("SIMPLYPRINT_API_KEY")
@@ -3863,7 +4086,7 @@ def diagnostics_simplyprint():
     except Exception as e:
         return {"error": str(e)}
 
-@app.post("/scout/ingest-email")
+@app.post("/scout/ingest-email", dependencies=[Depends(require_api_key)])
 def scout_ingest_email(req: IngestEmailRequest):
     """Parses a raw order confirmation email body with Gemini and ingests the order."""
     try:
@@ -3882,12 +4105,11 @@ def scout_ingest_email(req: IngestEmailRequest):
 class ForemanDispatchRequest(BaseModel):
     dry_run: bool = False
 
-@app.post("/foreman/dispatch")
-def foreman_dispatch(request: Request, body: ForemanDispatchRequest = ForemanDispatchRequest()):
+@app.post("/foreman/dispatch", dependencies=[Depends(require_api_key)])
+def foreman_dispatch(body: ForemanDispatchRequest = ForemanDispatchRequest()):
     """Fetches all pending order items and dispatches their print files to the SimplyPrint queue."""
     try:
-        sp_key = request.headers.get("X-SimplyPrint-Key") or None
-        result = run_foreman_dispatch(sp_key=sp_key, dry_run=body.dry_run)
+        result = run_foreman_dispatch(dry_run=body.dry_run)
         return result
     except Exception as e:
         logger.error(f"foreman/dispatch error: {e}")
@@ -4008,6 +4230,22 @@ def _launch_process_image(raw: bytes, size: int = 2000) -> bytes:
 # Paste a marketplace URL (MakerWorld/Printables/Cults3D/Etsy) → scrape name,
 # description, set number, theme and product photos → prefill the Launch tab.
 
+def _is_safe_url(url: str) -> bool:
+    """Rejects URLs that resolve to private/loopback/link-local/reserved IP ranges, to
+    guard against SSRF via user-supplied or LLM-extracted URLs (product page + image URLs)."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = parsed.hostname
+        if not host:
+            return False
+        ip = ipaddress.ip_address(socket.gethostbyname(host))
+        return not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved)
+    except Exception:
+        return False
+
+
 _SCRAPE_HEADERS = {
     "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
                    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"),
@@ -4063,7 +4301,7 @@ def _condense_product_html(html_text: str, base_url: str) -> str:
     return "\n\n".join(chunks)
 
 
-@app.post("/catalog/scrape-product")
+@app.post("/catalog/scrape-product", dependencies=[Depends(require_api_key)])
 async def catalog_scrape_product(request: Request):
     """Fetch a product page, extract name/description/set/theme/photos via Gemini,
     download + square-process the photos. No DB writes."""
@@ -4071,6 +4309,8 @@ async def catalog_scrape_product(request: Request):
     url = str(body.get("url", "")).strip()
     if not re.match(r'^https?://', url):
         raise HTTPException(status_code=400, detail="A valid http(s) URL is required.")
+    if not await asyncio.to_thread(_is_safe_url, url):
+        raise HTTPException(status_code=400, detail="This URL cannot be fetched (blocked host/IP range).")
 
     def _do_scrape():
         # Tier 1: fetch the page ourselves (works for Printables, Cults3D, ...).
@@ -4152,6 +4392,10 @@ async def catalog_scrape_product(request: Request):
 
         images = []
         for img_url in extraction.image_urls[:9]:  # Shopee allows max 9 listing images
+            if not _is_safe_url(img_url):
+                log_system("warning", f"Product intake: skipped image URL blocked by SSRF guard: {img_url}",
+                           agent_name="Product Intake")
+                continue
             try:
                 r = http_session.get(img_url, headers={**_SCRAPE_HEADERS, "Referer": url}, timeout=30)
                 r.raise_for_status()
@@ -4180,7 +4424,7 @@ async def catalog_scrape_product(request: Request):
     return await asyncio.to_thread(_do_scrape)
 
 
-@app.post("/catalog/clean-image")
+@app.post("/catalog/clean-image", dependencies=[Depends(require_api_key)])
 async def catalog_clean_image(request: Request):
     """Remove logos/watermarks from one image via Gemini image editing.
     Always returns an image — falls back to the original with cleaned=false."""
@@ -4223,22 +4467,10 @@ async def catalog_clean_image(request: Request):
 # ─── End Product Intake from Link ─────────────────────────────────────────────
 
 
-@app.post("/catalog/preview-product")
-async def catalog_preview_product(request: Request):
-    """Generate listing copy via Gemini — no DB writes, no images needed."""
-    body = await request.json()
-    set_name     = str(body.get("set_name", "")).strip()
-    set_number   = str(body.get("set_number", "")).strip()
-    theme        = str(body.get("theme", "")).strip().upper()
-    brand_name   = str(body.get("brand_name", "Blocked Off")).strip() or "Blocked Off"
-    product_types = body.get("product_types", [])
-    plaque_count  = int(body.get("plaque_count", 1))
-    price_myr     = body.get("price_myr")
-    platforms     = body.get("platforms", ["shopee", "lazada"])
-
-    if not set_name or not set_number or not theme or not product_types:
-        raise HTTPException(status_code=400, detail="set_name, set_number, theme, product_types required.")
-
+def _do_preview_product(set_name: str, set_number: str, theme: str, brand_name: str,
+                         product_types: list, plaque_count: int, price_myr, platforms: list) -> dict:
+    """Synchronous body of /catalog/preview-product — runs Gemini + shop lookup off the
+    event loop via asyncio.to_thread (see /catalog/scrape-product for the same pattern)."""
     shop       = resolve_shop(brand_name)
     sku_prefix = shop["sku_prefix"] if shop else "BLO"
 
@@ -4259,37 +4491,40 @@ async def catalog_preview_product(request: Request):
     }
 
 
-@app.post("/catalog/launch-product")
-async def catalog_launch_product(request: Request):
-    """Full pipeline: insert DB rows, process images, return downloadable ZIP."""
+@app.post("/catalog/preview-product", dependencies=[Depends(require_api_key)])
+async def catalog_preview_product(request: Request):
+    """Generate listing copy via Gemini — no DB writes, no images needed."""
+    body = await request.json()
+    set_name     = str(body.get("set_name", "")).strip()
+    set_number   = str(body.get("set_number", "")).strip()
+    theme        = str(body.get("theme", "")).strip().upper()
+    brand_name   = str(body.get("brand_name", "Blocked Off")).strip() or "Blocked Off"
+    product_types = body.get("product_types", [])
+    plaque_count  = int(body.get("plaque_count", 1))
+    price_myr     = body.get("price_myr")
+    platforms     = body.get("platforms", ["shopee", "lazada"])
+
+    if not set_name or not set_number or not theme or not product_types:
+        raise HTTPException(status_code=400, detail="set_name, set_number, theme, product_types required.")
+
+    return await asyncio.to_thread(
+        _do_preview_product, set_name, set_number, theme, brand_name,
+        product_types, plaque_count, price_myr, platforms,
+    )
+
+
+def _do_launch_product(set_name: str, set_number: str, theme: str, product_types: list,
+                        plaque_count: int, price_myr, price_sgd, platforms: list,
+                        listing_title: str, description: str, brand_name: str,
+                        product_category: str, shopee_my, shopee_sg, shopee_ph, shopee_th,
+                        lazada_my, source_url, source_description, vd_by_sku: dict,
+                        raw_images: List[bytes]) -> StreamingResponse:
+    """Synchronous body of /catalog/launch-product — DB writes, Drive uploads, image
+    processing, and ZIP building all run off the event loop via asyncio.to_thread (see
+    /catalog/scrape-product for the same pattern). raw_images are the already-read bytes
+    of each uploaded image (reading the UploadFile itself must happen in the async route
+    handler, since that part is genuinely async)."""
     import zipfile
-
-    form             = await request.form()
-    set_name         = str(form.get("set_name", "")).strip()
-    set_number       = str(form.get("set_number", "")).strip()
-    theme            = str(form.get("theme", "")).strip().upper()
-    product_types    = json.loads(form.get("product_types", "[]"))
-    plaque_count     = int(form.get("plaque_count", 1))
-    price_myr        = float(form.get("price_myr", 0) or 0) or None
-    price_sgd        = float(form.get("price_sgd", 0) or 0) or None
-    platforms        = json.loads(form.get("platforms", '["shopee","lazada"]'))
-    listing_title    = str(form.get("listing_title", "")).strip()
-    description      = str(form.get("description", "")).strip()
-    brand_name       = str(form.get("brand_name", "Blocked Off")).strip() or "Blocked Off"
-    product_category = str(form.get("product_category", "")).strip()
-    shopee_my        = str(form.get("shopee_my", "")).strip() or None
-    shopee_sg        = str(form.get("shopee_sg", "")).strip() or None
-    shopee_ph        = str(form.get("shopee_ph", "")).strip() or None
-    shopee_th        = str(form.get("shopee_th", "")).strip() or None
-    lazada_my        = str(form.get("lazada_my", "")).strip() or None
-    source_url         = str(form.get("source_url", "")).strip() or None
-    source_description = str(form.get("source_description", "")).strip() or None
-    variant_details  = json.loads(form.get("variant_details", "[]"))
-    # keyed by SKU for O(1) lookup
-    vd_by_sku        = {vd["sku"]: vd for vd in variant_details}
-
-    if not set_name or not set_number or not theme or not product_types or not listing_title:
-        raise HTTPException(status_code=400, detail="Missing required fields.")
 
     shop       = resolve_shop(brand_name)
     sku_prefix = shop["sku_prefix"] if shop else "BLO"
@@ -4379,14 +4614,12 @@ async def catalog_launch_product(request: Request):
 
     # ── image processing ───────────────────────────────────────────────────
     processed_imgs = []
-    for i, img_file in enumerate(form.getlist("images")):
-        if hasattr(img_file, "read"):
-            try:
-                raw  = await img_file.read()
-                data = _launch_process_image(raw)
-                processed_imgs.append((i + 1, data))
-            except Exception as ie:
-                log_system("warning", f"Image {i+1} processing failed: {ie}", agent_name="Product Launch")
+    for i, raw in enumerate(raw_images):
+        try:
+            data = _launch_process_image(raw)
+            processed_imgs.append((i + 1, data))
+        except Exception as ie:
+            log_system("warning", f"Image {i+1} processing failed: {ie}", agent_name="Product Launch")
 
     # ── Google Drive folders + asset upload ───────────────────────────────
     # Creates {products root}/{Product}/Pictures|Print Files|Seal Stickers,
@@ -4472,6 +4705,54 @@ async def catalog_launch_product(request: Request):
                              headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 
+@app.post("/catalog/launch-product", dependencies=[Depends(require_api_key)])
+async def catalog_launch_product(request: Request):
+    """Full pipeline: insert DB rows, process images, return downloadable ZIP."""
+    form             = await request.form()
+    set_name         = str(form.get("set_name", "")).strip()
+    set_number       = str(form.get("set_number", "")).strip()
+    theme            = str(form.get("theme", "")).strip().upper()
+    product_types    = json.loads(form.get("product_types", "[]"))
+    plaque_count     = int(form.get("plaque_count", 1))
+    price_myr        = float(form.get("price_myr", 0) or 0) or None
+    price_sgd        = float(form.get("price_sgd", 0) or 0) or None
+    platforms        = json.loads(form.get("platforms", '["shopee","lazada"]'))
+    listing_title    = str(form.get("listing_title", "")).strip()
+    description      = str(form.get("description", "")).strip()
+    brand_name       = str(form.get("brand_name", "Blocked Off")).strip() or "Blocked Off"
+    product_category = str(form.get("product_category", "")).strip()
+    shopee_my        = str(form.get("shopee_my", "")).strip() or None
+    shopee_sg        = str(form.get("shopee_sg", "")).strip() or None
+    shopee_ph        = str(form.get("shopee_ph", "")).strip() or None
+    shopee_th        = str(form.get("shopee_th", "")).strip() or None
+    lazada_my        = str(form.get("lazada_my", "")).strip() or None
+    source_url         = str(form.get("source_url", "")).strip() or None
+    source_description = str(form.get("source_description", "")).strip() or None
+    variant_details  = json.loads(form.get("variant_details", "[]"))
+    # keyed by SKU for O(1) lookup
+    vd_by_sku        = {vd["sku"]: vd for vd in variant_details}
+
+    if not set_name or not set_number or not theme or not product_types or not listing_title:
+        raise HTTPException(status_code=400, detail="Missing required fields.")
+
+    # Reading each UploadFile is genuinely async — do it here, then hand plain bytes to
+    # the synchronous helper (run off the event loop below).
+    raw_images = []
+    for i, img_file in enumerate(form.getlist("images")):
+        if hasattr(img_file, "read"):
+            try:
+                raw_images.append(await img_file.read())
+            except Exception as ie:
+                log_system("warning", f"Image {i+1} read failed: {ie}", agent_name="Product Launch")
+
+    return await asyncio.to_thread(
+        _do_launch_product, set_name, set_number, theme, product_types, plaque_count,
+        price_myr, price_sgd, platforms, listing_title, description, brand_name,
+        product_category, shopee_my, shopee_sg, shopee_ph, shopee_th, lazada_my,
+        source_url, source_description, vd_by_sku, raw_images,
+    )
+
+
 # ─── End Product Launch Pipeline ──────────────────────────────────────────────
 
 class QueueFileRequest(BaseModel):
@@ -4479,10 +4760,10 @@ class QueueFileRequest(BaseModel):
     simplyprint_file_id: Optional[str] = None
     print_job_id: Optional[str] = None
 
-@app.post("/print-files/queue")
-def queue_single_file(req: QueueFileRequest, request: Request):
+@app.post("/print-files/queue", dependencies=[Depends(require_api_key)])
+def queue_single_file(req: QueueFileRequest):
     """Sends a single print file directly to the SimplyPrint queue."""
-    api_key = request.headers.get("X-SimplyPrint-Key") or os.getenv("SIMPLYPRINT_API_KEY")
+    api_key = os.getenv("SIMPLYPRINT_API_KEY")
     if not api_key:
         raise HTTPException(status_code=400, detail="SimplyPrint API key not configured.")
 
@@ -4521,11 +4802,10 @@ def queue_single_file(req: QueueFileRequest, request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/cancel")
-def cancel_order(req: CancelRequest, request: Request):
+@app.post("/cancel", dependencies=[Depends(require_api_key)])
+def cancel_order(req: CancelRequest):
     """Cancels an order: aborts SimplyPrint jobs and marks the order cancelled in the database."""
     try:
-        sp_key = request.headers.get("X-SimplyPrint-Key") or None
         order_id = req.order_id
         platform_order_id = req.platform_order_id
 
@@ -4554,7 +4834,14 @@ def cancel_order(req: CancelRequest, request: Request):
         if not order_id:
             raise HTTPException(status_code=400, detail="Provide order_id, platform_order_id, or email_body.")
 
-        _do_cancel_order(order_id, platform_order_id, sp_key=sp_key)
+        result = _do_cancel_order(order_id, platform_order_id)
+        if not result.get("cancelled"):
+            return {
+                "status": "partial_failure",
+                "platform_order_id": platform_order_id or order_id,
+                "detail": f"{result.get('failed_job_count', 0)} print job(s) could not be confirmed cancelled — "
+                          "order set to 'hold' for manual review.",
+            }
         return {"status": "success", "platform_order_id": platform_order_id or order_id}
 
     except HTTPException:

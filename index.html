@@ -9,10 +9,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="index.css?v=1.10.1">
   <!-- Load Supabase library -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- Load local config fallback -->
-  <script src="config.js"></script>
-  
+  <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
+       the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
+       TODO: verify this is the intended/latest-tested version and add an integrity="sha384-..."
+       attribute once the exact deployed version is confirmed (not fabricated here). -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+
   <script id="tailwind-config">
     tailwind.config = {
       darkMode: "class",
@@ -1890,7 +1892,7 @@
           <input type="text" id="setting-supabase-url" placeholder="https://your-project.supabase.co" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
         </div>
         <div class="flex flex-col gap-1.5">
-          <label for="setting-supabase-key" class="text-xs font-label-caps text-on-surface-variant uppercase">Supabase Service Role Key</label>
+          <label for="setting-supabase-key" class="text-xs font-label-caps text-on-surface-variant uppercase">Supabase Anon Key</label>
           <input type="password" id="setting-supabase-key" placeholder="eyJhbGciOi..." class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
         </div>
         <div class="flex flex-col gap-1.5">
@@ -1898,8 +1900,8 @@
           <input type="text" id="setting-backend-url" placeholder="https://your-app.railway.app" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
         </div>
         <div class="flex flex-col gap-1.5">
-          <label for="setting-simplyprint-key" class="text-xs font-label-caps text-on-surface-variant uppercase">SimplyPrint API Key</label>
-          <input type="password" id="setting-simplyprint-key" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
+          <label for="setting-orbot-api-key" class="text-xs font-label-caps text-on-surface-variant uppercase">Orbot API Key</label>
+          <input type="password" id="setting-orbot-api-key" placeholder="Shared secret sent as X-Orbot-Key to the backend" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
         </div>
         <div class="flex items-center justify-between py-1 border-t border-outline-variant/10 mt-1 pt-3">
           <div class="flex flex-col gap-0.5">
@@ -1978,15 +1980,20 @@
   </div>
 
   <!-- Interest invokers and popover hint polyfills -->
+  <!-- Pinned to specific versions instead of @latest so an upstream release can't change
+       behavior under us without a deliberate bump here. Versions picked as reasonably recent
+       stable releases at the time of this pass — verify against npm and add
+       integrity="sha384-..." on each <script>/import once the exact deployed version is
+       confirmed (no fabricated hashes added here). -->
   <script type="module">
     if(!HTMLButtonElement.prototype.hasOwnProperty("interestForElement")){
-      await import("https://unpkg.com/interestfor@latest");
+      await import("https://unpkg.com/interestfor@0.1.6");
     }
     if(!HTMLElement.prototype.hasOwnProperty("popover")){
-      await import("https://unpkg.com/@oddbird/popover-polyfill@latest");
+      await import("https://unpkg.com/@oddbird/popover-polyfill@0.5.2");
     }
     if (!("anchorName" in document.documentElement.style)) {
-      await import("https://unpkg.com/@oddbird/css-anchor-positioning");
+      await import("https://unpkg.com/@oddbird/css-anchor-positioning@0.5.0");
     }
   </script>
   <!-- Edit Listing Modal -->
@@ -2207,6 +2214,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=1.11.0"></script>
+  <script src="app.js?v=1.12.0"></script>
 </body>
 </html>

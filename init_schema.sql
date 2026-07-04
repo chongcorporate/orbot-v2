@@ -249,6 +249,5 @@ CREATE INDEX IF NOT EXISTS idx_orders_overall_order_status ON orders(overall_ord
 CREATE INDEX IF NOT EXISTS idx_print_files_simplyprint_id ON print_files(simplyprint_file_id) WHERE simplyprint_file_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_system_logs_level_created ON system_logs(log_level, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at_desc ON orders(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_waybill_jobs_created_at_desc ON waybill_jobs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_created_at_desc ON print_jobs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_system_logs_created_at_desc ON system_logs(created_at DESC);
