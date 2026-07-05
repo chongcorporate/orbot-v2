@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Printers Panel — Draft 2: Print Bays</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<style>
+:root{
+  --primary:#8b7cf6; --blue:#5fb4ff; --success:#3ddc97; --warning:#f5b942; --error:#f2657a;
+  --glass-bg:rgba(255,255,255,0.045); --glass-border:rgba(255,255,255,0.08);
+  --t1:#f2f3f7; --t2:#a8abb8; --t3:#63667a;
+  --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:radial-gradient(1100px 700px at 82% -8%,rgba(139,124,246,.10),transparent 60%),
+             radial-gradient(900px 600px at -5% 100%,rgba(95,180,255,.07),transparent 60%),
+             linear-gradient(160deg,#101119,#0a0a10);
+  min-height:100vh;font-family:'Inter',sans-serif;color:var(--t1);padding:40px;display:flex;justify-content:center;
+}
+.material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 20;font-size:16px;vertical-align:middle}
+.panel{width:620px;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:16px;padding:18px;backdrop-filter:blur(12px)}
+.hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.hd-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
+.hd-title .material-symbols-outlined{color:var(--primary);font-size:18px}
+.hd-sub{font-size:10px;color:var(--t3);font-family:var(--mono);margin-left:8px}
+.hbtn{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:var(--t2);border-radius:8px;padding:4px 8px;font-size:10px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:inherit}
+.hbtn:hover{background:rgba(255,255,255,.1);color:var(--t1)}
+.hbtn.danger{background:rgba(242,101,122,.12);border-color:rgba(242,101,122,.4);color:var(--error)}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* Bay card */
+.bay{
+  position:relative;border-radius:14px;padding:14px;overflow:hidden;
+  background:linear-gradient(150deg,color-mix(in srgb,var(--sc) 9%,rgba(255,255,255,.03)),rgba(255,255,255,.02) 55%);
+  border:1px solid color-mix(in srgb,var(--sc) 25%,rgba(255,255,255,.06));
+}
+.bay::after{content:'';position:absolute;top:-40px;right:-40px;width:120px;height:120px;border-radius:50%;
+  background:radial-gradient(circle,color-mix(in srgb,var(--sc) 22%,transparent),transparent 70%);pointer-events:none}
+.bay-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.bay-name{font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px}
+.badge{font-size:8px;font-weight:800;font-family:var(--mono);letter-spacing:.06em;padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.08);color:var(--t2)}
+.badge.mini{background:rgba(95,180,255,.15);color:var(--blue)}
+.state{font-size:9px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--sc);font-weight:700;
+  display:flex;align-items:center;gap:5px;background:rgba(0,0,0,.3);padding:3px 8px;border-radius:99px;border:1px solid color-mix(in srgb,var(--sc) 30%,transparent)}
+.state .dot{width:6px;height:6px;border-radius:50%;background:var(--sc)}
+.bay.live .state .dot{animation:bl 1.6s ease-in-out infinite}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* Big percent + job */
+.bay-hero{display:flex;align-items:baseline;gap:8px;font-family:var(--mono)}
+.bay-pct{font-size:34px;font-weight:700;line-height:1;color:var(--sc);letter-spacing:-.02em}
+.bay-pct small{font-size:16px;font-weight:600}
+.bay-eta{font-size:10.5px;color:var(--t2)}
+.bay-job{font-size:10.5px;color:var(--t2);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:6px}
+.bay-idle{display:flex;flex-direction:column;gap:4px;padding:6px 0 2px}
+.bay-idle .big{font-size:15px;font-weight:700;color:var(--sc);display:flex;align-items:center;gap:6px}
+.bay-idle .sub{font-size:10.5px;color:var(--t2);font-family:var(--mono)}
+
+/* Segmented progress bar */
+.segbar{display:flex;gap:3px;margin-top:12px}
+.segbar i{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.07)}
+.segbar i.on{background:var(--sc);box-shadow:0 0 6px color-mix(in srgb,var(--sc) 50%,transparent)}
+.segbar i.half{background:linear-gradient(90deg,var(--sc) 50%,rgba(255,255,255,.07) 50%)}
+
+/* Footer stats */
+.bay-foot{display:flex;gap:8px;margin-top:11px;font-family:var(--mono);font-size:9.5px;color:var(--t2)}
+.stat{display:flex;align-items:center;gap:4px;background:rgba(0,0,0,.25);padding:3px 7px;border-radius:6px;border:1px solid rgba(255,255,255,.05)}
+.stat .material-symbols-outlined{font-size:13px}
+.bay-foot .spacer{flex:1}
+.ctl{width:24px;height:24px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.3);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.ctl:hover{color:var(--t1);border-color:rgba(255,255,255,.3)}
+.ctl.stop:hover{color:var(--error);border-color:var(--error)}
+.ctl .material-symbols-outlined{font-size:14px}
+.bay.offline{opacity:.72;border-style:dashed}
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="hd">
+    <div class="hd-title"><span class="material-symbols-outlined">print</span> Printers <span class="hd-sub">5 units · 2 active</span></div>
+    <div>
+      <button class="hbtn"><span class="material-symbols-outlined">sync</span>Sync</button>
+      <button class="hbtn"><span class="material-symbols-outlined">done_all</span>Ready All</button>
+      <button class="hbtn danger"><span class="material-symbols-outlined">emergency</span>E-Stop</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- Printing -->
+    <div class="bay live" style="--sc:#8b7cf6">
+      <div class="bay-top">
+        <div class="bay-name">A1 — Alpha <span class="badge">A1</span></div>
+        <div class="state"><span class="dot"></span>printing</div>
+      </div>
+      <div class="bay-hero"><span class="bay-pct">73<small>%</small></span><span class="bay-eta">1h 12m left</span></div>
+      <div class="bay-job">SW-Blaster-Rack-x4_PLA_0.2mm.gcode</div>
+      <div class="segbar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="half"></i><i></i><i></i></div>
+      <div class="bay-foot">
+        <span class="stat"><span class="material-symbols-outlined" style="color:#ebb2ff">thermometer</span>220/220°</span>
+        <span class="stat"><span class="material-symbols-outlined" style="color:#ffaa6b">heat</span>60/60°</span>
+        <span class="stat"><span class="material-symbols-outlined" style="color:var(--primary)">layers</span>2/4</span>
+        <span class="spacer"></span>
+        <button class="ctl" title="Pause"><span class="material-symbols-outlined">pause</span></button>
+        <button class="ctl stop" title="E-Stop"><span class="material-symbols-outlined">emergency</span></button>
+      </div>
+    </div>
+
+    <!-- Printing -->
+    <div class="bay live" style="--sc:#8b7cf6">
+      <div class="bay-top">
+        <div class="bay-name">A1 — Bravo <span class="badge">A1</span></div>
+        <div class="state"><span class="dot"></span>printing</div>
+      </div>
+      <div class="bay-hero"><span class="bay-pct">31<small>%</small></span><span class="bay-eta">3h 40m left</span></div>
+      <div class="bay-job">HP-Wand-Stand-x8_PLA.gcode</div>
+      <div class="segbar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="half"></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="bay-foot">
+        <span class="stat"><span class="material-symbols-outlined" style="color:#ebb2ff">thermometer</span>218/220°</span>
+        <span class="stat"><span class="material-symbols-outlined" style="color:#ffaa6b">heat</span>60/60°</span>
+        <span class="stat"><span class="material-symbols-outlined" style="color:var(--primary)">layers</span>1/4</span>
+        <span class="spacer"></span>
+        <button class="ctl" title="Pause"><span class="material-symbols-outlined">pause</span></button>
+        <button class="ctl stop" title="E-Stop"><span class="material-symbols-outlined">emergency</span></button>
+      </div>
+    </div>
+
+    <!-- Paused -->
+    <div class="bay" style="--sc:#f5b942">
+      <div class="bay-top">
+        <div class="bay-name">Mini — Charlie <span class="badge mini">MINI</span></div>
+        <div class="state"><span class="dot"></span>paused</div>
+      </div>
+      <div class="bay-hero"><span class="bay-pct">58<small>%</small></span><span class="bay-eta">held for 14m</span></div>
+      <div class="bay-job">Minifig-Display-Tile_PLA.gcode</div>
+      <div class="segbar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="half"></i><i></i><i></i><i></i><i></i></div>
+      <div class="bay-foot">
+        <span class="stat"><span class="material-symbols-outlined" style="color:#ebb2ff">thermometer</span>165°</span>
+        <span class="stat"><span class="material-symbols-outlined" style="color:#ffaa6b">heat</span>58°</span>
+        <span class="spacer"></span>
+        <button class="ctl" title="Resume"><span class="material-symbols-outlined">play_arrow</span></button>
+        <button class="ctl stop" title="E-Stop"><span class="material-symbols-outlined">emergency</span></button>
+      </div>
+    </div>
+
+    <!-- Idle -->
+    <div class="bay" style="--sc:#3ddc97">
+      <div class="bay-top">
+        <div class="bay-name">A1 — Delta <span class="badge">A1</span></div>
+        <div class="state"><span class="dot"></span>idle</div>
+      </div>
+      <div class="bay-idle">
+        <span class="big"><span class="material-symbols-outlined" style="font-size:18px">check_circle</span>Ready for jobs</span>
+        <span class="sub">bed clear · nozzle 28° · next in queue: none</span>
+      </div>
+      <div class="segbar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="bay-foot">
+        <span class="stat"><span class="material-symbols-outlined" style="color:var(--primary)">layers</span>0/4</span>
+        <span class="spacer"></span>
+        <button class="ctl" title="Ready"><span class="material-symbols-outlined">done</span></button>
+        <button class="ctl stop" title="E-Stop"><span class="material-symbols-outlined">emergency</span></button>
+      </div>
+    </div>
+
+    <!-- Offline (full width) -->
+    <div class="bay offline" style="--sc:#f2657a;grid-column:1/-1">
+      <div class="bay-top" style="margin-bottom:2px">
+        <div class="bay-name">Mini — Echo <span class="badge mini">MINI</span></div>
+        <div class="state"><span class="dot"></span>offline</div>
+      </div>
+      <div class="bay-idle" style="padding:2px 0 0">
+        <span class="sub" style="color:var(--error)"><span class="material-symbols-outlined" style="font-size:14px">wifi_off</span> Offline — last seen 2h ago · check power / network</span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

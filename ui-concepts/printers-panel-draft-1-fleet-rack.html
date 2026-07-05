@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Printers Panel — Draft 1: Fleet Rack</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<style>
+:root{
+  --primary:#8b7cf6; --blue:#5fb4ff; --success:#3ddc97; --warning:#f5b942; --error:#f2657a;
+  --glass-bg:rgba(255,255,255,0.045); --glass-border:rgba(255,255,255,0.08);
+  --t1:#f2f3f7; --t2:#a8abb8; --t3:#63667a;
+  --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:radial-gradient(1100px 700px at 82% -8%,rgba(139,124,246,.10),transparent 60%),
+             radial-gradient(900px 600px at -5% 100%,rgba(95,180,255,.07),transparent 60%),
+             linear-gradient(160deg,#101119,#0a0a10);
+  min-height:100vh;font-family:'Inter',sans-serif;color:var(--t1);padding:40px;display:flex;justify-content:center;
+}
+.material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 20;font-size:16px;vertical-align:middle}
+.panel{width:560px;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:16px;padding:18px;backdrop-filter:blur(12px)}
+
+/* Header */
+.hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.hd-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
+.hd-title .material-symbols-outlined{color:var(--primary);font-size:18px}
+.hd-actions{display:flex;gap:6px}
+.hbtn{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:var(--t2);border-radius:8px;padding:4px 8px;font-size:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;font-family:inherit}
+.hbtn:hover{background:rgba(255,255,255,.1);color:var(--t1)}
+.hbtn.danger{background:rgba(242,101,122,.12);border-color:rgba(242,101,122,.4);color:var(--error)}
+
+/* Fleet summary strip */
+.summary{display:flex;gap:14px;margin:12px 0;padding:10px 12px;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.06);border-radius:10px;font-family:var(--mono);font-size:11px}
+.summary .s{display:flex;align-items:center;gap:6px;color:var(--t2)}
+.summary .dot{width:7px;height:7px;border-radius:50%}
+.summary b{color:var(--t1);font-size:13px}
+.summary .util{margin-left:auto;color:var(--primary);font-weight:700}
+
+/* Rack rows */
+.rack{display:flex;flex-direction:column;gap:6px}
+.row{
+  position:relative;display:grid;grid-template-columns:34px 1fr 120px 64px;align-items:center;gap:10px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;
+  padding:10px 12px;overflow:hidden;transition:background .15s;
+}
+.row:hover{background:rgba(255,255,255,.06)}
+.row::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--sc)}
+/* progress wash across the whole row */
+.row .wash{position:absolute;inset:0;background:linear-gradient(90deg,color-mix(in srgb,var(--sc) 12%,transparent),transparent);width:var(--pct);pointer-events:none}
+.row .wash::after{content:'';position:absolute;right:0;top:0;bottom:0;width:1px;background:color-mix(in srgb,var(--sc) 60%,transparent)}
+.picon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--sc) 12%,transparent);border:1px solid color-mix(in srgb,var(--sc) 28%,transparent);z-index:1}
+.picon .material-symbols-outlined{color:var(--sc);font-size:18px}
+.pmain{min-width:0;z-index:1}
+.pname{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+.badge{font-size:8px;font-weight:800;font-family:var(--mono);letter-spacing:.06em;padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.08);color:var(--t2)}
+.badge.mini{background:rgba(95,180,255,.15);color:var(--blue)}
+.pjob{font-size:10.5px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;font-family:var(--mono)}
+.pjob.idle{color:var(--success)}
+.pjob.off{color:var(--error);opacity:.8}
+.pright{text-align:right;font-family:var(--mono);z-index:1}
+.peta{font-size:10px;color:var(--t2)}
+.pstate{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--sc);font-weight:700}
+.ppct{font-size:16px;font-weight:700;font-family:var(--mono);color:var(--sc);text-align:right;z-index:1}
+/* pulse on printing */
+.row.printing .picon{animation:pu 2.5s ease-in-out infinite}
+@keyframes pu{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--sc) 35%,transparent)}50%{box-shadow:0 0 10px 2px color-mix(in srgb,var(--sc) 25%,transparent)}}
+
+/* hover quick actions */
+.qa{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;gap:4px;z-index:2}
+.row:hover .qa{display:flex}
+.row:hover .ppct,.row:hover .pright{opacity:.15}
+.qa button{width:26px;height:26px;border-radius:7px;border:1px solid rgba(255,255,255,.15);background:rgba(10,10,16,.85);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.qa button:hover{color:var(--t1);border-color:rgba(255,255,255,.35)}
+.qa button.stop:hover{color:var(--error);border-color:var(--error)}
+.qa .material-symbols-outlined{font-size:15px}
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="hd">
+    <div class="hd-title"><span class="material-symbols-outlined">print</span> Printers</div>
+    <div class="hd-actions">
+      <button class="hbtn"><span class="material-symbols-outlined">sync</span>Sync</button>
+      <button class="hbtn"><span class="material-symbols-outlined">done_all</span>Ready All</button>
+      <button class="hbtn danger"><span class="material-symbols-outlined">emergency</span>E-Stop</button>
+    </div>
+  </div>
+
+  <div class="summary">
+    <span class="s"><span class="dot" style="background:var(--primary)"></span><b>2</b> printing</span>
+    <span class="s"><span class="dot" style="background:var(--success)"></span><b>1</b> idle</span>
+    <span class="s"><span class="dot" style="background:var(--warning)"></span><b>1</b> paused</span>
+    <span class="s"><span class="dot" style="background:var(--error)"></span><b>1</b> offline</span>
+    <span class="util">62% UTIL</span>
+  </div>
+
+  <div class="rack">
+    <div class="row printing" style="--sc:#8b7cf6;--pct:73%">
+      <div class="wash"></div>
+      <div class="picon"><span class="material-symbols-outlined">print</span></div>
+      <div class="pmain">
+        <div class="pname">A1 — Alpha <span class="badge">A1</span></div>
+        <div class="pjob">SW-Blaster-Rack-x4_PLA_0.2mm.gcode</div>
+      </div>
+      <div class="pright"><div class="pstate">printing</div><div class="peta">1h 12m left · 220°/60°</div></div>
+      <div class="ppct">73%</div>
+      <div class="qa">
+        <button title="Pause"><span class="material-symbols-outlined">pause</span></button>
+        <button title="Ready"><span class="material-symbols-outlined">done</span></button>
+        <button class="stop" title="E-Stop"><span class="material-symbols-outlined">emergency</span></button>
+      </div>
+    </div>
+
+    <div class="row printing" style="--sc:#8b7cf6;--pct:31%">
+      <div class="wash"></div>
+      <div class="picon"><span class="material-symbols-outlined">print</span></div>
+      <div class="pmain">
+        <div class="pname">A1 — Bravo <span class="badge">A1</span></div>
+        <div class="pjob">HP-Wand-Stand-x8_PLA.gcode</div>
+      </div>
+      <div class="pright"><div class="pstate">printing</div><div class="peta">3h 40m left · 218°/60°</div></div>
+      <div class="ppct">31%</div>
+      <div class="qa">
+        <button title="Pause"><span class="material-symbols-outlined">pause</span></button>
+        <button title="Ready"><span class="material-symbols-outlined">done</span></button>
+        <button class="stop" title="E-Stop"><span class="material-symbols-outlined">emergency</span></button>
+      </div>
+    </div>
+
+    <div class="row" style="--sc:#f5b942;--pct:58%">
+      <div class="wash"></div>
+      <div class="picon"><span class="material-symbols-outlined">pause_circle</span></div>
+      <div class="pmain">
+        <div class="pname">Mini — Charlie <span class="badge mini">MINI</span></div>
+        <div class="pjob">Minifig-Display-Tile_PLA.gcode</div>
+      </div>
+      <div class="pright"><div class="pstate">paused</div><div class="peta">held 14m · 165°/58°</div></div>
+      <div class="ppct">58%</div>
+      <div class="qa">
+        <button title="Resume"><span class="material-symbols-outlined">play_arrow</span></button>
+        <button title="Ready"><span class="material-symbols-outlined">done</span></button>
+        <button class="stop" title="E-Stop"><span class="material-symbols-outlined">emergency</span></button>
+      </div>
+    </div>
+
+    <div class="row" style="--sc:#3ddc97;--pct:0%">
+      <div class="picon"><span class="material-symbols-outlined">check_circle</span></div>
+      <div class="pmain">
+        <div class="pname">A1 — Delta <span class="badge">A1</span></div>
+        <div class="pjob idle">Idle — ready for jobs · plates 0/4</div>
+      </div>
+      <div class="pright"><div class="pstate">idle</div><div class="peta">nozzle 28° · bed 27°</div></div>
+      <div class="ppct" style="opacity:.35">—</div>
+      <div class="qa">
+        <button title="Ready"><span class="material-symbols-outlined">done</span></button>
+        <button class="stop" title="E-Stop"><span class="material-symbols-outlined">emergency</span></button>
+      </div>
+    </div>
+
+    <div class="row" style="--sc:#f2657a;--pct:0%;opacity:.75">
+      <div class="picon"><span class="material-symbols-outlined">wifi_off</span></div>
+      <div class="pmain">
+        <div class="pname">Mini — Echo <span class="badge mini">MINI</span></div>
+        <div class="pjob off">Offline — last seen 2h ago</div>
+      </div>
+      <div class="pright"><div class="pstate">offline</div><div class="peta">check power / network</div></div>
+      <div class="ppct" style="opacity:.35">—</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

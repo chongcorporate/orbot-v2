@@ -6797,7 +6797,7 @@ async function cleanLaunchImages(files) {
   if (cleanedCount === 0 && files.length > 0) {
     setLaunchStatus('error', `Logo removal failed — images kept as-is. ${lastReason || ''}`);
   } else {
-    setLaunchStatus('success', `Logo removal done — ${cleanedCount}/${_launchImages.length} image(s) cleaned. Review images, then Preview Listing.`);
+    setLaunchStatus('success', `Logo removal done — ${cleanedCount}/${_launchImages.length} image(s) cleaned. Review images, then Generate.`);
   }
   logAction('clean_images', 'info', { cleaned: cleanedCount, total: _launchImages.length });
 }
@@ -6831,6 +6831,50 @@ function setLaunchStatus(type, msg) {
   el.classList.remove('hidden');
 }
 
+function clearFieldHighlights() {
+  document.querySelectorAll('.field-missing, .field-missing-container').forEach(el => {
+    el.classList.remove('field-missing', 'field-missing-container');
+  });
+}
+
+function highlightMissingFields(missing) {
+  clearFieldHighlights();
+  const fieldMap = {
+    'set name': 'launch-set-name',
+    'set number': 'launch-set-number',
+    'theme': 'launch-theme',
+    'brand name': 'launch-brand-name',
+    'price (MYR)': 'launch-price',
+    'price (SGD)': 'launch-price-sgd',
+  };
+
+  missing.forEach(field => {
+    if (fieldMap[field]) {
+      const el = document.getElementById(fieldMap[field]);
+      if (el) {
+        el.classList.add('field-missing');
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+    if (field === 'product type') {
+      const el = document.getElementById('launch-types-list');
+      if (el) el.classList.add('field-missing-container');
+    }
+    if (field === 'plaque count') {
+      const el = document.getElementById('launch-plaque-count');
+      if (el) el.classList.add('field-missing');
+    }
+    if (field === 'platform') {
+      const checkboxes = document.querySelectorAll('#launch-plat-shopee, #launch-plat-lazada');
+      checkboxes.forEach(cb => cb.closest('label')?.classList.add('field-missing'));
+    }
+    if (field === 'product images') {
+      const el = document.getElementById('launch-image-panel');
+      if (el) el.classList.add('field-missing-container');
+    }
+  });
+}
+
 async function doLaunchPreview() {
   const { set_name, set_number, theme, brand_name, product_types, plaque_count, price_myr, price_sgd, platforms } = getLaunchFormData();
   const missing = [];
@@ -6846,8 +6890,10 @@ async function doLaunchPreview() {
   if (_launchImages.length === 0) missing.push('product images');
   if (missing.length > 0) {
     setLaunchStatus('error', `Cannot generate preview — missing: ${missing.join(', ')}.`);
+    highlightMissingFields(missing);
     return;
   }
+  clearFieldHighlights();
 
   const btn = document.getElementById('launch-preview-btn');
   btn.disabled = true;
@@ -6894,7 +6940,7 @@ async function doLaunchPreview() {
     setLaunchStatus('error', `Preview failed: ${e.message}`);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<span class="material-symbols-outlined text-base">auto_awesome</span> Preview Listing';
+    btn.innerHTML = '<span class="material-symbols-outlined text-base">auto_awesome</span> Generate';
   }
 }
 

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbot — Prism HUD</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --lime:#a4e844; --lime-glow:rgba(164,232,68,.35);
+  --cyan:#22d3ee; --blue:#7ea6e8; --peach:#ffaa6b; --orange:#ff8c00;
+  --red:#ff5c5c; --amber:#eab308; --green:#10b981;
+  --ink:#f4f7fb; --ink-2:#aab6c8; --ink-3:#5d6b80;
+  --glass:rgba(13,20,38,.55); --glass-line:rgba(255,255,255,.09);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  min-height:100vh;color:var(--ink);font:400 13.5px/1.55 Inter,sans-serif;-webkit-font-smoothing:antialiased;
+  background:#020409;
+  background-image:
+    radial-gradient(900px 500px at 15% -10%, rgba(34,211,238,.10), transparent 60%),
+    radial-gradient(1000px 600px at 90% 0%, rgba(164,232,68,.07), transparent 55%),
+    radial-gradient(700px 700px at 50% 110%, rgba(126,166,232,.08), transparent 60%);
+  background-attachment:fixed;
+}
+.mono{font-family:'JetBrains Mono',monospace}
+.wrap{max-width:1320px;margin:0 auto;padding:22px 26px 70px}
+/* header */
+header{display:flex;align-items:center;gap:18px}
+.logo{display:flex;align-items:center;gap:11px}
+.logo .core{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,rgba(164,232,68,.25),rgba(34,211,238,.12));border:1px solid var(--lime-glow);display:grid;place-items:center;color:var(--lime);font:700 15px 'Space Grotesk';box-shadow:0 0 24px rgba(164,232,68,.25)}
+.logo h1{font:700 17px 'Space Grotesk';letter-spacing:.02em}
+.logo .sub{font:500 9px 'JetBrains Mono';letter-spacing:.22em;color:var(--ink-3)}
+nav{display:flex;gap:2px;margin-left:26px;padding:4px;border-radius:12px;background:var(--glass);border:1px solid var(--glass-line);backdrop-filter:blur(14px)}
+nav a{padding:7px 15px;border-radius:9px;color:var(--ink-3);font:500 12.5px Inter;text-decoration:none}
+nav a:hover{color:var(--ink-2)}
+nav a.on{color:#04120b;background:var(--lime);font-weight:600;box-shadow:0 0 18px rgba(164,232,68,.35)}
+header .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.telemetry{display:flex;align-items:center;gap:8px;font:500 10px 'JetBrains Mono';letter-spacing:.14em;color:var(--cyan);padding:7px 13px;border-radius:999px;border:1px solid rgba(34,211,238,.25);background:rgba(34,211,238,.06)}
+.telemetry i{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:pl 2s infinite}
+@keyframes pl{50%{opacity:.4}}
+/* hero band */
+.hero{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:26px}
+.h-card{position:relative;border-radius:16px;padding:18px 20px;background:var(--glass);border:1px solid var(--glass-line);backdrop-filter:blur(16px);overflow:hidden}
+.h-card:before{content:"";position:absolute;inset:0 0 auto 0;height:1px;background:linear-gradient(90deg,transparent,var(--edge,rgba(255,255,255,.25)),transparent)}
+.h-card .l{font:500 9.5px 'JetBrains Mono';letter-spacing:.18em;color:var(--ink-3);text-transform:uppercase}
+.h-card .v{font:700 34px/1.1 'Space Grotesk';letter-spacing:-.5px;margin-top:9px}
+.h-card .v small{font:500 13px Inter;color:var(--ink-3)}
+.h-card .d{font:500 11px 'JetBrains Mono';margin-top:7px;color:var(--ink-3)}
+.h-card.lime{--edge:var(--lime)} .h-card.lime .v{color:var(--lime);text-shadow:0 0 26px rgba(164,232,68,.35)}
+.h-card.cyan{--edge:var(--cyan)} .h-card.cyan .v{color:var(--cyan);text-shadow:0 0 26px rgba(34,211,238,.3)}
+.h-card.amber{--edge:var(--amber)} .h-card.amber .v{color:var(--amber)}
+.h-card.red{--edge:var(--red)} .h-card.red .v{color:var(--red)}
+.h-card .d b{color:var(--ink-2)}
+/* panels */
+.cols{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-top:16px}
+.panel{border-radius:18px;background:var(--glass);border:1px solid var(--glass-line);backdrop-filter:blur(16px)}
+.panel .hd{display:flex;align-items:baseline;gap:10px;padding:15px 20px 12px}
+.panel .hd h2{font:600 13px 'Space Grotesk';letter-spacing:.14em;text-transform:uppercase}
+.panel .hd h2:before{content:"▮ ";color:var(--lime)}
+.panel .hd .n{font:500 10px 'JetBrains Mono';color:var(--ink-3)}
+.panel .hd a{margin-left:auto;font:500 11px 'JetBrains Mono';color:var(--ink-3);text-decoration:none;letter-spacing:.06em}
+.panel .hd a:hover{color:var(--lime)}
+/* orders */
+.olist{padding:0 10px 12px}
+.o{display:grid;grid-template-columns:150px 1fr 150px 110px;gap:14px;align-items:center;padding:11px 12px;border-radius:12px;border:1px solid transparent}
+.o:hover{background:rgba(255,255,255,.03);border-color:var(--glass-line)}
+.o .id{font:500 12px 'JetBrains Mono'}
+.o .by{font:400 11px Inter;color:var(--ink-3)}
+.sku{font:500 11px 'JetBrains Mono';padding:3px 9px;border-radius:7px;border:1px solid}
+.sku.ds{color:var(--blue);border-color:rgba(126,166,232,.4);background:rgba(126,166,232,.08)}
+.sku.wm{color:var(--peach);border-color:rgba(255,170,107,.4);background:rgba(255,170,107,.08)}
+.sku.fwm{color:var(--orange);border-color:rgba(255,140,0,.4);background:rgba(255,140,0,.08)}
+.st{display:inline-flex;align-items:center;gap:7px;font:500 11px 'JetBrains Mono';letter-spacing:.04em}
+.st i{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 9px currentColor}
+.st.print{color:var(--cyan)} .st.queue{color:var(--amber)} .st.done{color:var(--green)}
+.st.ship{color:var(--lime)} .st.err{color:var(--red)}
+.o .due{font:500 11px 'JetBrains Mono';color:var(--ink-3);text-align:right}
+.o .due.hot{color:var(--red);text-shadow:0 0 12px rgba(255,92,92,.4)}
+/* fleet ring cards */
+.fleet{padding:6px 14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.bay{border-radius:14px;border:1px solid var(--glass-line);background:rgba(4,8,18,.5);padding:13px;display:flex;gap:12px;align-items:center}
+.ring{position:relative;width:46px;height:46px;flex-shrink:0}
+.ring svg{transform:rotate(-90deg)}
+.ring .pc{position:absolute;inset:0;display:grid;place-items:center;font:700 10px 'JetBrains Mono'}
+.bay .nm{font:600 12px 'Space Grotesk'}
+.bay .jb{font:400 10px 'JetBrains Mono';color:var(--ink-3);margin-top:3px;max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bay.print .pc{color:var(--cyan)} .bay.err .pc{color:var(--red)} .bay.idle .pc{color:var(--ink-3)}
+/* feed */
+.feed{padding:4px 20px 18px}
+.fe{display:flex;gap:12px;padding:8px 0;border-bottom:1px dashed rgba(255,255,255,.06)}
+.fe:last-child{border-bottom:none}
+.fe .t{font:500 10px 'JetBrains Mono';color:var(--ink-3);min-width:40px;padding-top:2px}
+.fe .m{font-size:12px;color:var(--ink-2)}
+.fe .m b{color:var(--ink);font-weight:600}
+.fe .m .mono{font-size:11px;color:var(--cyan)}
+.fe.err .m b{color:var(--red)}
+/* dispatch cta */
+.dock{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);display:flex;gap:10px;padding:10px;border-radius:16px;background:rgba(6,10,22,.75);border:1px solid var(--glass-line);backdrop-filter:blur(18px);box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.dock button{border:none;border-radius:10px;padding:10px 18px;font:600 12.5px 'Space Grotesk';cursor:pointer;letter-spacing:.03em}
+.dock .ghost{background:rgba(255,255,255,.06);color:var(--ink-2);border:1px solid var(--glass-line)}
+.dock .pri{background:var(--lime);color:#04120b;box-shadow:0 0 26px rgba(164,232,68,.45)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><div class="core">◈</div><div><h1>ORBOT</h1><div class="sub">PRINT OPS · MISSION CONTROL</div></div></div>
+    <nav>
+      <a class="on" href="#">Overview</a><a href="#">Orders</a><a href="#">Products</a><a href="#">Printers</a><a href="#">Logs</a>
+    </nav>
+    <div class="right">
+      <div class="telemetry"><i></i>LINK ACTIVE · SCOUT 2M AGO</div>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="h-card lime"><div class="l">Open Orders</div><div class="v">47</div><div class="d">▲ <b>+12</b> since 00:00</div></div>
+    <div class="h-card cyan"><div class="l">Bays Printing</div><div class="v">9<small> /12</small></div><div class="d"><b>2</b> idle · <b>1</b> fault</div></div>
+    <div class="h-card amber"><div class="l">Queue Depth</div><div class="v">23</div><div class="d">clears in <b>14H 20M</b></div></div>
+    <div class="h-card red"><div class="l">Ship-By Today</div><div class="v">6</div><div class="d"><b>2</b> at risk of SLA</div></div>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <div class="hd"><h2>Order Stream</h2><span class="n">47 OPEN</span><a href="#">VIEW ALL →</a></div>
+      <div class="olist">
+        <div class="o"><div><div class="id">2506SPX7K41</div><div class="by">farhan_kl</div></div><div><span class="sku ds">DS-75357 ×2</span></div><span class="st print"><i></i>PRINTING·P1</span><div class="due hot">TODAY 18:00</div></div>
+        <div class="o"><div><div class="id">2506SPX7J92</div><div class="by">mei.lego.my</div></div><div><span class="sku wm">WM-76924</span></div><span class="st done"><i></i>PRINTED</span><div class="due hot">TODAY 18:00</div></div>
+        <div class="o"><div><div class="id">2506SPX7F03</div><div class="by">tzeyang_j</div></div><div><span class="sku wm">WM-8089 ×2</span></div><span class="st err"><i></i>MATCH FAIL</span><div class="due">JUL 07</div></div>
+        <div class="o"><div><div class="id">2506SPX7H15</div><div class="by">brickfan88</div></div><div><span class="sku fwm">FWM-10307 ×3</span></div><span class="st queue"><i></i>QUEUE #4</span><div class="due">TOMORROW</div></div>
+        <div class="o"><div><div class="id">2506SPX7G88</div><div class="by">aina.builds</div></div><div><span class="sku ds">DS-31160</span></div><span class="st ship"><i></i>WAYBILL RDY</span><div class="due">TOMORROW</div></div>
+        <div class="o"><div><div class="id">2506SPX7E77</div><div class="by">legomamamy</div></div><div><span class="sku ds">DS-9492</span></div><span class="st queue"><i></i>QUEUE #9</span><div class="due">JUL 07</div></div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="panel">
+        <div class="hd"><h2>Fleet</h2><span class="n">9/12 UP</span><a href="#">MANAGE →</a></div>
+        <div class="fleet">
+          <div class="bay print">
+            <div class="ring"><svg width="46" height="46"><circle cx="23" cy="23" r="19" stroke="rgba(255,255,255,.08)" stroke-width="4" fill="none"/><circle cx="23" cy="23" r="19" stroke="#22d3ee" stroke-width="4" fill="none" stroke-dasharray="119" stroke-dashoffset="33" stroke-linecap="round"/></svg><span class="pc">72%</span></div>
+            <div><div class="nm">Ender KE #1</div><div class="jb">DS-75357_x2.gcode</div></div>
+          </div>
+          <div class="bay print">
+            <div class="ring"><svg width="46" height="46"><circle cx="23" cy="23" r="19" stroke="rgba(255,255,255,.08)" stroke-width="4" fill="none"/><circle cx="23" cy="23" r="19" stroke="#22d3ee" stroke-width="4" fill="none" stroke-dasharray="119" stroke-dashoffset="82" stroke-linecap="round"/></svg><span class="pc">31%</span></div>
+            <div><div class="nm">Ender KE #2</div><div class="jb">WM-76924.gcode</div></div>
+          </div>
+          <div class="bay err">
+            <div class="ring"><svg width="46" height="46"><circle cx="23" cy="23" r="19" stroke="rgba(255,255,255,.08)" stroke-width="4" fill="none"/><circle cx="23" cy="23" r="19" stroke="#ff5c5c" stroke-width="4" fill="none" stroke-dasharray="119" stroke-dashoffset="0" stroke-linecap="round"/></svg><span class="pc">ERR</span></div>
+            <div><div class="nm">K1 Max #1</div><div class="jb">thermal halt · reset req.</div></div>
+          </div>
+          <div class="bay idle">
+            <div class="ring"><svg width="46" height="46"><circle cx="23" cy="23" r="19" stroke="rgba(255,255,255,.08)" stroke-width="4" fill="none"/></svg><span class="pc">—</span></div>
+            <div><div class="nm">A1 Mini #1</div><div class="jb">awaiting dispatch</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="hd"><h2>Agent Log</h2></div>
+        <div class="feed">
+          <div class="fe"><div class="t">14:32</div><div class="m"><b>Foreman</b> dispatched <span class="mono">DS-75357_x2</span> → P1</div></div>
+          <div class="fe err"><div class="t">14:18</div><div class="m"><b>Match failed</b> — no SKU for “wall mount v2 gray”</div></div>
+          <div class="fe"><div class="t">13:55</div><div class="m"><b>Scout</b> pulled <span class="mono">12</span> new Shopee orders</div></div>
+          <div class="fe"><div class="t">13:20</div><div class="m"><b>Waybill</b> generated · <span class="mono">2506SPX7G88</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dock">
+  <button class="ghost">Sync Shopee</button>
+  <button class="ghost">Upload Waybills</button>
+  <button class="pri">▶ DISPATCH QUEUE</button>
+</div>
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Printers Panel — Draft 3: Tower Gauges</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<style>
+:root{
+  --primary:#8b7cf6; --blue:#5fb4ff; --success:#3ddc97; --warning:#f5b942; --error:#f2657a;
+  --glass-bg:rgba(255,255,255,0.045); --glass-border:rgba(255,255,255,0.08);
+  --t1:#f2f3f7; --t2:#a8abb8; --t3:#63667a;
+  --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:radial-gradient(1100px 700px at 82% -8%,rgba(139,124,246,.10),transparent 60%),
+             radial-gradient(900px 600px at -5% 100%,rgba(95,180,255,.07),transparent 60%),
+             linear-gradient(160deg,#101119,#0a0a10);
+  min-height:100vh;font-family:'Inter',sans-serif;color:var(--t1);padding:40px;display:flex;justify-content:center;
+}
+.material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 20;font-size:16px;vertical-align:middle}
+.panel{width:640px;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:16px;padding:18px;backdrop-filter:blur(12px)}
+.hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.hd-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
+.hd-title .material-symbols-outlined{color:var(--primary);font-size:18px}
+.hbtn{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:var(--t2);border-radius:8px;padding:4px 8px;font-size:10px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:inherit}
+.hbtn:hover{background:rgba(255,255,255,.1);color:var(--t1)}
+.hbtn.danger{background:rgba(242,101,122,.12);border-color:rgba(242,101,122,.4);color:var(--error)}
+
+/* Tower columns */
+.towers{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.tw{
+  display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px 10px;
+  background:rgba(255,255,255,.03);border:1px solid color-mix(in srgb,var(--sc) 22%,rgba(255,255,255,.05));
+  border-radius:12px;position:relative;overflow:hidden;
+}
+.tw-name{font-size:10.5px;font-weight:700;text-align:center;line-height:1.2}
+.badge{display:inline-block;font-size:7.5px;font-weight:800;font-family:var(--mono);letter-spacing:.06em;padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.08);color:var(--t2);margin-top:3px}
+.badge.mini{background:rgba(95,180,255,.15);color:var(--blue)}
+
+/* Vertical gauge tube */
+.tube{
+  position:relative;width:36px;height:120px;border-radius:20px;
+  background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.09);overflow:hidden;
+}
+.tube .fill{
+  position:absolute;left:0;right:0;bottom:0;height:var(--pct);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--sc) 85%,white),var(--sc));
+  box-shadow:0 0 12px color-mix(in srgb,var(--sc) 45%,transparent);
+  transition:height .6s ease;
+}
+.tube .fill::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:rgba(255,255,255,.55)}
+.tw.live .fill::after{
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(180deg,transparent 0 6px,rgba(255,255,255,.12) 6px 8px);
+  animation:flow 2.2s linear infinite;
+}
+@keyframes flow{to{transform:translateY(16px)}}
+/* tick marks */
+.tube .ticks{position:absolute;inset:0;background:repeating-linear-gradient(180deg,transparent 0 29px,rgba(255,255,255,.08) 29px 30px)}
+.tube .ico{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--sc);opacity:.9}
+.tube .ico .material-symbols-outlined{font-size:20px}
+
+.tw-pct{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--sc);line-height:1}
+.tw-eta{font-family:var(--mono);font-size:8.5px;color:var(--t2);text-align:center}
+.tw-state{font-family:var(--mono);font-size:8px;text-transform:uppercase;letter-spacing:.12em;color:var(--sc);font-weight:700;
+  background:rgba(0,0,0,.3);padding:2px 7px;border-radius:99px;border:1px solid color-mix(in srgb,var(--sc) 30%,transparent)}
+.tw.offline{opacity:.7;border-style:dashed}
+
+/* Job ticker footer */
+.ticker{margin-top:14px;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:9px 12px;font-family:var(--mono);font-size:10px}
+.ticker-row{display:flex;align-items:center;gap:8px;padding:3px 0;color:var(--t2)}
+.ticker-row .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.ticker-row b{color:var(--t1);font-weight:600;flex-shrink:0}
+.ticker-row .job{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.ticker-row .eta{color:var(--t3);flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="hd">
+    <div class="hd-title"><span class="material-symbols-outlined">print</span> Printers</div>
+    <div>
+      <button class="hbtn"><span class="material-symbols-outlined">sync</span>Sync</button>
+      <button class="hbtn"><span class="material-symbols-outlined">done_all</span>Ready All</button>
+      <button class="hbtn danger"><span class="material-symbols-outlined">emergency</span>E-Stop</button>
+    </div>
+  </div>
+
+  <div class="towers">
+    <div class="tw live" style="--sc:#8b7cf6">
+      <div class="tw-name">Alpha<br><span class="badge">A1</span></div>
+      <div class="tube"><div class="ticks"></div><div class="fill" style="--pct:73%"></div></div>
+      <div class="tw-pct">73%</div>
+      <div class="tw-eta">1h 12m left</div>
+      <div class="tw-state">printing</div>
+    </div>
+
+    <div class="tw live" style="--sc:#8b7cf6">
+      <div class="tw-name">Bravo<br><span class="badge">A1</span></div>
+      <div class="tube"><div class="ticks"></div><div class="fill" style="--pct:31%"></div></div>
+      <div class="tw-pct">31%</div>
+      <div class="tw-eta">3h 40m left</div>
+      <div class="tw-state">printing</div>
+    </div>
+
+    <div class="tw" style="--sc:#f5b942">
+      <div class="tw-name">Charlie<br><span class="badge mini">MINI</span></div>
+      <div class="tube"><div class="ticks"></div><div class="fill" style="--pct:58%"></div></div>
+      <div class="tw-pct">58%</div>
+      <div class="tw-eta">held 14m</div>
+      <div class="tw-state">paused</div>
+    </div>
+
+    <div class="tw" style="--sc:#3ddc97">
+      <div class="tw-name">Delta<br><span class="badge">A1</span></div>
+      <div class="tube"><div class="ticks"></div><div class="ico"><span class="material-symbols-outlined">check_circle</span></div></div>
+      <div class="tw-pct" style="opacity:.35">—</div>
+      <div class="tw-eta">ready for jobs</div>
+      <div class="tw-state">idle</div>
+    </div>
+
+    <div class="tw offline" style="--sc:#f2657a">
+      <div class="tw-name">Echo<br><span class="badge mini">MINI</span></div>
+      <div class="tube"><div class="ticks"></div><div class="ico"><span class="material-symbols-outlined">wifi_off</span></div></div>
+      <div class="tw-pct" style="opacity:.35">—</div>
+      <div class="tw-eta">last seen 2h ago</div>
+      <div class="tw-state">offline</div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="ticker-row"><span class="dot" style="background:#8b7cf6"></span><b>Alpha</b><span class="job">SW-Blaster-Rack-x4_PLA_0.2mm.gcode</span><span class="eta">220°/60° · 2/4 plates</span></div>
+    <div class="ticker-row"><span class="dot" style="background:#8b7cf6"></span><b>Bravo</b><span class="job">HP-Wand-Stand-x8_PLA.gcode</span><span class="eta">218°/60° · 1/4 plates</span></div>
+    <div class="ticker-row"><span class="dot" style="background:#f5b942"></span><b>Charlie</b><span class="job">Minifig-Display-Tile_PLA.gcode</span><span class="eta">165°/58° · paused</span></div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbot — Void Console</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#010102; --s1:#0f1011; --s2:#141516; --s3:#18191a;
+  --line:#23252a; --line-2:#34343a;
+  --ink:#f7f8f8; --ink-2:#d0d6e0; --ink-3:#8a8f98; --ink-4:#62666d;
+  --lime:#a4e844; --lime-dim:rgba(164,232,68,.12);
+  --cyan:#22d3ee; --red:#ef4444; --amber:#eab308; --green:#27a644;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--canvas);color:var(--ink);font:400 13px/1.5 Inter,sans-serif;-webkit-font-smoothing:antialiased}
+.mono{font-family:'JetBrains Mono',monospace}
+.app{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+/* sidebar */
+.side{border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:2px}
+.brand{display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:14px}
+.brand .dot{width:18px;height:18px;border-radius:5px;background:var(--lime);display:grid;place-items:center;color:#000;font:700 10px Inter}
+.brand b{font-size:13px;font-weight:600;letter-spacing:-.2px}
+.brand span{font-size:10px;color:var(--ink-4)}
+.nav{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:6px;color:var(--ink-3);font-weight:500;cursor:pointer}
+.nav:hover{background:var(--s2);color:var(--ink-2)}
+.nav.on{background:var(--s2);color:var(--ink)}
+.nav svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6}
+.nav .k{margin-left:auto;font:500 10px 'JetBrains Mono';color:var(--ink-4)}
+.side .sect{font:600 10px Inter;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-4);padding:14px 8px 4px}
+.shop{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;color:var(--ink-3);font-size:12px}
+.shop i{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.side .foot{margin-top:auto;border-top:1px solid var(--line);padding-top:10px}
+/* main */
+.main{padding:0 28px 40px}
+.top{display:flex;align-items:center;justify-content:space-between;height:52px;border-bottom:1px solid var(--line);margin:0 -28px;padding:0 28px;position:sticky;top:0;background:var(--canvas);z-index:5}
+.crumb{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-3)}
+.crumb b{color:var(--ink);font-weight:600}
+.top .acts{display:flex;gap:8px;align-items:center}
+.btn{border:1px solid var(--line-2);background:var(--s1);color:var(--ink-2);border-radius:6px;padding:5px 11px;font:500 12px Inter;cursor:pointer}
+.btn:hover{background:var(--s2);color:var(--ink)}
+.btn.pri{background:var(--lime);border-color:var(--lime);color:#0a0f00;font-weight:600}
+.btn.pri:hover{filter:brightness(1.08)}
+.pulse{display:flex;align-items:center;gap:6px;font:500 11px 'JetBrains Mono';color:var(--ink-3)}
+.pulse i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(39,166,68,.15)}
+/* stat strip */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--line);border-radius:8px;margin-top:20px;background:var(--s1);overflow:hidden}
+.stat{padding:14px 16px;border-right:1px solid var(--line)}
+.stat:last-child{border-right:none}
+.stat .l{font:600 10px Inter;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-4)}
+.stat .v{font:600 22px/1.2 Inter;letter-spacing:-.5px;margin-top:4px}
+.stat .d{font:500 10px 'JetBrains Mono';margin-top:2px;color:var(--ink-4)}
+.stat .d.up{color:var(--green)} .stat .d.warn{color:var(--amber)}
+.stat .v .u{font-size:12px;color:var(--ink-4);font-weight:500}
+/* panels */
+.row{display:grid;grid-template-columns:1fr 340px;gap:16px;margin-top:16px}
+.panel{border:1px solid var(--line);border-radius:8px;background:var(--s1)}
+.panel .hd{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line)}
+.panel .hd h2{font:600 12px Inter;letter-spacing:-.1px}
+.panel .hd .n{font:500 10px 'JetBrains Mono';color:var(--ink-4);margin-left:8px}
+.panel .hd a{font:500 11px Inter;color:var(--ink-3);text-decoration:none}
+.panel .hd a:hover{color:var(--lime)}
+/* orders table */
+table{width:100%;border-collapse:collapse}
+th{font:600 10px Inter;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-4);text-align:left;padding:8px 14px;border-bottom:1px solid var(--line)}
+td{padding:9px 14px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--ink-2);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--s2)}
+.oid{font:500 11.5px 'JetBrains Mono';color:var(--ink)}
+.sku{font:500 11px 'JetBrains Mono';padding:2px 6px;border:1px solid var(--line-2);border-radius:4px;color:var(--ink-2)}
+.sku.ds{color:#7ea6e8;border-color:rgba(126,166,232,.35)}
+.sku.wm{color:#ffaa6b;border-color:rgba(255,170,107,.35)}
+.sku.fwm{color:#ff8c00;border-color:rgba(255,140,0,.35)}
+.st{display:inline-flex;align-items:center;gap:6px;font:500 11px Inter}
+.st i{width:6px;height:6px;border-radius:50%}
+.st.print i{background:var(--cyan)} .st.print{color:var(--cyan)}
+.st.queue i{background:var(--amber)} .st.queue{color:var(--amber)}
+.st.done i{background:var(--green)} .st.done{color:var(--green)}
+.st.ship i{background:var(--lime)} .st.ship{color:var(--lime)}
+.st.err i{background:var(--red)} .st.err{color:var(--red)}
+.due{font:500 11px 'JetBrains Mono';color:var(--ink-4)}
+.due.hot{color:var(--red)}
+/* fleet */
+.fleet{display:flex;flex-direction:column}
+.pr{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--line)}
+.pr:last-child{border-bottom:none}
+.pr .ic{width:28px;height:28px;border-radius:6px;border:1px solid var(--line-2);display:grid;place-items:center;font:600 9px 'JetBrains Mono';color:var(--ink-3)}
+.pr .nm{font:600 12px Inter}
+.pr .jb{font:500 10.5px 'JetBrains Mono';color:var(--ink-4);margin-top:1px}
+.pr .rt{margin-left:auto;text-align:right;min-width:120px}
+.bar{height:3px;border-radius:2px;background:var(--s3);margin-top:5px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:2px;background:var(--cyan)}
+.pr .pc{font:600 11px 'JetBrains Mono';color:var(--cyan)}
+.pr.idle .pc{color:var(--ink-4)} .pr.idle .ic{color:var(--ink-4)}
+.pr.err .pc{color:var(--red)} .pr.err .bar i{background:var(--red)}
+/* activity */
+.act{padding:6px 0}
+.ev{display:flex;gap:10px;padding:7px 14px}
+.ev .t{font:500 10px 'JetBrains Mono';color:var(--ink-4);min-width:38px;padding-top:2px}
+.ev .m{font-size:12px;color:var(--ink-2)}
+.ev .m b{font-weight:600;color:var(--ink)}
+.ev .m .mono{font-size:11px;color:var(--ink-3)}
+.ev.err .m b{color:var(--red)}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="dot">O</div><div><b>Orbot</b><br><span>print ops v2.0</span></div></div>
+    <div class="nav on"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Overview<span class="k">1</span></div>
+    <div class="nav"><svg viewBox="0 0 24 24"><path d="M6 2l1 4h10l1-4M4 6h16l-1.5 14h-13z"/></svg>Orders<span class="k">2</span></div>
+    <div class="nav"><svg viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8"/></svg>Products<span class="k">3</span></div>
+    <div class="nav"><svg viewBox="0 0 24 24"><path d="M12 2v6m0 0a4 4 0 104 4M8 22h8M12 18v4"/></svg>Printers<span class="k">4</span></div>
+    <div class="nav"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg>Logs<span class="k">5</span></div>
+    <div class="sect">Shops</div>
+    <div class="shop"><i></i>Blocked Off — Shopee</div>
+    <div class="shop"><i style="background:#eab308"></i>Blocked Off — TikTok</div>
+    <div class="foot"><div class="nav"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 00-2-1.2L14 3h-4l-.5 2.6a7 7 0 00-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 005 12"/></svg>Settings</div></div>
+  </aside>
+  <main class="main">
+    <div class="top">
+      <div class="crumb">Workspace / <b>Overview</b></div>
+      <div class="acts">
+        <div class="pulse"><i></i>ALL SYSTEMS NOMINAL</div>
+        <button class="btn">Sync Shopee</button>
+        <button class="btn pri">Dispatch Queue</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="l">Open Orders</div><div class="v">47</div><div class="d up">▲ 12 today</div></div>
+      <div class="stat"><div class="l">In Print</div><div class="v">9 <span class="u">/ 12 bays</span></div><div class="d">3 idle</div></div>
+      <div class="stat"><div class="l">Queue Depth</div><div class="v">23</div><div class="d warn">est. 14h 20m</div></div>
+      <div class="stat"><div class="l">Ship By Today</div><div class="v">6</div><div class="d warn">2 at risk</div></div>
+      <div class="stat"><div class="l">Filament</div><div class="v">4.2 <span class="u">kg</span></div><div class="d">black PLA low</div></div>
+    </div>
+
+    <div class="row">
+      <div class="panel">
+        <div class="hd"><h2>Active Orders <span class="n">47 open</span></h2><a href="#">View all →</a></div>
+        <table>
+          <tr><th>Order</th><th>Buyer</th><th>Items</th><th>Status</th><th>Ship by</th></tr>
+          <tr><td class="oid">2506SPX7K41</td><td>farhan_kl</td><td><span class="sku ds">DS-75357</span> ×2</td><td><span class="st print"><i></i>Printing</span></td><td class="due hot">Today 18:00</td></tr>
+          <tr><td class="oid">2506SPX7J92</td><td>mei.lego.my</td><td><span class="sku wm">WM-76924</span></td><td><span class="st done"><i></i>Printed</span></td><td class="due hot">Today 18:00</td></tr>
+          <tr><td class="oid">2506SPX7H15</td><td>brickfan88</td><td><span class="sku fwm">FWM-10307</span> ×3</td><td><span class="st queue"><i></i>Queued #4</span></td><td class="due">Tomorrow</td></tr>
+          <tr><td class="oid">2506SPX7G88</td><td>aina.builds</td><td><span class="sku ds">DS-31160</span></td><td><span class="st ship"><i></i>Waybill ready</span></td><td class="due">Tomorrow</td></tr>
+          <tr><td class="oid">2506SPX7F03</td><td>tzeyang_j</td><td><span class="sku wm">WM-8089</span> ×2</td><td><span class="st err"><i></i>Match failed</span></td><td class="due">Jul 07</td></tr>
+          <tr><td class="oid">2506SPX7E77</td><td>legomamamy</td><td><span class="sku ds">DS-9492</span></td><td><span class="st queue"><i></i>Queued #9</span></td><td class="due">Jul 07</td></tr>
+        </table>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="panel fleet">
+          <div class="hd"><h2>Printer Fleet <span class="n">9/12 active</span></h2><a href="#">Manage →</a></div>
+          <div class="pr"><div class="ic">P1</div><div><div class="nm">Ender-3 V3 KE #1</div><div class="jb">DS-75357_x2.gcode</div></div><div class="rt"><span class="pc">72%</span><div class="bar"><i style="width:72%"></i></div></div></div>
+          <div class="pr"><div class="ic">P2</div><div><div class="nm">Ender-3 V3 KE #2</div><div class="jb">WM-76924.gcode</div></div><div class="rt"><span class="pc">31%</span><div class="bar"><i style="width:31%"></i></div></div></div>
+          <div class="pr err"><div class="ic">P3</div><div><div class="nm">K1 Max #1</div><div class="jb">thermal runaway halt</div></div><div class="rt"><span class="pc">ERR</span><div class="bar"><i style="width:100%"></i></div></div></div>
+          <div class="pr"><div class="ic">P4</div><div><div class="nm">K1 Max #2</div><div class="jb">FWM-10307_x3.gcode</div></div><div class="rt"><span class="pc">88%</span><div class="bar"><i style="width:88%"></i></div></div></div>
+          <div class="pr idle"><div class="ic">P5</div><div><div class="nm">A1 Mini #1</div><div class="jb">awaiting dispatch</div></div><div class="rt"><span class="pc">IDLE</span><div class="bar"><i style="width:0%"></i></div></div></div>
+        </div>
+        <div class="panel act">
+          <div class="hd" style="border-bottom:1px solid var(--line)"><h2>Activity</h2></div>
+          <div class="ev"><div class="t">14:32</div><div class="m"><b>Foreman</b> dispatched <span class="mono">DS-75357_x2</span> → P1</div></div>
+          <div class="ev err"><div class="t">14:18</div><div class="m"><b>Match failed</b> for <span class="mono">2506SPX7F03</span> — no SKU for "wall mount v2 gray"</div></div>
+          <div class="ev"><div class="t">13:55</div><div class="m"><b>Scout</b> pulled 12 new orders from Shopee</div></div>
+          <div class="ev"><div class="t">13:20</div><div class="m"><b>Waybill</b> generated for <span class="mono">2506SPX7G88</span></div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

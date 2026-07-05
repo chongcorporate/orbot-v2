@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbot — Signal Deck</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#0c0f14; --card:#12161d; --card-2:#171c25; --inset:#0a0d11;
+  --line:#1f2530; --line-2:#2b3342;
+  --ink:#edf0f4; --ink-2:#b6bec9; --ink-3:#7d8794; --ink-4:#525c69;
+  --green:#3ecf8e; --green-dim:rgba(62,207,142,.12);
+  --blue:#7ea6e8; --peach:#ffaa6b; --orange:#ff8c00;
+  --cyan:#38bdf8; --red:#f66; --amber:#fbbf24;
+  --r:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--canvas);color:var(--ink);font:400 13.5px/1.55 Inter,sans-serif;-webkit-font-smoothing:antialiased}
+.mono{font-family:'IBM Plex Mono',monospace}
+/* topbar */
+.bar{display:flex;align-items:center;gap:20px;height:58px;padding:0 24px;border-bottom:1px solid var(--line);background:var(--card)}
+.logo{display:flex;align-items:center;gap:10px;font:600 15px Outfit}
+.logo .m{width:26px;height:26px;border-radius:8px;background:var(--green-dim);border:1px solid rgba(62,207,142,.4);display:grid;place-items:center;color:var(--green);font:700 12px Outfit}
+.tabs{display:flex;gap:4px;margin-left:12px}
+.tab{padding:7px 13px;border-radius:8px;color:var(--ink-3);font:500 13px Inter;cursor:pointer}
+.tab:hover{color:var(--ink-2);background:var(--card-2)}
+.tab.on{color:var(--ink);background:var(--card-2);box-shadow:inset 0 0 0 1px var(--line-2)}
+.bar .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.scope{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;border:1px solid var(--line-2);font:500 12px Inter;color:var(--ink-2);cursor:pointer}
+.scope i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.cta{background:var(--green);color:#04120b;border:none;border-radius:8px;padding:8px 15px;font:600 13px Inter;cursor:pointer}
+.cta:hover{filter:brightness(1.07)}
+.wrap{max-width:1280px;margin:0 auto;padding:26px 24px 60px}
+h1{font:600 20px Outfit;letter-spacing:-.3px}
+.sub{color:var(--ink-3);font-size:13px;margin-top:3px}
+.sub b{color:var(--green);font-weight:600}
+/* KPI cards */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:20px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;position:relative;overflow:hidden}
+.kpi .l{display:flex;align-items:center;gap:7px;font:500 12px Inter;color:var(--ink-3)}
+.kpi .l svg{width:14px;height:14px;stroke:var(--ink-4);fill:none;stroke-width:1.7}
+.kpi .v{font:600 30px/1.15 Outfit;letter-spacing:-.8px;margin-top:8px}
+.kpi .v small{font:500 13px Inter;color:var(--ink-4);letter-spacing:0}
+.kpi .foot{margin-top:8px;font:500 11.5px 'IBM Plex Mono';color:var(--ink-4)}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px;font:500 11px Inter}
+.chip.g{background:var(--green-dim);color:var(--green)}
+.chip.a{background:rgba(251,191,36,.12);color:var(--amber)}
+.chip.r{background:rgba(255,102,102,.12);color:var(--red)}
+.spark{position:absolute;right:14px;bottom:14px;opacity:.9}
+/* main grid */
+.grid{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-top:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+.card .hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.card .hd h2{font:600 14px Outfit}
+.card .hd .cnt{font:500 11px 'IBM Plex Mono';color:var(--ink-4);background:var(--inset);border:1px solid var(--line);padding:1px 8px;border-radius:999px}
+.card .hd .more{margin-left:auto;color:var(--ink-3);font:500 12px Inter;text-decoration:none}
+.card .hd .more:hover{color:var(--green)}
+/* order rows as cards */
+.orders{padding:10px}
+.o{display:grid;grid-template-columns:170px 1fr auto auto;gap:14px;align-items:center;padding:11px 12px;border-radius:9px}
+.o:hover{background:var(--card-2)}
+.o + .o{margin-top:2px}
+.o .id{font:500 12px 'IBM Plex Mono'}
+.o .buyer{font:400 11.5px Inter;color:var(--ink-4);margin-top:1px}
+.o .items{display:flex;gap:6px;flex-wrap:wrap}
+.pill{font:500 11px 'IBM Plex Mono';padding:3px 8px;border-radius:6px;background:var(--inset);border:1px solid var(--line)}
+.pill.ds{color:var(--blue)} .pill.wm{color:var(--peach)} .pill.fwm{color:var(--orange)}
+.o .due{font:500 11px 'IBM Plex Mono';color:var(--ink-4);text-align:right}
+.o .due.hot{color:var(--red)}
+.stchip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 11px;font:500 11.5px Inter;border:1px solid}
+.stchip i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.stchip.print{color:var(--cyan);border-color:rgba(56,189,248,.3);background:rgba(56,189,248,.08)}
+.stchip.queue{color:var(--amber);border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.08)}
+.stchip.done{color:var(--green);border-color:rgba(62,207,142,.3);background:var(--green-dim)}
+.stchip.err{color:var(--red);border-color:rgba(255,102,102,.3);background:rgba(255,102,102,.08)}
+/* fleet */
+.bays{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bay{border:1px solid var(--line);background:var(--inset);border-radius:10px;padding:12px 13px}
+.bay .top{display:flex;align-items:center;justify-content:space-between}
+.bay .nm{font:600 12.5px Inter}
+.bay .tag{font:500 10px 'IBM Plex Mono';padding:2px 7px;border-radius:5px}
+.bay.print .tag{color:var(--cyan);background:rgba(56,189,248,.1)}
+.bay.idle .tag{color:var(--ink-4);background:var(--card-2)}
+.bay.err .tag{color:var(--red);background:rgba(255,102,102,.1)}
+.bay .jb{font:400 11px 'IBM Plex Mono';color:var(--ink-4);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meter{height:5px;border-radius:3px;background:var(--card-2);margin-top:10px;overflow:hidden}
+.meter i{display:block;height:100%;border-radius:3px;background:var(--cyan)}
+.bay.err .meter i{background:var(--red)}
+.bay .ft{display:flex;justify-content:space-between;font:500 10.5px 'IBM Plex Mono';color:var(--ink-4);margin-top:6px}
+.bay.print .pc{color:var(--cyan)} .bay.err .pc{color:var(--red)}
+/* feed */
+.feed{padding:8px 4px}
+.fe{display:flex;gap:12px;padding:9px 16px;position:relative}
+.fe:before{content:"";position:absolute;left:22px;top:26px;bottom:-4px;width:1px;background:var(--line)}
+.fe:last-child:before{display:none}
+.fe .ic{width:13px;height:13px;border-radius:50%;border:2px solid var(--line-2);background:var(--card);z-index:1;margin-top:3px;flex-shrink:0}
+.fe.ok .ic{border-color:var(--green)} .fe.bad .ic{border-color:var(--red)}
+.fe .m{font-size:12.5px;color:var(--ink-2)}
+.fe .m b{color:var(--ink);font-weight:600}
+.fe .t{font:400 10.5px 'IBM Plex Mono';color:var(--ink-4);margin-top:2px}
+</style>
+</head>
+<body>
+<div class="bar">
+  <div class="logo"><div class="m">◆</div>Orbot</div>
+  <div class="tabs">
+    <div class="tab on">Overview</div><div class="tab">Orders</div><div class="tab">Products</div><div class="tab">Printers</div><div class="tab">Logs</div>
+  </div>
+  <div class="right">
+    <div class="scope"><i></i>Blocked Off · Shopee</div>
+    <button class="cta">＋ Dispatch queue</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <h1>Good afternoon, Joel</h1>
+  <div class="sub">All agents reporting · last Scout poll <b>2 min ago</b> · 47 open orders across 2 shops</div>
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="l"><svg viewBox="0 0 24 24"><path d="M6 2l1 4h10l1-4M4 6h16l-1.5 14h-13z"/></svg>Open orders</div>
+      <div class="v">47</div>
+      <div class="foot"><span class="chip g">▲ 12 today</span></div>
+      <svg class="spark" width="72" height="26" viewBox="0 0 72 26"><polyline points="0,20 12,17 24,18 36,12 48,14 60,7 72,4" fill="none" stroke="#3ecf8e" stroke-width="1.5"/></svg>
+    </div>
+    <div class="kpi">
+      <div class="l"><svg viewBox="0 0 24 24"><path d="M12 2v6m-4 14h8M12 18v4M6 8h12v6a6 6 0 01-12 0z"/></svg>Bays printing</div>
+      <div class="v">9 <small>/ 12</small></div>
+      <div class="foot"><span class="chip a">1 fault · 2 idle</span></div>
+    </div>
+    <div class="kpi">
+      <div class="l"><svg viewBox="0 0 24 24"><path d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Queue depth</div>
+      <div class="v">23 <small>jobs</small></div>
+      <div class="foot">est. clear <span style="color:var(--ink-2)">14h 20m</span></div>
+    </div>
+    <div class="kpi">
+      <div class="l"><svg viewBox="0 0 24 24"><path d="M5 8h14l1 13H4zM8 8a4 4 0 118 0"/></svg>Ship-by today</div>
+      <div class="v">6</div>
+      <div class="foot"><span class="chip r">2 at risk</span></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="hd"><h2>Orders needing attention</h2><span class="cnt">47 open</span><a class="more" href="#">All orders →</a></div>
+      <div class="orders">
+        <div class="o"><div><div class="id">2506SPX7K41</div><div class="buyer">farhan_kl</div></div><div class="items"><span class="pill ds">DS-75357 ×2</span></div><span class="stchip print"><i></i>Printing · P1</span><div class="due hot">today 18:00</div></div>
+        <div class="o"><div><div class="id">2506SPX7J92</div><div class="buyer">mei.lego.my</div></div><div class="items"><span class="pill wm">WM-76924</span></div><span class="stchip done"><i></i>Printed</span><div class="due hot">today 18:00</div></div>
+        <div class="o"><div><div class="id">2506SPX7F03</div><div class="buyer">tzeyang_j</div></div><div class="items"><span class="pill wm">WM-8089 ×2</span></div><span class="stchip err"><i></i>Match failed</span><div class="due">Jul 07</div></div>
+        <div class="o"><div><div class="id">2506SPX7H15</div><div class="buyer">brickfan88</div></div><div class="items"><span class="pill fwm">FWM-10307 ×3</span></div><span class="stchip queue"><i></i>Queued #4</span><div class="due">tomorrow</div></div>
+        <div class="o"><div><div class="id">2506SPX7G88</div><div class="buyer">aina.builds</div></div><div class="items"><span class="pill ds">DS-31160</span></div><span class="stchip done"><i></i>Waybill ready</span><div class="due">tomorrow</div></div>
+        <div class="o"><div><div class="id">2506SPX7E77</div><div class="buyer">legomamamy</div></div><div class="items"><span class="pill ds">DS-9492</span></div><span class="stchip queue"><i></i>Queued #9</span><div class="due">Jul 07</div></div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="hd"><h2>Fleet</h2><span class="cnt">9 / 12 up</span><a class="more" href="#">Manage →</a></div>
+        <div class="bays">
+          <div class="bay print"><div class="top"><span class="nm">Ender KE #1</span><span class="tag">PRINTING</span></div><div class="jb">DS-75357_x2.gcode</div><div class="meter"><i style="width:72%"></i></div><div class="ft"><span class="pc">72%</span><span>41m left</span></div></div>
+          <div class="bay print"><div class="top"><span class="nm">Ender KE #2</span><span class="tag">PRINTING</span></div><div class="jb">WM-76924.gcode</div><div class="meter"><i style="width:31%"></i></div><div class="ft"><span class="pc">31%</span><span>2h 05m</span></div></div>
+          <div class="bay err"><div class="top"><span class="nm">K1 Max #1</span><span class="tag">FAULT</span></div><div class="jb">thermal runaway halt</div><div class="meter"><i style="width:100%"></i></div><div class="ft"><span class="pc">HALTED</span><span>needs reset</span></div></div>
+          <div class="bay idle"><div class="top"><span class="nm">A1 Mini #1</span><span class="tag">IDLE</span></div><div class="jb">awaiting dispatch</div><div class="meter"><i style="width:0"></i></div><div class="ft"><span>—</span><span>ready</span></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd"><h2>Agent activity</h2></div>
+        <div class="feed">
+          <div class="fe ok"><div class="ic"></div><div><div class="m"><b>Foreman</b> dispatched DS-75357_x2 → Ender KE #1</div><div class="t">14:32</div></div></div>
+          <div class="fe bad"><div class="ic"></div><div><div class="m"><b>Match failed</b> — no SKU for “wall mount v2 gray”</div><div class="t">14:18 · order 2506SPX7F03</div></div></div>
+          <div class="fe"><div class="ic"></div><div><div class="m"><b>Scout</b> pulled 12 new orders from Shopee</div><div class="t">13:55</div></div></div>
+          <div class="fe ok"><div class="ic"></div><div><div class="m"><b>Waybill</b> generated for 2506SPX7G88</div><div class="t">13:20</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

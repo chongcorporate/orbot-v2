@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Orbot — Aurora Pro — Products (Catalog + Listings)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL@20..48,300..600,0..1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#0a0a10; --bg-1:#101119; --bg-2:#15161f;
+    --glass: rgba(255,255,255,0.045);
+    --glass-hi: rgba(255,255,255,0.075);
+    --border: rgba(255,255,255,0.08);
+    --border-soft: rgba(255,255,255,0.05);
+    --text-0:#f2f3f7; --text-1:#a8abb8; --text-2:#63667a;
+    --accent-a:#8b7cf6; --accent-b:#5fb4ff;
+    --success:#3ddc97; --warning:#f5b942; --error:#f2657a; --info:#5fb4ff;
+    --ds:#7ea6e8; --wm:#ffaa6b; --fwm:#ff8c00;
+    --shopee:#ee4d2d; --lazada:#1a56f0;
+    --radius-lg:16px; --radius-md:12px; --radius-sm:9px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{width:1680px; height:1050px; overflow:hidden; background:var(--bg-0);}
+  body{
+    font-family:'Inter',sans-serif; color:var(--text-0);
+    background:
+      radial-gradient(1100px 700px at 82% -8%, rgba(139,124,246,0.10), transparent 60%),
+      radial-gradient(900px 600px at -5% 100%, rgba(95,180,255,0.07), transparent 60%),
+      linear-gradient(160deg, var(--bg-1), var(--bg-0));
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'opsz' 20;font-size:20px; line-height:1;}
+
+  /* ---------- Header (same as Aurora Pro) ---------- */
+  header{position:absolute; top:0; left:0; width:1680px; height:64px; display:flex; align-items:center; justify-content:space-between; padding:0 28px; background:rgba(16,17,25,0.7); backdrop-filter:blur(20px); border-bottom:1px solid var(--border-soft); z-index:5;}
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand .mark{width:32px; height:32px; border-radius:9px; background:linear-gradient(135deg, var(--accent-a), var(--accent-b)); display:flex; align-items:center; justify-content:center; box-shadow:0 4px 14px rgba(139,124,246,0.35);}
+  .brand .mark .material-symbols-outlined{color:#0a0a10; font-size:19px;}
+  .brand h1{font-size:16.5px; font-weight:800; letter-spacing:-0.01em;}
+  .brand .ver{font-size:10px; font-weight:700; color:var(--text-1); background:var(--glass); border:1px solid var(--border); padding:2px 8px; border-radius:100px; margin-left:2px;}
+  .live-pill{display:flex; align-items:center; gap:7px; margin-left:18px; padding:6px 12px 6px 10px; background:var(--glass); border:1px solid var(--border); border-radius:100px;}
+  .dot{width:7px; height:7px; border-radius:50%; background:var(--success); box-shadow:0 0 8px rgba(61,220,151,0.7);}
+  .live-pill span{font-size:10.5px; font-weight:600; letter-spacing:0.05em; color:var(--text-1);}
+  .search-wrap{flex:1; max-width:420px; margin:0 32px;}
+  .search{display:flex; align-items:center; gap:9px; background:rgba(255,255,255,0.035); border:1px solid var(--border); border-radius:100px; padding:8px 16px;}
+  .search .material-symbols-outlined{font-size:17px; color:var(--text-2);}
+  .search span.ph{font-size:13px; color:var(--text-2);}
+  .header-right{display:flex; align-items:center; gap:10px;}
+  .chip{display:flex; align-items:center; gap:7px; padding:7px 12px; border-radius:100px; background:var(--glass); border:1px solid var(--border); font-size:11.5px; font-weight:600; color:var(--text-1);}
+  .chip .material-symbols-outlined{font-size:15px; color:var(--text-1);}
+  .chip.status .dot2{width:6px; height:6px; border-radius:50%; background:var(--success);}
+  .clockwrap{text-align:right; margin-left:2px;}
+  .clockwrap .t{font-size:12px; font-weight:700;}
+  .clockwrap .d{font-size:9.5px; color:var(--text-2); letter-spacing:0.06em; margin-top:1px;}
+  .icon-btn{width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:var(--glass); border:1px solid var(--border); color:var(--text-1);}
+
+  /* ---------- Sidebar ---------- */
+  nav{position:absolute; top:64px; left:0; width:236px; height:986px; background:rgba(12,13,19,0.55); border-right:1px solid var(--border-soft); padding:22px 14px; display:flex; flex-direction:column; gap:2px;}
+  nav .section-label{font-size:10.5px; font-weight:700; letter-spacing:0.12em; color:var(--text-2); text-transform:uppercase; padding:0 10px; margin-bottom:12px;}
+  .nav-item{display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:11px; color:var(--text-1); font-size:13.5px; font-weight:600;}
+  .nav-item .material-symbols-outlined{font-size:19px;}
+  .nav-item.active{background:linear-gradient(135deg, rgba(139,124,246,0.18), rgba(95,180,255,0.12)); color:var(--text-0); border:1px solid rgba(139,124,246,0.3); box-shadow:0 4px 16px rgba(139,124,246,0.12);}
+  .nav-item.active .material-symbols-outlined{color:var(--accent-b);}
+  .nav-footer{margin-top:auto; padding:14px; border-radius:12px; background:var(--glass); border:1px solid var(--border);}
+  .nav-footer .p1{font-size:11.5px; font-weight:700; color:var(--text-0);}
+  .nav-footer .p2{font-size:10px; color:var(--text-2); margin-top:3px;}
+
+  /* ---------- Main: Products page ---------- */
+  main{position:absolute; top:64px; left:236px; width:1444px; height:986px; padding:22px 26px; overflow:hidden; display:flex; flex-direction:column; gap:14px;}
+
+  .page-head{display:flex; align-items:center; justify-content:space-between;}
+  .page-head h2{font-size:22px; font-weight:800; letter-spacing:-0.01em;}
+  .page-head .sub{font-size:12px; color:var(--text-2); margin-top:3px;}
+  .page-actions{display:flex; gap:8px;}
+  .btn{display:flex; align-items:center; gap:7px; padding:9px 15px; border-radius:10px; font-size:12.5px; font-weight:700; border:1px solid var(--border); white-space:nowrap;}
+  .btn .material-symbols-outlined{font-size:16px;}
+  .btn-ghost{background:var(--glass); color:var(--text-1);}
+  .btn-primary{background:linear-gradient(135deg, var(--accent-a), var(--accent-b)); color:#0a0a10; border:none; box-shadow:0 4px 14px rgba(139,124,246,0.3);}
+  .btn-icon{width:36px; padding:9px; justify-content:center;}
+
+  .alert-banner{display:flex; align-items:center; gap:14px; padding:13px 18px; border-radius:var(--radius-md); background:rgba(245,185,66,0.08); border:1px solid rgba(245,185,66,0.28);}
+  .alert-banner .aicon{width:34px; height:34px; border-radius:9px; background:rgba(245,185,66,0.15); display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .alert-banner .aicon .material-symbols-outlined{color:var(--warning); font-size:19px;}
+  .alert-banner .atext{flex:1;}
+  .alert-banner .atext .t1{font-size:13px; font-weight:700; color:var(--text-0);}
+  .alert-banner .atext .t2{font-size:11px; color:var(--text-1); margin-top:1px;}
+  .alert-banner .abtn{padding:8px 14px; border-radius:9px; background:rgba(245,185,66,0.15); border:1px solid rgba(245,185,66,0.35); color:var(--warning); font-size:11.5px; font-weight:700; white-space:nowrap;}
+
+  .toolbar{display:flex; align-items:center; gap:10px;}
+  .tb-search{flex:1; max-width:260px; display:flex; align-items:center; gap:8px; background:var(--glass); border:1px solid var(--border); border-radius:10px; padding:9px 13px;}
+  .tb-search .material-symbols-outlined{font-size:16px; color:var(--text-2);}
+  .tb-search span.ph{font-size:12px; color:var(--text-2);}
+  .tb-select{display:flex; align-items:center; gap:7px; background:var(--glass); border:1px solid var(--border); border-radius:10px; padding:8px 12px; font-size:11.5px; color:var(--text-1); font-weight:600;}
+  .tb-select .material-symbols-outlined{font-size:14px; color:var(--text-2);}
+  .filter-tabs{display:flex; gap:5px; background:var(--glass); border:1px solid var(--border); border-radius:10px; padding:4px; margin-left:auto;}
+  .ftab{display:flex; align-items:center; gap:6px; padding:7px 12px; border-radius:8px; font-size:11px; font-weight:700; color:var(--text-1); white-space:nowrap;}
+  .ftab .cnt{font-size:9.5px; font-family:'JetBrains Mono',monospace; opacity:0.7;}
+  .ftab.active{background:rgba(255,255,255,0.09); color:var(--text-0);}
+  .ftab.f-issues.active{color:var(--warning); background:rgba(245,185,66,0.12);}
+
+  .body-split{flex:1; display:grid; grid-template-columns:1.5fr 1fr; gap:16px; min-height:0;}
+
+  /* Product list */
+  .list-panel{background:var(--glass); border:1px solid var(--border); border-radius:var(--radius-lg); display:flex; flex-direction:column; overflow:hidden;}
+  .list-head-row{display:grid; grid-template-columns:2.1fr 1fr 0.7fr 1.5fr 0.8fr 0.4fr; gap:10px; padding:10px 16px; border-bottom:1px solid var(--border-soft); font-size:9.5px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-2);}
+  .list-rows{flex:1; overflow:hidden; display:flex; flex-direction:column;}
+  .prod-row{display:grid; grid-template-columns:2.1fr 1fr 0.7fr 1.5fr 0.8fr 0.4fr; gap:10px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--border-soft); border-left:3px solid transparent;}
+  .prod-row.selected{background:rgba(139,124,246,0.08); border-left:3px solid var(--accent-a);}
+  .prod-cell .msku{font-size:9px; font-weight:700; font-family:'JetBrains Mono',monospace; color:var(--accent-a); background:rgba(139,124,246,0.12); padding:1.5px 6px; border-radius:5px; display:inline-block;}
+  .prod-cell .pname{font-size:12px; font-weight:700; margin-top:3px;}
+  .cat-cell{font-size:10.5px; color:var(--text-1);}
+  .cat-cell .b{font-weight:600; color:var(--text-0);}
+  .var-cell{font-size:10.5px; color:var(--text-1); font-family:'JetBrains Mono',monospace;}
+  .plat-cell{display:flex; align-items:center; gap:6px;}
+  .plat-dots{display:flex; gap:3px;}
+  .pdot{width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,0.1);}
+  .plat-cell .cov{font-size:10px; font-family:'JetBrains Mono',monospace; color:var(--text-2);}
+  .price-cell{font-size:11px; font-family:'JetBrains Mono',monospace; color:var(--text-1);}
+  .issue-cell{display:flex; justify-content:center;}
+  .issue-cell .material-symbols-outlined{font-size:16px; color:var(--warning);}
+
+  /* Detail panel */
+  .detail-panel{background:var(--glass); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 20px; display:flex; flex-direction:column; gap:10px; overflow:hidden;}
+  .dp-head{display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:10px; border-bottom:1px solid var(--border-soft);}
+  .dp-head .msku{font-size:10px; font-weight:700; font-family:'JetBrains Mono',monospace; color:var(--accent-a); background:rgba(139,124,246,0.12); padding:2px 7px; border-radius:6px;}
+  .dp-head .pname{font-size:16.5px; font-weight:800; margin-top:6px;}
+  .dp-head .meta{font-size:11px; color:var(--text-1); margin-top:4px;}
+  .dp-head-right{display:flex; align-items:center; gap:6px;}
+  .pill-active{font-size:9px; font-weight:700; padding:3px 9px; border-radius:100px; background:rgba(61,220,151,0.15); color:var(--success); text-transform:uppercase;}
+
+  .dp-section-title{font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-2); margin-bottom:6px; display:flex; align-items:center; gap:6px;}
+  .dp-section-title .material-symbols-outlined{font-size:14px; color:var(--accent-b);}
+
+  .variant-row{display:flex; align-items:center; gap:9px; padding:6px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--border-soft); border-radius:9px; margin-bottom:5px;}
+  .vtype{font-size:8.5px; font-weight:700; padding:2px 7px; border-radius:100px; text-transform:uppercase; flex-shrink:0;}
+  .vtype.ds{background:rgba(126,166,232,0.15); color:var(--ds);}
+  .vtype.wm{background:rgba(255,170,107,0.15); color:var(--wm);}
+  .vtype.fwm{background:rgba(255,140,0,0.15); color:var(--fwm);}
+  .variant-row .vsku{font-size:10.5px; font-weight:700; font-family:'JetBrains Mono',monospace; color:var(--text-0); flex-shrink:0;}
+  .variant-row .vname{font-size:10.5px; color:var(--text-1); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .variant-row .vfile{font-size:9px; font-family:'JetBrains Mono',monospace; color:var(--text-2); background:rgba(0,0,0,0.25); padding:2px 6px; border-radius:5px; flex-shrink:0;}
+  .stock-stepper{display:flex; align-items:center; background:rgba(0,0,0,0.25); border:1px solid var(--border-soft); border-radius:7px; flex-shrink:0;}
+  .stock-stepper .sb{width:18px; height:18px; display:flex; align-items:center; justify-content:center; color:var(--text-2); font-size:11px;}
+  .stock-stepper .sv{width:26px; text-align:center; font-size:10.5px; font-weight:700; font-family:'JetBrains Mono',monospace;}
+  .stock-stepper.low .sv{color:var(--warning);}
+
+  .listing-summary{display:flex; align-items:center; gap:10px; background:rgba(255,255,255,0.03); border:1px solid var(--border-soft); border-radius:10px; padding:11px 13px;}
+  .price-block{display:flex; gap:10px;}
+  .price-block .pb{display:flex; flex-direction:column; align-items:center;}
+  .price-block .pb .pl{font-size:8px; color:var(--text-2); text-transform:uppercase; letter-spacing:0.06em;}
+  .price-block .pb .pv{font-size:13px; font-weight:700; font-family:'JetBrains Mono',monospace;}
+  .price-div{width:1px; height:24px; background:var(--border);}
+
+  .platform-grid{display:grid; grid-template-columns:1fr 1fr; gap:7px;}
+  .pcard{display:flex; align-items:center; gap:7px; background:rgba(255,255,255,0.03); border:1px solid var(--border-soft); border-radius:8px; padding:7px 10px;}
+  .pcard.off{opacity:0.35;}
+  .pcard .pcolor{width:7px; height:7px; border-radius:50%; flex-shrink:0;}
+  .pcard .plabel{font-size:9.5px; font-weight:700; color:var(--text-1); flex-shrink:0;}
+  .pcard .pval{font-size:9.5px; font-family:'JetBrains Mono',monospace; color:var(--text-2); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+
+  table.map-table{width:100%; border-collapse:separate; border-spacing:0 4px;}
+  table.map-table th{font-size:8.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-2); text-align:left; padding:0 8px 4px;}
+  table.map-table td{font-size:10px; padding:6px 8px; background:rgba(255,255,255,0.025);}
+  table.map-table tr.unmapped td{background:rgba(242,101,122,0.08);}
+  table.map-table tr td:first-child{border-top-left-radius:6px; border-bottom-left-radius:6px;}
+  table.map-table tr td:last-child{border-top-right-radius:6px; border-bottom-right-radius:6px; text-align:center;}
+  table.map-table .sku-cell{font-family:'JetBrains Mono',monospace; color:var(--accent-a);}
+
+  .dp-footer{margin-top:auto; padding-top:12px; border-top:1px solid var(--border-soft); display:flex; gap:8px;}
+  .dp-footer .btn{flex:1; justify-content:center;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="mark"><span class="material-symbols-outlined">all_inclusive</span></div>
+    <h1>Orbot</h1>
+    <span class="ver mono">V2.0</span>
+    <div class="live-pill"><div class="dot"></div><span class="mono">TELEMETRY LIVE</span></div>
+  </div>
+  <div class="search-wrap"><div class="search"><span class="material-symbols-outlined">search</span><span class="ph">Search catalog, jobs, agents…</span></div></div>
+  <div class="header-right">
+    <div class="chip status"><div class="dot2"></div>Service Online</div>
+    <div class="chip"><span class="material-symbols-outlined">storefront</span>All Shops</div>
+    <div class="clockwrap"><div class="t mono">14:32:07</div><div class="d mono">JUL 02 2026</div></div>
+    <div class="icon-btn"><span class="material-symbols-outlined">settings</span></div>
+  </div>
+</header>
+
+<nav>
+  <div class="section-label">Command Deck</div>
+  <div class="nav-item"><span class="material-symbols-outlined">dashboard</span>Overview</div>
+  <div class="nav-item"><span class="material-symbols-outlined">print</span>Printers</div>
+  <div class="nav-item"><span class="material-symbols-outlined">receipt_long</span>Orders</div>
+  <div class="nav-item"><span class="material-symbols-outlined">local_shipping</span>Waybills</div>
+  <div class="nav-item"><span class="material-symbols-outlined">smart_toy</span>Agents</div>
+  <div class="nav-item active"><span class="material-symbols-outlined">inventory_2</span>Products</div>
+  <div class="nav-item"><span class="material-symbols-outlined">rocket_launch</span>Launch</div>
+  <div class="nav-item"><span class="material-symbols-outlined">description</span>Logs</div>
+  <div class="nav-footer"><div class="p1">7 printers online</div><div class="p2 mono">v2.4.1 · stable</div></div>
+</nav>
+
+<main>
+  <div class="page-head">
+    <div>
+      <h2>Products</h2>
+      <div class="sub">142 products · 216 variants · catalog + platform listings, unified</div>
+    </div>
+    <div class="page-actions">
+      <div class="btn btn-ghost"><span class="material-symbols-outlined">add_box</span>Add Product</div>
+      <div class="btn btn-primary"><span class="material-symbols-outlined">storefront</span>Add Listing</div>
+    </div>
+  </div>
+
+  <div class="alert-banner">
+    <div class="aicon"><span class="material-symbols-outlined">link_off</span></div>
+    <div class="atext">
+      <div class="t1">12 listing variations aren't linked to a catalog SKU</div>
+      <div class="t2">Orders for these variations can't be auto-matched by Scout and will land on hold.</div>
+    </div>
+    <div class="abtn">Review Unmapped →</div>
+  </div>
+
+  <div class="toolbar">
+    <div class="tb-search"><span class="material-symbols-outlined">search</span><span class="ph">Search SKU, name, brand…</span></div>
+    <div class="tb-select"><span class="material-symbols-outlined">sell</span>All Brands</div>
+    <div class="tb-select"><span class="material-symbols-outlined">category</span>All Categories</div>
+    <div class="filter-tabs">
+      <div class="ftab active">All <span class="cnt">142</span></div>
+      <div class="ftab f-issues active" style="background:rgba(245,185,66,0.12); color:var(--warning);">Needs Attention <span class="cnt">9</span></div>
+      <div class="ftab">Full Coverage <span class="cnt">98</span></div>
+      <div class="ftab">Low Stock <span class="cnt">14</span></div>
+    </div>
+  </div>
+
+  <div class="body-split">
+    <div class="list-panel">
+      <div class="list-head-row"><span>Product</span><span>Brand / Category</span><span>Variants</span><span>Platforms</span><span>Price</span><span></span></div>
+      <div class="list-rows">
+        <div class="prod-row selected">
+          <div class="prod-cell"><span class="msku">75192</span><div class="pname">Downtown Diner</div></div>
+          <div class="cat-cell"><span class="b">Custom Brix</span><br>Display Stand</div>
+          <div class="var-cell">3 vars</div>
+          <div class="plat-cell"><div class="plat-dots">
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div>
+              <div class="pdot"></div><div class="pdot"></div><div class="pdot" style="background:var(--lazada)"></div>
+            </div><span class="cov">3/5</span></div>
+          <div class="price-cell">RM 59.90</div>
+          <div class="issue-cell"><span class="material-symbols-outlined">warning</span></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">10331</span><div class="pname">Amusement Park Bumper Car</div></div>
+          <div class="cat-cell"><span class="b">Custom Brix</span><br>Display Stand</div>
+          <div class="var-cell">2 vars</div>
+          <div class="plat-cell"><div class="plat-dots">
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div>
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--lazada)"></div>
+            </div><span class="cov">5/5</span></div>
+          <div class="price-cell">RM 68.00</div>
+          <div class="issue-cell"></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">21034</span><div class="pname">Street Racer</div></div>
+          <div class="cat-cell"><span class="b">Brix Motors</span><br>Wall Mount</div>
+          <div class="var-cell">4 vars</div>
+          <div class="plat-cell"><div class="plat-dots">
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div>
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--lazada)"></div>
+            </div><span class="cov">5/5</span></div>
+          <div class="price-cell">RM 74.50</div>
+          <div class="issue-cell"></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">75367</span><div class="pname">Fire Station</div></div>
+          <div class="cat-cell"><span class="b">Custom Brix</span><br>Display Stand</div>
+          <div class="var-cell">1 var</div>
+          <div class="plat-cell"><div class="plat-dots">
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot"></div>
+              <div class="pdot"></div><div class="pdot"></div><div class="pdot"></div>
+            </div><span class="cov">1/5</span></div>
+          <div class="price-cell">RM 52.00</div>
+          <div class="issue-cell"><span class="material-symbols-outlined">warning</span></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">42182</span><div class="pname">Downtown Pet Shop</div></div>
+          <div class="cat-cell"><span class="b">Custom Brix</span><br>Display Stand</div>
+          <div class="var-cell">2 vars</div>
+          <div class="plat-cell"><div class="plat-dots">
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div>
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--lazada)"></div>
+            </div><span class="cov">5/5</span></div>
+          <div class="price-cell">RM 61.00</div>
+          <div class="issue-cell"><span class="material-symbols-outlined" style="color:var(--warning);">bolt</span></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">60380</span><div class="pname">Police Interceptor</div></div>
+          <div class="cat-cell"><span class="b">Brix Motors</span><br>Wall Mount</div>
+          <div class="var-cell">2 vars</div>
+          <div class="plat-cell"><div class="plat-dots">
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div>
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot"></div><div class="pdot" style="background:var(--lazada)"></div>
+            </div><span class="cov">4/5</span></div>
+          <div class="price-cell">RM 66.00</div>
+          <div class="issue-cell"></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">31058</span><div class="pname">Space Explorer</div></div>
+          <div class="cat-cell"><span class="b">Custom Brix</span><br>Floating Wall Mount</div>
+          <div class="var-cell">5 vars</div>
+          <div class="plat-cell"><div class="plat-dots">
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div>
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--lazada)"></div>
+            </div><span class="cov">5/5</span></div>
+          <div class="price-cell">RM 79.90</div>
+          <div class="issue-cell"></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">10278</span><div class="pname">Vintage Roadster</div></div>
+          <div class="cat-cell"><span class="b">Brix Motors</span><br>Display Stand</div>
+          <div class="var-cell">1 var</div>
+          <div class="plat-cell"><div class="plat-dots">
+              <div class="pdot"></div><div class="pdot"></div>
+              <div class="pdot"></div><div class="pdot"></div><div class="pdot"></div>
+            </div><span class="cov">0/5</span></div>
+          <div class="price-cell">—</div>
+          <div class="issue-cell"><span class="material-symbols-outlined">warning</span></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">21183</span><div class="pname">Treehouse Hideout</div></div>
+          <div class="cat-cell"><span class="b">Custom Brix</span><br>Display Stand</div>
+          <div class="var-cell">2 vars</div>
+          <div class="plat-cell"><div class="plat-dots">
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div>
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--lazada)"></div>
+            </div><span class="cov">5/5</span></div>
+          <div class="price-cell">RM 84.00</div>
+          <div class="issue-cell"></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">60142</span><div class="pname">Cargo Delivery Truck</div></div>
+          <div class="cat-cell"><span class="b">Brix Motors</span><br>Display Stand</div>
+          <div class="var-cell">3 vars</div>
+          <div class="plat-cell"><div class="plat-dots">
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div>
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--lazada)"></div>
+            </div><span class="cov">5/5</span></div>
+          <div class="price-cell">RM 71.00</div>
+          <div class="issue-cell"></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">21327</span><div class="pname">Botanical Greenhouse</div></div>
+          <div class="cat-cell"><span class="b">Custom Brix</span><br>Wall Mount</div>
+          <div class="var-cell">2 vars</div>
+          <div class="plat-cell"><div class="plat-dots">
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div>
+              <div class="pdot"></div><div class="pdot"></div><div class="pdot" style="background:var(--lazada)"></div>
+            </div><span class="cov">3/5</span></div>
+          <div class="price-cell">RM 69.00</div>
+          <div class="issue-cell"></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">76912</span><div class="pname">Deep Sea Explorer Sub</div></div>
+          <div class="cat-cell"><span class="b">Brix Motors</span><br>Display Stand</div>
+          <div class="var-cell">2 vars</div>
+          <div class="plat-cell"><div class="plat-dots">
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div>
+              <div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--lazada)"></div>
+            </div><span class="cov">5/5</span></div>
+          <div class="price-cell">RM 76.50</div>
+          <div class="issue-cell"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-panel">
+      <div class="dp-head">
+        <div>
+          <span class="msku">75192</span>
+          <div class="pname">Downtown Diner</div>
+          <div class="meta">Custom Brix · Display Stand</div>
+        </div>
+        <div class="dp-head-right">
+          <span class="pill-active">Active</span>
+          <div class="icon-btn" style="width:28px; height:28px; border-radius:8px;"><span class="material-symbols-outlined" style="font-size:15px;">edit</span></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="dp-section-title"><span class="material-symbols-outlined">inventory_2</span>Variants &amp; Stock (3)</div>
+        <div class="variant-row">
+          <span class="vtype ds">DS</span>
+          <span class="vsku">75192-D-BLK</span>
+          <span class="vname">Display Stand — Black</span>
+          <span class="vfile">85g · 95m</span>
+          <div class="stock-stepper"><div class="sb">–</div><div class="sv">42</div><div class="sb">+</div></div>
+        </div>
+        <div class="variant-row">
+          <span class="vtype ds">DS</span>
+          <span class="vsku">75192-D-WHT</span>
+          <span class="vname">Display Stand — White</span>
+          <span class="vfile">85g · 95m</span>
+          <div class="stock-stepper"><div class="sb">–</div><div class="sv">18</div><div class="sb">+</div></div>
+        </div>
+        <div class="variant-row">
+          <span class="vtype wm">WM</span>
+          <span class="vsku">75192-WM-BLK</span>
+          <span class="vname">Wall Mount — Black</span>
+          <span class="vfile">40g · 48m</span>
+          <div class="stock-stepper low"><div class="sb">–</div><div class="sv">6</div><div class="sb">+</div></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="dp-section-title"><span class="material-symbols-outlined">storefront</span>Platform Listing</div>
+        <div class="listing-summary">
+          <div class="price-block">
+            <div class="pb"><span class="pl">MYR</span><span class="pv">59.90</span></div>
+            <div class="price-div"></div>
+            <div class="pb"><span class="pl">SGD</span><span class="pv">18.90</span></div>
+          </div>
+          <span class="pill-active" style="margin-left:auto;">Active</span>
+          <span class="mono" style="font-size:9.5px; color:var(--text-2);">3/5 platforms</span>
+        </div>
+        <div class="platform-grid" style="margin-top:8px;">
+          <div class="pcard"><div class="pcolor" style="background:var(--shopee)"></div><span class="plabel">Shopee MY</span><span class="pval">75192DINER-MY</span></div>
+          <div class="pcard"><div class="pcolor" style="background:var(--shopee)"></div><span class="plabel">Shopee SG</span><span class="pval">75192DINER-SG</span></div>
+          <div class="pcard off"><div class="pcolor" style="background:var(--text-2)"></div><span class="plabel">Shopee PH</span><span class="pval">not listed</span></div>
+          <div class="pcard off"><div class="pcolor" style="background:var(--text-2)"></div><span class="plabel">Shopee TH</span><span class="pval">not listed</span></div>
+          <div class="pcard"><div class="pcolor" style="background:var(--lazada)"></div><span class="plabel">Lazada MY</span><span class="pval">L-75192-MY</span></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="dp-section-title"><span class="material-symbols-outlined">link</span>Variation Mapping</div>
+        <table class="map-table">
+          <thead><tr><th></th><th>Platform Variation</th><th>SKU</th><th>Type</th></tr></thead>
+          <tbody>
+            <tr><td><span class="material-symbols-outlined" style="font-size:13px; color:var(--success);">check_circle</span></td><td>Black / Display Stand</td><td class="sku-cell">75192-D-BLK</td><td>DS</td></tr>
+            <tr><td><span class="material-symbols-outlined" style="font-size:13px; color:var(--success);">check_circle</span></td><td>White / Display Stand</td><td class="sku-cell">75192-D-WHT</td><td>DS</td></tr>
+            <tr class="unmapped"><td><span class="material-symbols-outlined" style="font-size:13px; color:var(--error);">error</span></td><td>Black / Wall Mount</td><td class="sku-cell" style="color:var(--text-2);">— unlinked</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <div class="dp-section-title"><span class="material-symbols-outlined">history</span>Recent Orders (this product)</div>
+        <div class="variant-row" style="justify-content:space-between; margin-bottom:5px;">
+          <span class="vsku" style="width:60px;">#10481</span>
+          <span class="vname" style="flex:1;">K. Tan · 10331-A-WHT</span>
+          <span class="badge printing" style="font-size:9px; font-weight:700; padding:2px 8px; border-radius:100px; background:rgba(95,180,255,0.15); color:var(--accent-b);">Printing</span>
+          <span class="mono" style="font-size:9.5px; color:var(--text-2); width:70px; text-align:right;">11:42 AM</span>
+        </div>
+        <div class="variant-row" style="justify-content:space-between; margin-bottom:0;">
+          <span class="vsku" style="width:60px;">#10466</span>
+          <span class="vname" style="flex:1;">R. Devi · 75192-D-BLK</span>
+          <span class="badge completed" style="font-size:9px; font-weight:700; padding:2px 8px; border-radius:100px; background:rgba(61,220,151,0.15); color:var(--success);">Completed</span>
+          <span class="mono" style="font-size:9.5px; color:var(--text-2); width:70px; text-align:right;">Yesterday</span>
+        </div>
+      </div>
+
+      <div class="dp-footer">
+        <div class="btn btn-ghost"><span class="material-symbols-outlined">add</span>Add Variant</div>
+        <div class="btn btn-primary"><span class="material-symbols-outlined">link</span>Fix Mapping</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>

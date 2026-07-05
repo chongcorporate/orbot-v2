@@ -1090,6 +1090,7 @@ input[type="text"].pl-9 { padding-left: 2.25rem !important; }
 input[type="text"].pl-11 { padding-left: 2.75rem !important; }
 input[type="text"].pr-3 { padding-right: 0.75rem !important; }
 input[type="text"].pr-4 { padding-right: 1rem !important; }
+input[type="text"].pr-8 { padding-right: 2rem !important; }
 
 select option {
   background: #0d1527 !important;
@@ -2113,6 +2114,36 @@ div[popover="hint"] {
   border-radius: 5px;
   flex-shrink: 0;
 }
+.omd-variant-row .omd-print-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 9px;
+  flex-shrink: 0;
+  font-family: var(--font-heading);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--primary-color);
+  background: rgba(164, 232, 68, 0.08);
+  border: 1px solid rgba(164, 232, 68, 0.25);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.omd-variant-row .omd-print-btn .material-symbols-outlined { font-size: 13px; }
+.omd-variant-row .omd-print-btn:hover:not(:disabled) {
+  background: rgba(164, 232, 68, 0.16);
+  border-color: rgba(164, 232, 68, 0.45);
+}
+.omd-variant-row .omd-print-btn:disabled {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--glass-border);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 .omd-stock-stepper {
   display: flex;
   align-items: center;
@@ -2879,3 +2910,21 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
 .qo-grid .qo-icon { width: 24px; height: 24px; font-size: 14px; border-radius: 7px; }
 .qo-grid .qo-label { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qo-grid .qo-go { display: none; }
+
+/* Highlight missing form fields */
+.field-missing {
+  animation: pulse-highlight 0.6s ease-in-out;
+  box-shadow: inset 0 0 12px rgba(242, 101, 122, 0.3), 0 0 20px rgba(242, 101, 122, 0.2) !important;
+  border-color: #f2657a !important;
+}
+
+.field-missing-container {
+  animation: pulse-highlight 0.6s ease-in-out;
+  box-shadow: inset 0 0 12px rgba(242, 101, 122, 0.3), 0 0 20px rgba(242, 101, 122, 0.2) !important;
+  border-color: #f2657a !important;
+}
+
+@keyframes pulse-highlight {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}

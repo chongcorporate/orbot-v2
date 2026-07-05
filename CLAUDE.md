@@ -2,7 +2,7 @@
 
 ## Design
 
-Before writing or editing any UI (HTML, CSS, Tailwind classes, JS-rendered markup), read `DESIGN.md` first. It defines the color tokens, typography rules, component patterns, and do's/don'ts for Orbot's dark sci-fi aesthetic. Key rules:
+Before writing or editing any UI (HTML, CSS, Tailwind classes, JS-rendered markup), read `Other/DESIGN.md` first. For visual polish, also consult `design-refs/` — it holds distilled design-system specs (Linear, Vercel, Raycast, Resend, Supabase, Warp, Cursor) and reference screenshots; see `design-refs/README.md` for how to use them. It defines the color tokens, typography rules, component patterns, and do's/don'ts for Orbot's dark sci-fi aesthetic. Key rules:
 
 - JetBrains Mono for all data values (SKUs, IDs, timestamps, file names, weights)
 - Outfit for headings and button labels
@@ -12,7 +12,7 @@ Before writing or editing any UI (HTML, CSS, Tailwind classes, JS-rendered marku
 
 ## Frontend
 
-- `app.js` is the entire frontend (~4100 lines). Bump `?v=X.X.X` in `index.html` after every `app.js` change (current: `1.5.3`).
+- `app.js` is the entire frontend (~4100 lines). Bump `?v=X.X.X` in `index.html` after every `app.js` change (always read the current value from `index.html` — never trust a version number written elsewhere).
 - `index.css` holds all custom CSS. Tailwind handles utilities.
 - Vercel serves static files — no server-side rendering, no env vars at runtime. Supabase credentials come from localStorage (`orbot_supabase_url`, `orbot_supabase_key`).
 

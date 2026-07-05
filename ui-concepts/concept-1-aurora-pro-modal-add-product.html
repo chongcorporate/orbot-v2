@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Orbot — Aurora Pro — Add Product Modal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL@20..48,300..600,0..1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#0a0a10; --bg-1:#101119; --bg-2:#15161f;
+    --glass: rgba(255,255,255,0.045);
+    --glass-hi: rgba(255,255,255,0.075);
+    --border: rgba(255,255,255,0.08);
+    --border-soft: rgba(255,255,255,0.05);
+    --text-0:#f2f3f7; --text-1:#a8abb8; --text-2:#63667a;
+    --accent-a:#8b7cf6; --accent-b:#5fb4ff;
+    --success:#3ddc97; --warning:#f5b942; --error:#f2657a; --info:#5fb4ff;
+    --ds:#7ea6e8; --wm:#ffaa6b; --fwm:#ff8c00; --base:#f5b942; --dsnp:#3ddc97;
+    --shopee:#ee4d2d; --lazada:#1a56f0;
+    --radius-lg:16px; --radius-md:12px; --radius-sm:9px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{width:1680px; height:1050px; overflow:hidden; background:var(--bg-0);}
+  body{
+    font-family:'Inter',sans-serif; color:var(--text-0);
+    background:
+      radial-gradient(1100px 700px at 82% -8%, rgba(139,124,246,0.10), transparent 60%),
+      radial-gradient(900px 600px at -5% 100%, rgba(95,180,255,0.07), transparent 60%),
+      linear-gradient(160deg, var(--bg-1), var(--bg-0));
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'opsz' 20;font-size:20px; line-height:1;}
+
+  /* ---------- Header ---------- */
+  header{position:absolute; top:0; left:0; width:1680px; height:64px; display:flex; align-items:center; justify-content:space-between; padding:0 28px; background:rgba(16,17,25,0.7); backdrop-filter:blur(20px); border-bottom:1px solid var(--border-soft); z-index:5;}
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand .mark{width:32px; height:32px; border-radius:9px; background:linear-gradient(135deg, var(--accent-a), var(--accent-b)); display:flex; align-items:center; justify-content:center; box-shadow:0 4px 14px rgba(139,124,246,0.35);}
+  .brand .mark .material-symbols-outlined{color:#0a0a10; font-size:19px;}
+  .brand h1{font-size:16.5px; font-weight:800; letter-spacing:-0.01em;}
+  .brand .ver{font-size:10px; font-weight:700; color:var(--text-1); background:var(--glass); border:1px solid var(--border); padding:2px 8px; border-radius:100px; margin-left:2px;}
+  .live-pill{display:flex; align-items:center; gap:7px; margin-left:18px; padding:6px 12px 6px 10px; background:var(--glass); border:1px solid var(--border); border-radius:100px;}
+  .dot{width:7px; height:7px; border-radius:50%; background:var(--success); box-shadow:0 0 8px rgba(61,220,151,0.7);}
+  .live-pill span{font-size:10.5px; font-weight:600; letter-spacing:0.05em; color:var(--text-1);}
+  .search-wrap{flex:1; max-width:420px; margin:0 32px;}
+  .search{display:flex; align-items:center; gap:9px; background:rgba(255,255,255,0.035); border:1px solid var(--border); border-radius:100px; padding:8px 16px;}
+  .search .material-symbols-outlined{font-size:17px; color:var(--text-2);}
+  .search span.ph{font-size:13px; color:var(--text-2);}
+  .header-right{display:flex; align-items:center; gap:10px;}
+  .chip{display:flex; align-items:center; gap:7px; padding:7px 12px; border-radius:100px; background:var(--glass); border:1px solid var(--border); font-size:11.5px; font-weight:600; color:var(--text-1);}
+  .chip .material-symbols-outlined{font-size:15px; color:var(--text-1);}
+  .chip.status .dot2{width:6px; height:6px; border-radius:50%; background:var(--success);}
+  .clockwrap{text-align:right; margin-left:2px;}
+  .clockwrap .t{font-size:12px; font-weight:700;}
+  .clockwrap .d{font-size:9.5px; color:var(--text-2); letter-spacing:0.06em; margin-top:1px;}
+  .icon-btn{width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:var(--glass); border:1px solid var(--border); color:var(--text-1);}
+
+  /* ---------- Sidebar ---------- */
+  nav{position:absolute; top:64px; left:0; width:236px; height:986px; background:rgba(12,13,19,0.55); border-right:1px solid var(--border-soft); padding:22px 14px; display:flex; flex-direction:column; gap:2px;}
+  nav .section-label{font-size:10.5px; font-weight:700; letter-spacing:0.12em; color:var(--text-2); text-transform:uppercase; padding:0 10px; margin-bottom:12px;}
+  .nav-item{display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:11px; color:var(--text-1); font-size:13.5px; font-weight:600;}
+  .nav-item .material-symbols-outlined{font-size:19px;}
+  .nav-item.active{background:linear-gradient(135deg, rgba(139,124,246,0.18), rgba(95,180,255,0.12)); color:var(--text-0); border:1px solid rgba(139,124,246,0.3); box-shadow:0 4px 16px rgba(139,124,246,0.12);}
+  .nav-item.active .material-symbols-outlined{color:var(--accent-b);}
+  .nav-footer{margin-top:auto; padding:14px; border-radius:12px; background:var(--glass); border:1px solid var(--border);}
+  .nav-footer .p1{font-size:11.5px; font-weight:700; color:var(--text-0);}
+  .nav-footer .p2{font-size:10px; color:var(--text-2); margin-top:3px;}
+
+  /* ---------- Main: Products page (backdrop) ---------- */
+  main{position:absolute; top:64px; left:236px; width:1444px; height:986px; padding:22px 26px; overflow:hidden; display:flex; flex-direction:column; gap:14px;}
+  .page-head{display:flex; align-items:center; justify-content:space-between;}
+  .page-head h2{font-size:22px; font-weight:800; letter-spacing:-0.01em;}
+  .page-head .sub{font-size:12px; color:var(--text-2); margin-top:3px;}
+  .page-actions{display:flex; gap:8px;}
+  .btn{display:flex; align-items:center; gap:7px; padding:9px 15px; border-radius:10px; font-size:12.5px; font-weight:700; border:1px solid var(--border); white-space:nowrap;}
+  .btn .material-symbols-outlined{font-size:16px;}
+  .btn-ghost{background:var(--glass); color:var(--text-1);}
+  .btn-primary{background:linear-gradient(135deg, var(--accent-a), var(--accent-b)); color:#0a0a10; border:none; box-shadow:0 4px 14px rgba(139,124,246,0.3);}
+  .alert-banner{display:flex; align-items:center; gap:14px; padding:13px 18px; border-radius:var(--radius-md); background:rgba(245,185,66,0.08); border:1px solid rgba(245,185,66,0.28);}
+  .alert-banner .aicon{width:34px; height:34px; border-radius:9px; background:rgba(245,185,66,0.15); display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .alert-banner .aicon .material-symbols-outlined{color:var(--warning); font-size:19px;}
+  .alert-banner .atext{flex:1;}
+  .alert-banner .atext .t1{font-size:13px; font-weight:700; color:var(--text-0);}
+  .alert-banner .atext .t2{font-size:11px; color:var(--text-1); margin-top:1px;}
+  .alert-banner .abtn{padding:8px 14px; border-radius:9px; background:rgba(245,185,66,0.15); border:1px solid rgba(245,185,66,0.35); color:var(--warning); font-size:11.5px; font-weight:700; white-space:nowrap;}
+  .toolbar{display:flex; align-items:center; gap:10px;}
+  .tb-search{flex:1; max-width:260px; display:flex; align-items:center; gap:8px; background:var(--glass); border:1px solid var(--border); border-radius:10px; padding:9px 13px;}
+  .tb-search .material-symbols-outlined{font-size:16px; color:var(--text-2);}
+  .tb-search span.ph{font-size:12px; color:var(--text-2);}
+  .tb-select{display:flex; align-items:center; gap:7px; background:var(--glass); border:1px solid var(--border); border-radius:10px; padding:8px 12px; font-size:11.5px; color:var(--text-1); font-weight:600;}
+  .tb-select .material-symbols-outlined{font-size:14px; color:var(--text-2);}
+  .filter-tabs{display:flex; gap:5px; background:var(--glass); border:1px solid var(--border); border-radius:10px; padding:4px; margin-left:auto;}
+  .ftab{display:flex; align-items:center; gap:6px; padding:7px 12px; border-radius:8px; font-size:11px; font-weight:700; color:var(--text-1); white-space:nowrap;}
+  .ftab .cnt{font-size:9.5px; font-family:'JetBrains Mono',monospace; opacity:0.7;}
+  .ftab.active{background:rgba(255,255,255,0.09); color:var(--text-0);}
+  .ftab.f-issues.active{color:var(--warning); background:rgba(245,185,66,0.12);}
+  .body-split{flex:1; display:grid; grid-template-columns:1.5fr 1fr; gap:16px; min-height:0;}
+  .list-panel{background:var(--glass); border:1px solid var(--border); border-radius:var(--radius-lg); display:flex; flex-direction:column; overflow:hidden;}
+  .list-head-row{display:grid; grid-template-columns:2.1fr 1fr 0.7fr 1.5fr 0.8fr 0.4fr; gap:10px; padding:10px 16px; border-bottom:1px solid var(--border-soft); font-size:9.5px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-2);}
+  .list-rows{flex:1; overflow:hidden; display:flex; flex-direction:column;}
+  .prod-row{display:grid; grid-template-columns:2.1fr 1fr 0.7fr 1.5fr 0.8fr 0.4fr; gap:10px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--border-soft); border-left:3px solid transparent;}
+  .prod-row.selected{background:rgba(139,124,246,0.08); border-left:3px solid var(--accent-a);}
+  .prod-cell .msku{font-size:9px; font-weight:700; font-family:'JetBrains Mono',monospace; color:var(--accent-a); background:rgba(139,124,246,0.12); padding:1.5px 6px; border-radius:5px; display:inline-block;}
+  .prod-cell .pname{font-size:12px; font-weight:700; margin-top:3px;}
+  .cat-cell{font-size:10.5px; color:var(--text-1);}
+  .cat-cell .b{font-weight:600; color:var(--text-0);}
+  .var-cell{font-size:10.5px; color:var(--text-1); font-family:'JetBrains Mono',monospace;}
+  .plat-cell{display:flex; align-items:center; gap:6px;}
+  .plat-dots{display:flex; gap:3px;}
+  .pdot{width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,0.1);}
+  .plat-cell .cov{font-size:10px; font-family:'JetBrains Mono',monospace; color:var(--text-2);}
+  .price-cell{font-size:11px; font-family:'JetBrains Mono',monospace; color:var(--text-1);}
+  .issue-cell{display:flex; justify-content:center;}
+  .issue-cell .material-symbols-outlined{font-size:16px; color:var(--warning);}
+  .detail-panel{background:var(--glass); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 20px;}
+
+  /* ================= MODAL ================= */
+  .scrim{position:absolute; top:0; left:0; width:1680px; height:1050px; background:rgba(5,6,10,0.74); backdrop-filter:blur(2px); z-index:50; display:flex; align-items:center; justify-content:center;}
+  .modal{width:620px; background:linear-gradient(165deg, #16171f, #0d0e15); border:1px solid rgba(255,255,255,0.1); border-radius:20px; box-shadow:0 40px 90px rgba(0,0,0,0.65), 0 0 0 1px rgba(139,124,246,0.06); display:flex; flex-direction:column; overflow:hidden;}
+  .modal-head{display:flex; align-items:flex-start; gap:13px; padding:22px 24px 18px; border-bottom:1px solid var(--border-soft);}
+  .modal-head .mh-icon{width:38px; height:38px; border-radius:11px; background:linear-gradient(135deg, var(--accent-a), var(--accent-b)); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 4px 14px rgba(139,124,246,0.35);}
+  .modal-head .mh-icon .material-symbols-outlined{color:#0a0a10; font-size:20px;}
+  .modal-head .mh-text{flex:1;}
+  .modal-head h3{font-size:16.5px; font-weight:800;}
+  .modal-head p{font-size:11px; color:var(--text-2); margin-top:3px; line-height:1.4;}
+  .modal-close{width:30px; height:30px; border-radius:9px; background:var(--glass); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-2); flex-shrink:0;}
+
+  .modal-body{padding:20px 24px; display:flex; flex-direction:column; gap:18px;}
+
+  .mode-toggle{display:flex; gap:4px; background:rgba(255,255,255,0.03); border:1px solid var(--border-soft); border-radius:10px; padding:4px; align-self:flex-start;}
+  .mode-btn{padding:7px 16px; border-radius:7px; font-size:11px; font-weight:700; color:var(--text-2);}
+  .mode-btn.active{background:linear-gradient(135deg, rgba(139,124,246,0.24), rgba(95,180,255,0.16)); color:var(--text-0); border:1px solid rgba(139,124,246,0.35);}
+
+  .sec{display:flex; flex-direction:column; gap:12px;}
+  .sec-label{font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-1); display:flex; align-items:center; gap:7px; padding-bottom:9px; border-bottom:1px solid var(--border-soft);}
+  .sec-label .material-symbols-outlined{font-size:15px; color:var(--accent-b);}
+
+  .field-row{display:grid; gap:12px;}
+  .field-row.c2{grid-template-columns:1fr 1fr;}
+  .field{display:flex; flex-direction:column; gap:6px;}
+  .field label{font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-2); display:flex; align-items:center; gap:6px;}
+  .field label .opt{font-size:8.5px; font-weight:700; color:var(--text-2); background:rgba(255,255,255,0.05); padding:1.5px 6px; border-radius:100px; text-transform:none; letter-spacing:0;}
+  .field input{background:rgba(255,255,255,0.035); border:1px solid var(--border); border-radius:10px; padding:10px 13px; font-size:12.5px; color:var(--text-0); font-family:'Inter',sans-serif;}
+  .field input.mono{font-family:'JetBrains Mono',monospace;}
+  .field input::placeholder{color:var(--text-2);}
+  .field .hint{font-size:9.5px; color:var(--text-2); margin-top:1px;}
+  .field .hint b{color:var(--accent-b); font-family:'JetBrains Mono',monospace; font-weight:600;}
+
+  .type-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:7px;}
+  .type-pill{display:flex; flex-direction:column; align-items:center; gap:5px; padding:10px 4px; border-radius:10px; border:1.5px solid var(--border-soft); background:rgba(255,255,255,0.02);}
+  .type-pill .tp-sw{width:15px; height:15px; border-radius:5px;}
+  .type-pill .tp-l{font-size:9.5px; font-weight:700; color:var(--text-1);}
+  .type-pill.selected{background:rgba(255,255,255,0.05);}
+  .type-pill.ds.selected{border-color:var(--ds); box-shadow:0 0 0 1px var(--ds) inset;}
+  .type-pill.wm.selected{border-color:var(--wm); box-shadow:0 0 0 1px var(--wm) inset;}
+  .type-pill.fwm.selected{border-color:var(--fwm); box-shadow:0 0 0 1px var(--fwm) inset;}
+  .type-pill.base.selected{border-color:var(--base); box-shadow:0 0 0 1px var(--base) inset;}
+  .type-pill.dsnp.selected{border-color:var(--dsnp); box-shadow:0 0 0 1px var(--dsnp) inset;}
+
+  .stepper{display:flex; align-items:center; background:rgba(255,255,255,0.035); border:1px solid var(--border); border-radius:10px; width:fit-content;}
+  .stepper .sb{width:34px; height:38px; display:flex; align-items:center; justify-content:center; color:var(--text-1); font-size:16px;}
+  .stepper .sv{width:56px; text-align:center; font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; color:var(--text-0);}
+
+  .modal-footer{display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--border-soft);}
+  .modal-footer .btn{padding:10px 18px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="mark"><span class="material-symbols-outlined">all_inclusive</span></div>
+    <h1>Orbot</h1>
+    <span class="ver mono">V2.0</span>
+    <div class="live-pill"><div class="dot"></div><span class="mono">TELEMETRY LIVE</span></div>
+  </div>
+  <div class="search-wrap"><div class="search"><span class="material-symbols-outlined">search</span><span class="ph">Search catalog, jobs, agents…</span></div></div>
+  <div class="header-right">
+    <div class="chip status"><div class="dot2"></div>Service Online</div>
+    <div class="chip"><span class="material-symbols-outlined">storefront</span>All Shops</div>
+    <div class="clockwrap"><div class="t mono">14:32:07</div><div class="d mono">JUL 02 2026</div></div>
+    <div class="icon-btn"><span class="material-symbols-outlined">settings</span></div>
+  </div>
+</header>
+
+<nav>
+  <div class="section-label">Command Deck</div>
+  <div class="nav-item"><span class="material-symbols-outlined">dashboard</span>Overview</div>
+  <div class="nav-item"><span class="material-symbols-outlined">print</span>Printers</div>
+  <div class="nav-item"><span class="material-symbols-outlined">receipt_long</span>Orders</div>
+  <div class="nav-item"><span class="material-symbols-outlined">local_shipping</span>Waybills</div>
+  <div class="nav-item"><span class="material-symbols-outlined">smart_toy</span>Agents</div>
+  <div class="nav-item active"><span class="material-symbols-outlined">inventory_2</span>Products</div>
+  <div class="nav-item"><span class="material-symbols-outlined">rocket_launch</span>Launch</div>
+  <div class="nav-item"><span class="material-symbols-outlined">description</span>Logs</div>
+  <div class="nav-footer"><div class="p1">7 printers online</div><div class="p2 mono">v2.4.1 · stable</div></div>
+</nav>
+
+<main>
+  <div class="page-head">
+    <div>
+      <h2>Products</h2>
+      <div class="sub">142 products · 216 variants · catalog + platform listings, unified</div>
+    </div>
+    <div class="page-actions">
+      <div class="btn btn-ghost"><span class="material-symbols-outlined">add_box</span>Add Product</div>
+      <div class="btn btn-primary"><span class="material-symbols-outlined">storefront</span>Add Listing</div>
+    </div>
+  </div>
+  <div class="alert-banner">
+    <div class="aicon"><span class="material-symbols-outlined">link_off</span></div>
+    <div class="atext">
+      <div class="t1">12 listing variations aren't linked to a catalog SKU</div>
+      <div class="t2">Orders for these variations can't be auto-matched by Scout and will land on hold.</div>
+    </div>
+    <div class="abtn">Review Unmapped →</div>
+  </div>
+  <div class="toolbar">
+    <div class="tb-search"><span class="material-symbols-outlined">search</span><span class="ph">Search SKU, name, brand…</span></div>
+    <div class="tb-select"><span class="material-symbols-outlined">sell</span>All Brands</div>
+    <div class="tb-select"><span class="material-symbols-outlined">category</span>All Categories</div>
+    <div class="filter-tabs">
+      <div class="ftab active">All <span class="cnt">142</span></div>
+      <div class="ftab f-issues active" style="background:rgba(245,185,66,0.12); color:var(--warning);">Needs Attention <span class="cnt">9</span></div>
+      <div class="ftab">Full Coverage <span class="cnt">98</span></div>
+      <div class="ftab">Low Stock <span class="cnt">14</span></div>
+    </div>
+  </div>
+  <div class="body-split">
+    <div class="list-panel">
+      <div class="list-head-row"><span>Product</span><span>Brand / Category</span><span>Variants</span><span>Platforms</span><span>Price</span><span></span></div>
+      <div class="list-rows">
+        <div class="prod-row selected">
+          <div class="prod-cell"><span class="msku">75192</span><div class="pname">Downtown Diner</div></div>
+          <div class="cat-cell"><span class="b">Custom Brix</span><br>Display Stand</div>
+          <div class="var-cell">3 vars</div>
+          <div class="plat-cell"><div class="plat-dots"><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot"></div><div class="pdot"></div><div class="pdot" style="background:var(--lazada)"></div></div><span class="cov">3/5</span></div>
+          <div class="price-cell">RM 59.90</div>
+          <div class="issue-cell"><span class="material-symbols-outlined">warning</span></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">10331</span><div class="pname">Amusement Park Bumper Car</div></div>
+          <div class="cat-cell"><span class="b">Custom Brix</span><br>Display Stand</div>
+          <div class="var-cell">2 vars</div>
+          <div class="plat-cell"><div class="plat-dots"><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--lazada)"></div></div><span class="cov">5/5</span></div>
+          <div class="price-cell">RM 68.00</div>
+          <div class="issue-cell"></div>
+        </div>
+        <div class="prod-row">
+          <div class="prod-cell"><span class="msku">21034</span><div class="pname">Street Racer</div></div>
+          <div class="cat-cell"><span class="b">Brix Motors</span><br>Wall Mount</div>
+          <div class="var-cell">4 vars</div>
+          <div class="plat-cell"><div class="plat-dots"><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--shopee)"></div><div class="pdot" style="background:var(--lazada)"></div></div><span class="cov">5/5</span></div>
+          <div class="price-cell">RM 74.50</div>
+          <div class="issue-cell"></div>
+        </div>
+      </div>
+    </div>
+    <div class="detail-panel"></div>
+  </div>
+</main>
+
+<!-- ============ MODAL: Add Product ============ -->
+<div class="scrim">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="mh-icon"><span class="material-symbols-outlined">add_box</span></div>
+      <div class="mh-text">
+        <h3>Add Product</h3>
+        <p>Create a brand-new product, or add another variant to one that already exists.</p>
+      </div>
+      <div class="modal-close"><span class="material-symbols-outlined" style="font-size:16px;">close</span></div>
+    </div>
+
+    <div class="modal-body">
+      <div class="mode-toggle">
+        <div class="mode-btn active">New Product</div>
+        <div class="mode-btn">Existing Product</div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-label"><span class="material-symbols-outlined">inventory_2</span>Product</div>
+        <div class="field-row c2">
+          <div class="field">
+            <label>Master SKU</label>
+            <input class="mono" type="text" placeholder="76919">
+          </div>
+          <div class="field">
+            <label>Product Base Name</label>
+            <input type="text" placeholder="McLaren Formula 1 Car">
+          </div>
+        </div>
+        <div class="field-row c2">
+          <div class="field">
+            <label>Brand Name</label>
+            <input type="text" placeholder="Lego">
+          </div>
+          <div class="field">
+            <label>Category</label>
+            <input type="text" placeholder="Speed Champions">
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-label"><span class="material-symbols-outlined">layers</span>Variant Details</div>
+        <div class="field-row c2">
+          <div class="field">
+            <label>Variant SKU</label>
+            <input class="mono" type="text" value="76919-DS-01">
+            <div class="hint">Auto-suggested from Master SKU + Type — edit if needed</div>
+          </div>
+          <div class="field">
+            <label>Variant Name</label>
+            <input type="text" placeholder="Display Stand — Black">
+          </div>
+        </div>
+        <div class="field">
+          <label>Variant Type</label>
+          <div class="type-grid">
+            <div class="type-pill ds selected"><div class="tp-sw" style="background:var(--ds)"></div><div class="tp-l">DS</div></div>
+            <div class="type-pill wm"><div class="tp-sw" style="background:var(--wm)"></div><div class="tp-l">WM</div></div>
+            <div class="type-pill fwm"><div class="tp-sw" style="background:var(--fwm)"></div><div class="tp-l">FWM</div></div>
+            <div class="type-pill base"><div class="tp-sw" style="background:var(--base)"></div><div class="tp-l">BASE</div></div>
+            <div class="type-pill dsnp"><div class="tp-sw" style="background:var(--dsnp)"></div><div class="tp-l">DS-NP</div></div>
+          </div>
+        </div>
+        <div class="field-row c2">
+          <div class="field">
+            <label>Initial Stock Quantity</label>
+            <div class="stepper"><div class="sb">–</div><div class="sv">0</div><div class="sb">+</div></div>
+          </div>
+          <div class="field">
+            <label>Seal Sticker URL <span class="opt">optional</span></label>
+            <input class="mono" type="text" placeholder="https://drive.google.com/file/d/…">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <div class="btn btn-ghost">Cancel</div>
+      <div class="btn btn-primary"><span class="material-symbols-outlined">add_box</span>Create Product</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
