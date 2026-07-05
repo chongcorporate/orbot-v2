@@ -4152,9 +4152,10 @@ def _launch_build_sku_tree(theme: str, set_number: str, product_types: list, pla
     out = []
     for ptype in product_types:
         if ptype == "DS":
-            for n in range(1, plaque_count + 1):
+            # plaque_count 0 → a single DS variant with no plaque ("Base - Plaque,0")
+            for n in range(0 if plaque_count == 0 else 1, plaque_count + 1):
                 out.append({"master_sku": master, "sku": f"{master}-DS-{n}", "type": "DS",
-                             "plaque_num": n, "label": f"{n} Plaque{'s' if n > 1 else ''}"})
+                             "plaque_num": n, "label": f"{n} Plaque{'s' if n != 1 else ''}"})
         else:
             suffix = {"DS-NP": "DS-NP", "WM": "WM", "FWM": "FWM", "BASE": "BASE"}.get(ptype, ptype)
             out.append({"master_sku": master, "sku": f"{master}-{suffix}", "type": ptype,
