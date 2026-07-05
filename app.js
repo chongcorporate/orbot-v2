@@ -6816,7 +6816,7 @@ function getLaunchFormData() {
     brand_name:       document.getElementById('launch-brand-name')?.value.trim() || 'Blocked Off',
     product_category: getAllLaunchTypes().find(t => t.code === types[0])?.category || '',
     product_types: types,
-    plaque_count: parseInt(document.getElementById('launch-plaque-count')?.value) || 1,
+    plaque_count: parseInt(document.getElementById('launch-plaque-count')?.value, 10), // NaN when blank; 0 allowed (DS with no plaque)
     price_myr:    priceOrNull(document.getElementById('launch-price')?.value),
     price_sgd:    priceOrNull(document.getElementById('launch-price-sgd')?.value),
     platforms,
@@ -6883,7 +6883,7 @@ async function doLaunchPreview() {
   if (!theme)                    missing.push('theme');
   if (!brand_name)               missing.push('brand name');
   if (product_types.length === 0) missing.push('product type');
-  if (!plaque_count || plaque_count < 1) missing.push('plaque count');
+  if (isNaN(plaque_count) || plaque_count < 0) missing.push('plaque count');
   if (price_myr == null)         missing.push('price (MYR)');
   if (price_sgd == null)         missing.push('price (SGD)');
   if (platforms.length === 0)    missing.push('platform');
