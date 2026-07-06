@@ -640,7 +640,7 @@ async function fetchSummaryStats() {
     if (greetSub) {
       greetSub.innerHTML = `<b>${pendingOrdersCount} pending order${pendingOrdersCount === 1 ? "" : "s"}</b> · ${ordersTodayCount} new today · ${ordersOnHoldCount} on hold`;
     }
-    fetchAndRenderAgentFeed();
+    fetchAndRenderLogsFeed();
 
     markFresh("stats");
   } catch (err) {
@@ -657,10 +657,10 @@ function renderGreeting() {
   el.textContent = `${part}, Joel`;
 }
 
-// Overview agent-activity feed: latest system_logs rows as a Draft 4 timeline.
-async function fetchAndRenderAgentFeed() {
+// Overview logs feed: latest system_logs rows as a Draft 4 timeline.
+async function fetchAndRenderLogsFeed() {
   if (!supabaseClient) return;
-  const feedEl = document.getElementById("overview-agent-feed");
+  const feedEl = document.getElementById("overview-logs-feed");
   if (!feedEl) return;
   try {
     const { data: logs, error } = await supabaseClient
@@ -670,7 +670,7 @@ async function fetchAndRenderAgentFeed() {
       .limit(8);
     if (error) throw error;
     if (!logs || logs.length === 0) {
-      feedEl.innerHTML = emptyDiv("No recent agent activity.", "history");
+      feedEl.innerHTML = emptyDiv("No recent logs.", "history");
       return;
     }
     feedEl.innerHTML = logs.map(l => {
@@ -1016,7 +1016,9 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
 
     const itemsList = order.order_items || [];
     const itemsHtml = itemsList.length
-      ? itemsList.map(item => d4SkuPill(item.variant_sku, item.purchased_quantity)).join(" ")
+      ? (itemsList.length > 1
+          ? `<div class="d4-items-stack">${itemsList.map(item => d4SkuPill(item.variant_sku, item.purchased_quantity)).join("")}</div>`
+          : d4SkuPill(itemsList[0].variant_sku, itemsList[0].purchased_quantity))
       : `<span style="color:var(--ink-4);font-size:11px">no items</span>`;
 
     const platformLower = (order.sales_platform || "").toLowerCase();
@@ -1096,7 +1098,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         <td><span class="${platClass}">${escapeHtml(platLabel)}</span></td>
         <td class="dt${isHot ? " hot" : ""}">${dateStr}</td>
         <td class="buyer" title="${escapeHtml(order.customer_name || "")}">${escapeHtml(order.customer_name) || "N/A"}</td>
-        <td>${itemsHtml}</td>
+        <td class="items">${itemsHtml}</td>
         <td class="sum">${escapeHtml(order.order_subtotal)} ${escapeHtml(order.order_currency)}</td>
         <td>${d4WaybillChip(order)}</td>
         <td>${selectHtml}</td>

@@ -2809,6 +2809,9 @@ table.omd-map-table .omd-sku-cell { font-family: var(--font-mono); color: var(--
 .d4-otbl input[type="checkbox"] { accent-color: var(--green); width: 13px; height: 13px; cursor: pointer; display: block; }
 .d4-otbl th:first-child, .d4-otbl td:first-child { width: 34px; padding-right: 2px; }
 .d4-otbl .d4-stchip { min-width: 104px; justify-content: center; }
+.d4-otbl .items { width: 150px; max-width: 150px; white-space: normal; }
+.d4-otbl .items .d4-pill { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
+.d4-items-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .d4-otbl .chev { display: inline-block; color: var(--ink-4); font-size: 9px; transition: transform 0.15s; }
 tr.d4-orow.open .chev { transform: rotate(180deg); color: var(--green); }
 tr.d4-orow.open td { background: var(--card-2); }
