@@ -2227,6 +2227,8 @@ async function fetchAndRenderCatalog() {
         clearFiltersBtn.classList.add("hidden");
       }
     }
+    if (brandSelect) brandSelect.classList.toggle("on", brandFilter !== "all");
+    if (categorySelect) categorySelect.classList.toggle("on", categoryFilter !== "all");
 
     let filtered = cachedVariants;
 
