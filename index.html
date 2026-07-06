@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.15.4">
+  <link rel="stylesheet" href="index.css?v=1.15.5">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -1174,46 +1174,76 @@
       </section>
 
       <!-- 9. Logs Pane -->
-      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-gutter" id="pane-logs">
-
-        <!-- Unified Activity stream (Aurora 3.0): system logs + print jobs, one feed -->
-        <div class="glass-panel rounded-xl p-5 flex flex-col gap-5">
-          <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 flex-wrap gap-4">
-            <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">
-              <span class="material-symbols-outlined text-primary">update</span>
-              <span>Activity</span>
-              <span class="fresh-stamp" data-fresh="activity"></span>
-            </h2>
-            <div class="flex items-center gap-2 flex-wrap">
-              <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#3ecf8e] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="refresh-logs-btn">
-                <span class="material-symbols-outlined text-sm">sync</span> Refresh
-              </button>
-              <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-logs-btn">
-                <span class="material-symbols-outlined text-sm">delete_sweep</span> Clear Logs
-              </button>
-              <button class="px-3 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="clear-print-jobs-btn">
-                <span class="material-symbols-outlined text-sm">delete_sweep</span> Clear Jobs
-              </button>
-            </div>
+      <section class="tab-content hidden d4-pane" id="pane-logs">
+        <!-- Page head -->
+        <div class="d4-phead">
+          <div>
+            <h2>Activity <span class="fresh-stamp" data-fresh="activity"></span></h2>
+            <div class="sub">Agent event stream, health &amp; 30-day insights</div>
           </div>
-
-          <div class="flex justify-between items-center flex-wrap gap-3">
-            <div class="flex items-center gap-1.5 bg-surface-container-low p-1 rounded-lg border border-outline-variant/15" id="activity-chips">
-              <button class="activity-chip filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all bg-primary/10 text-primary active" data-stream="all">All</button>
-              <button class="activity-chip filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-stream="system">System</button>
-              <button class="activity-chip filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-stream="printjob">Print Jobs</button>
-              <button class="activity-chip filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-stream="error">Errors</button>
-            </div>
-            <div class="text-[11px] font-data-mono text-outline" id="activity-count"></div>
-          </div>
-
-          <div class="glass-panel rounded-xl overflow-hidden border border-outline-variant/15 bg-black/10">
-            <div id="activity-stream" class="flex flex-col max-h-[720px] overflow-y-auto p-3 gap-1.5 bg-slate-950/20">
-              <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
-            </div>
+          <div class="acts">
+            <button class="d4-btn" id="export-logs-btn"><span class="material-symbols-outlined">download</span> Export CSV</button>
+            <button class="d4-btn" id="refresh-logs-btn"><span class="material-symbols-outlined">refresh</span> Refresh</button>
+            <span class="d4-vsep"></span>
+            <button class="d4-btn warn" id="clear-logs-btn"><span class="material-symbols-outlined">delete_sweep</span> Clear Logs</button>
+            <button class="d4-btn warn" id="clear-print-jobs-btn"><span class="material-symbols-outlined">delete_sweep</span> Clear Jobs</button>
           </div>
         </div>
 
+        <!-- Toolbar: search · stream seg · agent chips -->
+        <div class="d4-tools">
+          <div class="d4-searchbar">
+            <span class="material-symbols-outlined">search</span>
+            <input type="text" class="d4-in" id="logs-search-input" placeholder="Search events…">
+            <button type="button" class="search-clear-btn hidden" data-clear-target="logs-search-input" aria-label="Clear search"><span class="material-symbols-outlined">close</span></button>
+          </div>
+          <div class="d4-seg" id="activity-chips">
+            <button class="activity-chip active" data-stream="all">All</button>
+            <button class="activity-chip" data-stream="system">System</button>
+            <button class="activity-chip" data-stream="printjob">Print Jobs</button>
+            <button class="activity-chip" data-stream="error">Errors</button>
+          </div>
+          <div class="d4-achips" id="logs-agent-chips"></div>
+          <span style="margin-left:auto;font:500 11px var(--font-mono);color:var(--ink-4)" id="activity-count"></span>
+        </div>
+
+        <!-- Insights strip (30-day charts, relocated from Overview) -->
+        <div class="d4-insights">
+          <div class="d4-card">
+            <div class="hd"><h3>Orders · Last 30 Days</h3><span class="fresh-stamp" data-fresh="analytics" style="margin-left:auto"></span></div>
+            <div class="ch" id="chart-orders-daily"><div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div>
+          </div>
+          <div class="d4-card">
+            <div class="hd"><h3>Platform Split · 30d</h3></div>
+            <div class="ch" id="chart-platform-donut"><div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div>
+          </div>
+          <div class="d4-card">
+            <div class="hd"><h3>Print Throughput · 30d</h3></div>
+            <div class="ch" id="chart-throughput"><div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div>
+          </div>
+        </div>
+
+        <!-- Stream + rail -->
+        <div class="d4-logsgrid">
+          <div class="d4-card">
+            <div class="hd"><h2>Event Stream</h2><span class="d4-live"><i></i>LIVE</span></div>
+            <div id="activity-stream" class="d4-stream">
+              <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+            </div>
+          </div>
+          <div class="d4-col">
+            <div class="d4-card">
+              <div class="hd"><h2>Agent Health</h2></div>
+              <div id="logs-agent-health" class="d4-aghealth">
+                <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+              </div>
+            </div>
+            <div class="d4-card">
+              <div class="hd"><h2>Summary</h2><span class="cnt">last 24h</span></div>
+              <div id="logs-summary" class="d4-sumgrid"></div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- Settings Pane -->
@@ -1896,6 +1926,6 @@
     </button>
   </div>
 
-  <script src="app.js?v=1.15.4"></script>
+  <script src="app.js?v=1.15.5"></script>
 </body>
 </html>

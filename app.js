@@ -2026,6 +2026,17 @@ let activeStreamFilter = "all";
 // one chronological feed with level rails and expandable JSON details.
 // Kept under the old fetchAndRenderLogs name so every existing call site
 // (setupTabs, agent-trigger refreshes, clear buttons) keeps working.
+// Fetched event window + client-side filter state for the Activity pane.
+let cachedActivityEvents = [];
+let lastActivityEvents = [];
+let logsSearchQuery = "";
+let activeAgentFilter = "all";
+
+const AGENT_CHIP_COLORS = {
+  scout: "#38bdf8", orbot_service: "#3ecf8e", foreman: "#3ecf8e",
+  waybill_agent: "#ffaa6b", catalog: "#7ea6e8", dashboard: "#7d8794", system: "#7d8794",
+};
+
 async function fetchAndRenderLogs() {
   if (!supabaseClient) return;
   const box = document.getElementById("activity-stream");
@@ -2042,6 +2053,7 @@ async function fetchAndRenderLogs() {
       const level = (log.log_level || "info").toLowerCase();
       events.push({
         ts: new Date(log.created_at), kind: "system", level,
+        agent: (log.agent_name || "system").toLowerCase(),
         title: log.log_message || "—",
         sub: log.agent_name || "system",
         details: log.additional_details || null,
@@ -2058,6 +2070,7 @@ async function fetchAndRenderLogs() {
       const sku = oi?.variant_sku || "";
       events.push({
         ts: new Date(j.created_at), kind: "printjob", level,
+        agent: "foreman",
         title: `${j.print_file_name || "Print job"}${j.printer_name ? " on " + j.printer_name : ""}`,
         sub: [sku, cust].filter(Boolean).join(" · ") || "print job",
         chipExtra: status + (j.percent_complete != null ? ` · ${j.percent_complete}%` : ""),
@@ -2066,51 +2079,98 @@ async function fetchAndRenderLogs() {
     });
 
     events.sort((a, b) => b.ts - a.ts);
-
-    const filtered = events.filter(ev => {
-      if (activeStreamFilter === "all") return true;
-      if (activeStreamFilter === "error") return ev.level === "error";
-      return ev.kind === activeStreamFilter;
-    });
-
-    const countEl = document.getElementById("activity-count");
-    if (countEl) countEl.textContent = `${filtered.length} of ${events.length} events`;
-
-    if (filtered.length === 0) {
-      box.innerHTML = emptyDiv("No matching activity.", "update");
-    } else {
-      const railColor = { info: "#7ea6e8", warning: "#fbbf24", error: "#ff6666", success: "#3ecf8e" };
-      box.innerHTML = filtered.map((ev, i) => {
-        const color = railColor[ev.level] || "#7ea6e8";
-        const hasDetails = !!ev.details;
-        return `
-          <div class="act-row${hasDetails ? " act-expandable" : ""}" data-act-idx="${i}">
-            <div class="act-rail" style="background:${color};"></div>
-            <span class="material-symbols-outlined act-icon" style="color:${color};">${ev.kind === "printjob" ? "print" : "terminal"}</span>
-            <div class="act-main">
-              <div class="act-title" title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>
-              <div class="act-sub">${escapeHtml(ev.sub)}${ev.chipExtra ? ` · <span style="color:${color};">${escapeHtml(ev.chipExtra)}</span>` : ""}</div>
-            </div>
-            <span class="act-time" title="${ev.ts.toLocaleString()}">${relativeTime(ev.ts.toISOString())}</span>
-            ${hasDetails ? `<span class="material-symbols-outlined act-chevron">expand_more</span>` : ""}
-          </div>
-          ${hasDetails ? `<pre class="act-details hidden" id="act-det-${i}">${escapeHtml(JSON.stringify(ev.details, null, 2))}</pre>` : ""}
-        `;
-      }).join("");
-
-      box.querySelectorAll(".act-expandable").forEach(row => {
-        row.addEventListener("click", () => {
-          const det = document.getElementById(`act-det-${row.getAttribute("data-act-idx")}`);
-          if (det) det.classList.toggle("hidden");
-          row.querySelector(".act-chevron")?.classList.toggle("act-chevron-open");
-        });
-      });
-    }
-
+    cachedActivityEvents = events;
+    renderActivityStream();
     markFresh("activity");
   } catch (err) {
     box.innerHTML = emptyDiv(`Error loading activity: ${escapeHtml(err.message)}`, "error");
   }
+}
+
+// Renders the stream, agent chips, and summary card from cachedActivityEvents —
+// pure client-side so filter/search changes don't refetch.
+function renderActivityStream() {
+  const box = document.getElementById("activity-stream");
+  if (!box) return;
+  const events = cachedActivityEvents;
+
+  // Agent filter chips from the agents actually present in this window.
+  const chipsEl = document.getElementById("logs-agent-chips");
+  if (chipsEl) {
+    const agents = [...new Set(events.map(ev => ev.agent))].sort();
+    chipsEl.innerHTML = agents.map(a => {
+      const color = AGENT_CHIP_COLORS[a] || "#7d8794";
+      return `<span class="d4-ac${activeAgentFilter === a ? " on" : ""}" data-agent="${escapeHtml(a)}"><i style="background:${color}"></i>${escapeHtml(a)}</span>`;
+    }).join("");
+  }
+
+  const filtered = events.filter(ev => {
+    if (activeStreamFilter === "error" && ev.level !== "error") return false;
+    if (activeStreamFilter !== "all" && activeStreamFilter !== "error" && ev.kind !== activeStreamFilter) return false;
+    if (activeAgentFilter !== "all" && ev.agent !== activeAgentFilter) return false;
+    if (logsSearchQuery && !(`${ev.title} ${ev.sub}`.toLowerCase().includes(logsSearchQuery))) return false;
+    return true;
+  });
+  lastActivityEvents = filtered;
+
+  const countEl = document.getElementById("activity-count");
+  if (countEl) countEl.textContent = `${filtered.length} of ${events.length} events`;
+
+  // Summary card: last 24h counts over the unfiltered window.
+  const sumEl = document.getElementById("logs-summary");
+  if (sumEl) {
+    const dayAgo = Date.now() - 86400000;
+    const recent = events.filter(ev => ev.ts.getTime() >= dayAgo);
+    const errs = recent.filter(ev => ev.level === "error").length;
+    const warns = recent.filter(ev => ev.level === "warning").length;
+    sumEl.innerHTML = `
+      <div class="d4-su"><div class="v">${recent.length}</div><div class="l">Events</div></div>
+      <div class="d4-su warn"><div class="v">${warns}</div><div class="l">Warnings</div></div>
+      <div class="d4-su err"><div class="v">${errs}</div><div class="l">Errors</div></div>`;
+  }
+
+  if (filtered.length === 0) {
+    box.innerHTML = emptyDiv("No matching activity.", "history");
+    return;
+  }
+
+  const railColor = { info: "#7ea6e8", warning: "#fbbf24", error: "#ff6666", success: "#3ecf8e" };
+  const todayKey = new Date().toDateString();
+  const yesterdayKey = new Date(Date.now() - 86400000).toDateString();
+  let lastDayKey = null;
+  box.innerHTML = filtered.map((ev, i) => {
+    const color = railColor[ev.level] || "#7ea6e8";
+    const hasDetails = !!ev.details;
+    const dayKey = ev.ts.toDateString();
+    let dayHeader = "";
+    if (dayKey !== lastDayKey) {
+      lastDayKey = dayKey;
+      const label = dayKey === todayKey ? "Today" : dayKey === yesterdayKey ? "Yesterday"
+        : ev.ts.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+      dayHeader = `<div class="d4-day">${label}</div>`;
+    }
+    return `${dayHeader}
+      <div class="act-row${hasDetails ? " act-expandable" : ""}" data-act-idx="${i}">
+        <div class="act-rail" style="background:${color};"></div>
+        <span class="material-symbols-outlined act-icon" style="color:${color};">${ev.kind === "printjob" ? "print" : "dns"}</span>
+        <div class="act-main">
+          <div class="act-title" title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>
+          <div class="act-sub">${escapeHtml(ev.sub)}${ev.chipExtra ? ` · <span style="color:${color};">${escapeHtml(ev.chipExtra)}</span>` : ""}</div>
+        </div>
+        <span class="act-time" title="${ev.ts.toLocaleString()}">${relativeTime(ev.ts.toISOString())}</span>
+        ${hasDetails ? `<span class="material-symbols-outlined act-chevron">expand_more</span>` : ""}
+      </div>
+      ${hasDetails ? `<pre class="act-details hidden" id="act-det-${i}">${escapeHtml(JSON.stringify(ev.details, null, 2))}</pre>` : ""}
+    `;
+  }).join("");
+
+  box.querySelectorAll(".act-expandable").forEach(row => {
+    row.addEventListener("click", () => {
+      const det = document.getElementById(`act-det-${row.getAttribute("data-act-idx")}`);
+      if (det) det.classList.toggle("hidden");
+      row.querySelector(".act-chevron")?.classList.toggle("act-chevron-open");
+    });
+  });
 }
 
 async function fetchAndRenderLogsPagePrintJobs() {
@@ -2856,7 +2916,11 @@ function setupTabs() {
         fetchAgentHeartbeats();
         fetchAndRenderWaybillsArchive();
       }
-      if (tabId === "logs") { fetchAndRenderLogs(); }
+      if (tabId === "logs") {
+        fetchAndRenderLogs();
+        fetchAgentHeartbeats();
+        fetchAndRenderMissionControl(); // insights charts now live here
+      }
       if (tabId === "products") {
         // Merged Catalog + Listings tab
         fetchAndRenderCatalog();
@@ -3283,15 +3347,50 @@ function setupLaunchTemplatesSettings() {
 function setupLogsFiltering() {
   document.querySelectorAll(".activity-chip").forEach(chip => {
     chip.addEventListener("click", () => {
-      document.querySelectorAll(".activity-chip").forEach(c => {
-        c.classList.remove("bg-primary/10", "text-primary", "active");
-        c.classList.add("text-on-surface-variant");
-      });
-      chip.classList.add("bg-primary/10", "text-primary", "active");
-      chip.classList.remove("text-on-surface-variant");
+      document.querySelectorAll(".activity-chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
       activeStreamFilter = chip.getAttribute("data-stream");
-      fetchAndRenderLogs();
+      renderActivityStream();
     });
+  });
+
+  // Free-text search over the fetched event window (client-side, debounced).
+  const searchInput = document.getElementById("logs-search-input");
+  if (searchInput) {
+    let t = null;
+    searchInput.addEventListener("input", () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        logsSearchQuery = searchInput.value.trim().toLowerCase();
+        renderActivityStream();
+      }, 200);
+    });
+  }
+
+  // Agent chips render dynamically per fetch — delegate clicks on the container.
+  document.getElementById("logs-agent-chips")?.addEventListener("click", (e) => {
+    const chip = e.target.closest(".d4-ac");
+    if (!chip) return;
+    const agent = chip.getAttribute("data-agent");
+    activeAgentFilter = activeAgentFilter === agent ? "all" : agent;
+    renderActivityStream();
+  });
+
+  // Export the currently visible (filtered) events as CSV.
+  document.getElementById("export-logs-btn")?.addEventListener("click", () => {
+    if (!lastActivityEvents.length) {
+      showToast("Nothing to export.", "warning");
+      return;
+    }
+    const esc = (s) => `"${String(s ?? "").replace(/"/g, '""')}"`;
+    const rows = [["timestamp", "kind", "level", "agent", "message", "detail"]]
+      .concat(lastActivityEvents.map(ev => [ev.ts.toISOString(), ev.kind, ev.level, ev.agent, ev.title, ev.sub]));
+    const blob = new Blob([rows.map(r => r.map(esc).join(",")).join("\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `orbot-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   });
 }
 
@@ -3485,6 +3584,22 @@ async function fetchAgentHeartbeats() {
 
     // Logo core doubles as the service indicator: red ◆ when orbot_service is down.
     document.querySelector(".d4-logo .core")?.classList.toggle("offline", !svcOnline);
+
+    // Logs pane agent-health rail — same heartbeat data, list form. Only the
+    // 3 real heartbeat rows are shown (foreman/SP-sync live inside the service).
+    const healthEl = document.getElementById("logs-agent-health");
+    if (healthEl) {
+      const rows = [
+        { name: "orbot_service", label: "Orbot Service", role: "Railway daemon · foreman + SP sync", threshold: 120000, color: "#3ecf8e" },
+        { name: "scout", label: "Scout", role: "Gmail poller · order ingest", threshold: 600000, color: "#38bdf8" },
+        { name: "waybill_agent", label: "Waybill Agent", role: "PDF processing · compile", threshold: 600000, color: "#ffaa6b" },
+      ];
+      healthEl.innerHTML = rows.map(r => {
+        const hb = hbMap[r.name];
+        const online = isOnline(hb?.last_heartbeat, r.threshold);
+        return `<div class="d4-ag"><span class="dot" style="background:${online ? r.color : "#ff6666"}"></span><div class="m"><div class="n">${r.label}</div><div class="r">${r.role}</div></div><span class="t">${timeAgo(hb?.last_heartbeat)}</span></div>`;
+      }).join("");
+    }
 
     // --- Agents page cards ---
     const agentConfigs = [
@@ -4810,6 +4925,10 @@ window.addEventListener("DOMContentLoaded", async () => {
         fetchAndRenderPrintersAndQueue();
         fetchAndRenderMissionControl();
         fetchAndRenderOrders();
+      } else if (currentTab === "logs") {
+        fetchAgentHeartbeats();
+        fetchAndRenderLogs();
+        fetchAndRenderMissionControl();
       }
     }, 300000);
 
