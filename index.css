@@ -2954,6 +2954,10 @@ tr.d4-orow.open td { background: var(--card-2); }
 .d4-vsep { width: 1px; height: 22px; background: var(--line-2); margin: 0 2px; }
 .d4-batchbox { display: flex; align-items: center; }
 .d4-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+/* Action group placed inside a toolbar row: pin right, match control heights */
+.d4-tools > .d4-actgrp { margin-left: auto; }
+.d4-tools > .d4-actgrp .d4-btn.flat { padding: 6px 12px; }
+.d4-tools > .d4-actgrp .d4-btn.icononly { padding: 6px 8px; }
 .d4-searchbar { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 0 11px; flex: 1; min-width: 220px; max-width: 340px; position: relative; }
 .d4-searchbar:focus-within { border-color: var(--line-2); }
 .d4-searchbar .material-symbols-outlined, .d4-searchbar svg { font-size: 14px; width: 14px; height: 14px; color: var(--ink-4); flex-shrink: 0; }
@@ -3033,12 +3037,54 @@ button.omd-pcard { font: inherit; text-align: left; width: 100%; }
 .d4-btn.estop:hover { background: rgba(255, 102, 102, 0.2); color: var(--red); }
 @keyframes d4estop { 50% { box-shadow: 0 0 14px rgba(255, 102, 102, 0.35); } }
 .d4-cmd { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 14px; }
-.d4-cd { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; min-width: 0; }
-.d4-cd .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.d4-cd .nm { font: 600 12px var(--font-body); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d4-cd { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.d4-cd .l { min-width: 0; flex: 1; }
+.d4-cd .top { display: flex; align-items: center; gap: 8px; }
+.d4-cd .nm { font: 600 12.5px var(--font-title); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .d4-cd .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
-.d4-cd .st { font: 600 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; }
-.d4-cd .tm { font: 400 9.5px var(--font-mono); color: var(--ink-4); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d4-cd .sub { display: flex; align-items: center; gap: 6px; margin-top: 5px; padding-left: 16px; min-width: 0; }
+.d4-cd .sub > * + *::before { content: "·"; margin-right: 6px; color: var(--ink-4); }
+.d4-cd .st { font: 500 10px var(--font-mono); letter-spacing: 0.04em; white-space: nowrap; }
+.d4-cd .tm { font: 400 10px var(--font-mono); color: var(--ink-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d4-cd .act { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 7px 13px; border-radius: 9px; background: transparent; border: 1px solid var(--line-2); color: var(--ink-2); font: 600 12px var(--font-title); cursor: pointer; white-space: nowrap; transition: background 0.15s, border-color 0.15s; }
+.d4-cd .act .material-symbols-outlined { font-size: 14px; width: 14px; height: 14px; }
+.d4-cd .act:disabled { opacity: 0.45; cursor: default; }
+.d4-cd .act.cyan { color: var(--cyan); border-color: rgba(56, 189, 248, 0.4); }
+.d4-cd .act.cyan:hover { background: rgba(56, 189, 248, 0.08); }
+.d4-cd .act.green { color: var(--green); border-color: rgba(62, 207, 142, 0.4); }
+.d4-cd .act.green:hover { background: var(--green-dim); }
+.d4-cd .act.peach { color: var(--peach); border-color: rgba(255, 170, 107, 0.4); }
+.d4-cd .act.peach:hover { background: rgba(255, 170, 107, 0.08); }
+.d4-cd .act.blue { color: var(--blue); border-color: rgba(126, 166, 232, 0.4); }
+.d4-cd .act.blue:hover { background: rgba(126, 166, 232, 0.08); }
+
+/* printers page head meta + amber action */
+.d4-phead h2 .meta { font: 500 12px var(--font-mono); color: var(--ink-3); letter-spacing: 0; margin-left: 4px; }
+.d4-btn.amber { color: var(--amber); border-color: rgba(251, 191, 36, 0.45); background: rgba(251, 191, 36, 0.06); }
+.d4-btn.amber:hover { background: rgba(251, 191, 36, 0.14); color: var(--amber); }
+
+/* printers fault banner */
+.d4-faultbar { display: flex; align-items: center; gap: 14px; margin-top: 14px; padding: 12px 16px; border-radius: 12px; background: rgba(255, 102, 102, 0.06); border: 1px solid rgba(255, 102, 102, 0.35); }
+.d4-faultbar .lbl { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; color: var(--red); font: 700 13px var(--font-title); }
+.d4-faultbar .lbl .material-symbols-outlined { font-size: 16px; width: 16px; height: 16px; }
+.d4-faultbar .msgs { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px 20px; list-style: none; margin: 0; padding: 0; font: 500 12px var(--font-mono); color: var(--ink-2); }
+.d4-faultbar .msgs strong { color: var(--ink); font-weight: 600; }
+.d4-faultbar .act { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 7px 14px; border-radius: 9px; background: transparent; border: 1px solid rgba(255, 102, 102, 0.5); color: var(--red); font: 600 12px var(--font-title); cursor: pointer; white-space: nowrap; }
+.d4-faultbar .act:hover { background: rgba(255, 102, 102, 0.12); }
+.d4-faultbar .act .material-symbols-outlined { font-size: 14px; width: 14px; height: 14px; }
+
+/* fleet state filter chips */
+.d4-pfilter { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.d4-pfilter .chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 15px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); color: var(--ink-3); font: 600 12px var(--font-title); cursor: pointer; transition: color 0.15s, border-color 0.15s, background 0.15s; }
+.d4-pfilter .chip .ct { font: 500 10.5px var(--font-mono); color: var(--ink-4); }
+.d4-pfilter .chip:hover { color: var(--ink-2); border-color: var(--line-2); }
+.d4-pfilter .chip.active { color: var(--green); border-color: rgba(62, 207, 142, 0.45); background: var(--green-dim); }
+.d4-pfilter .chip.active .ct { color: var(--green); }
+.d4-pfilter .chip.fault { color: var(--red); }
+.d4-pfilter .chip.fault .ct { color: rgba(255, 102, 102, 0.6); }
+.d4-pfilter .chip.fault:hover { color: var(--red); border-color: rgba(255, 102, 102, 0.35); }
+.d4-pfilter .chip.fault.active { color: var(--red); border-color: rgba(255, 102, 102, 0.45); background: rgba(255, 102, 102, 0.08); }
+.d4-pfilter .chip.fault.active .ct { color: var(--red); }
 .d4-errlist { list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--ink-2); }
 .d4-errlist li strong { color: var(--ink); font-weight: 600; }
 .d4-opsgrid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; margin-top: 14px; align-items: start; }

@@ -5246,6 +5246,28 @@ function renderGanttChart(printers, queue, jobs) {
     <div class="flex flex-col">${rowsHtml}</div>`;
 }
 
+// Fleet state filter (Printers pane chips): all | printing | idle | fault
+let printersFleetFilter = "all";
+
+function printerFilterState(p) {
+  const s = (p.state || "").toLowerCase();
+  if (!p.online || s.includes("error")) return "fault";
+  if (s === "printing" || s === "paused" || s.includes("starting")) return "printing";
+  return "idle";
+}
+
+function applyPrintersFleetFilter() {
+  const grid = document.getElementById("printers-grid");
+  if (grid) {
+    grid.querySelectorAll(".d4-pcard[data-pstate]").forEach(card => {
+      card.style.display = (printersFleetFilter === "all" || card.dataset.pstate === printersFleetFilter) ? "" : "none";
+    });
+  }
+  document.querySelectorAll("#printers-filter .chip").forEach(chip => {
+    chip.classList.toggle("active", chip.dataset.pfilter === printersFleetFilter);
+  });
+}
+
 async function fetchAndRenderPrintersAndQueue() {
   if (!supabaseClient) return;
 
@@ -5271,6 +5293,10 @@ async function fetchAndRenderPrintersAndQueue() {
     ]);
 
     if (printersError) throw printersError;
+
+    // Page head machine count
+    const headCountEl = document.getElementById("printers-head-count");
+    if (headCountEl) headCountEl.innerText = `${(printers || []).length} machines`;
 
     // Update printer error notification boxes
     const offlineOrErrorPrinters = (printers || []).filter(p => !p.online || (p.state && p.state.toLowerCase().includes("error")));
@@ -5387,7 +5413,7 @@ async function fetchAndRenderPrintersAndQueue() {
           : "";
 
         return `
-          <div class="d4-pcard ${cardAccentClass}${!p.online ? " pt-card-offline" : ""}">
+          <div class="d4-pcard ${cardAccentClass}${!p.online ? " pt-card-offline" : ""}" data-pstate="${printerFilterState(p)}">
             <div class="flex justify-between items-center gap-2">
               <div class="flex items-center gap-2.5 min-w-0">
                 <div class="pt-icon" style="--pt-color:${stateColor}; --pt-soft:${stateColor}1f; --pt-line:${stateColor}47;">
@@ -5444,7 +5470,16 @@ async function fetchAndRenderPrintersAndQueue() {
       }).join("");
     };
 
-    if (printersContainer) printersContainer.innerHTML = renderPrintersHtml("main-");
+    if (printersContainer) {
+      printersContainer.innerHTML = renderPrintersHtml("main-");
+      const counts = { all: (printers || []).length, printing: 0, idle: 0, fault: 0 };
+      (printers || []).forEach(p => { counts[printerFilterState(p)]++; });
+      ["all", "printing", "idle", "fault"].forEach(k => {
+        const el = document.getElementById(`pfilter-count-${k}`);
+        if (el) el.innerText = counts[k];
+      });
+      applyPrintersFleetFilter();
+    }
     if (overviewPrintersContainer) overviewPrintersContainer.innerHTML = renderFleetBaysHtml();
 
     if (queueError) throw queueError;
@@ -5531,6 +5566,13 @@ async function fetchAndRenderPrintersAndQueue() {
 }
 
 function setupPrinterControls() {
+  document.getElementById("printers-filter")?.addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip");
+    if (!chip || !chip.dataset.pfilter) return;
+    printersFleetFilter = chip.dataset.pfilter;
+    applyPrintersFleetFilter();
+  });
+
   const syncButtons = [
     document.getElementById("overview-printers-btn-sync"),
     document.getElementById("printers-btn-sync")

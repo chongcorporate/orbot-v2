@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.16.8">
+  <link rel="stylesheet" href="index.css?v=1.17.1">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -632,11 +632,6 @@
             <div class="hidden d4-batchbox" id="batch-output-box">
               <a href="#" target="_blank" class="d4-btn" id="batch-download-link"><span class="material-symbols-outlined">download</span> Master PDF</a>
             </div>
-            <div class="d4-actgrp" role="group" aria-label="Order actions">
-              <span class="glabel">Orders</span>
-              <button class="d4-btn flat" id="orders-btn-complete-all"><span class="material-symbols-outlined">done_all</span> Complete All</button>
-              <button class="d4-btn flat icononly" id="refresh-orders-btn" title="Refresh"><span class="material-symbols-outlined">refresh</span></button>
-            </div>
           </div>
         </div>
 
@@ -663,6 +658,11 @@
             <button class="filter-btn" data-status="printed">Printed</button>
             <button class="filter-btn" data-status="completed">Completed</button>
             <button class="filter-btn" data-status="hold">Hold</button>
+          </div>
+          <div class="d4-actgrp" role="group" aria-label="Order actions">
+            <span class="glabel">Orders</span>
+            <button class="d4-btn flat" id="orders-btn-complete-all"><span class="material-symbols-outlined">done_all</span> Complete All</button>
+            <button class="d4-btn flat icononly" id="refresh-orders-btn" title="Refresh"><span class="material-symbols-outlined">refresh</span></button>
           </div>
         </div>
 
@@ -1313,61 +1313,68 @@
         <!-- Page head -->
         <div class="d4-phead">
           <div>
-            <h2>Printers</h2>
-            <div class="sub">Printer fleet &amp; automation agents, unified</div>
+            <h2>Printers <span class="meta"><span id="printers-head-count">—</span> · SimplyPrint linked</span></h2>
           </div>
           <div class="acts">
             <a href="https://simplyprint.io/panel/printers" target="_blank" class="d4-btn"><span class="material-symbols-outlined">open_in_new</span> SimplyPrint</a>
             <button class="d4-btn" id="printers-btn-sync"><span class="material-symbols-outlined">refresh</span> Sync API</button>
             <button class="d4-btn" id="printers-btn-ready-all"><span class="material-symbols-outlined">done_all</span> Ready All</button>
-            <button class="d4-btn" id="printers-btn-clear-cycles"><span class="material-symbols-outlined">restart_alt</span> Clear Cycles</button>
-            <button class="d4-btn estop" id="printers-btn-estop-all"><span class="material-symbols-outlined">emergency_home</span> E-STOP ALL</button>
+            <button class="d4-btn amber" id="printers-btn-clear-cycles"><span class="material-symbols-outlined">restart_alt</span> Clear Cycles</button>
+            <button class="d4-btn estop" id="printers-btn-estop-all"><span class="material-symbols-outlined">warning</span> E-STOP ALL</button>
           </div>
         </div>
 
-        <!-- Command strip: service + agents heartbeat cards -->
+        <!-- Printer connection fault banner -->
+        <div class="d4-faultbar hidden" id="printers-error-box">
+          <span class="lbl"><span class="material-symbols-outlined">warning</span>Fault:</span>
+          <ul class="msgs" id="printers-error-list"></ul>
+          <button class="act" onclick="document.getElementById('printers-btn-sync')?.click()"><span class="material-symbols-outlined">refresh</span> Re-sync</button>
+        </div>
+
+        <!-- Command strip: service + agents heartbeat cards with inline triggers -->
         <div class="d4-cmd">
           <div class="d4-cd">
-            <div class="top"><span class="nm">Orbot Service</span><div class="status-light-offline" id="ops-strip-hb-orbot_service-dot"></div></div>
-            <div class="st" id="ops-strip-hb-orbot_service-text">Offline</div>
-            <div class="tm" id="ops-strip-hb-orbot_service-time">Railway daemon</div>
+            <div class="l">
+              <div class="top"><div class="status-light-offline" id="ops-strip-hb-orbot_service-dot"></div><span class="nm">Orbot Service</span></div>
+              <div class="sub"><span class="tm">Railway</span><span class="st" id="ops-strip-hb-orbot_service-text">Offline</span></div>
+            </div>
           </div>
           <div class="d4-cd" title="Polls orders@gmail.com every 5 min. Parses Shopee/Lazada Time-to-Ship emails with Gemini and ingests orders automatically.">
-            <div class="top"><span class="nm" style="color:var(--cyan)">Scout</span><div class="dot" id="agents-hb-scout-dot"></div></div>
-            <div class="st" id="agents-hb-scout-text" style="color:#ff6666">Offline</div>
-            <div class="tm" id="agents-hb-scout-time">—</div>
+            <div class="l">
+              <div class="top"><div class="dot" id="agents-hb-scout-dot"></div><span class="nm">Scout</span></div>
+              <div class="sub"><span class="st" id="agents-hb-scout-text" style="color:#ff6666">Offline</span><span class="tm" id="agents-hb-scout-time">—</span></div>
+            </div>
+            <button class="act cyan" id="ctrl-trigger-scout"><span class="material-symbols-outlined">play_arrow</span> Scan</button>
           </div>
           <div class="d4-cd" title="Resolves pending order items to print files and dispatches them to the correct printer group via SimplyPrint queue. Runs inside the Orbot service.">
-            <div class="top"><span class="nm" style="color:var(--green)">Foreman</span><div class="dot" id="agents-hb-foreman-dot"></div></div>
-            <div class="st" id="agents-hb-foreman-text" style="color:#ff6666">Offline</div>
-            <div class="tm" id="agents-hb-foreman-time">—</div>
+            <div class="l">
+              <div class="top"><div class="dot" id="agents-hb-foreman-dot"></div><span class="nm">Foreman</span></div>
+              <div class="sub"><span class="st" id="agents-hb-foreman-text" style="color:#ff6666">Offline</span><span class="tm" id="agents-hb-foreman-time">—</span></div>
+            </div>
+            <button class="act green" id="ctrl-trigger-foreman"><span class="material-symbols-outlined">play_arrow</span> Dispatch</button>
           </div>
           <div class="d4-cd" title="Processes waybill PDFs, classifies pages, stitches seal stickers, and compiles master print batches. Uploads to Google Drive.">
-            <div class="top"><span class="nm" style="color:var(--peach)">Waybill Agent</span><div class="dot" id="agents-hb-waybill-dot"></div></div>
-            <div class="st" id="agents-hb-waybill-text" style="color:#ff6666">Offline</div>
-            <div class="tm" id="agents-hb-waybill-time">—</div>
+            <div class="l">
+              <div class="top"><div class="dot" id="agents-hb-waybill-dot"></div><span class="nm">Waybill</span></div>
+              <div class="sub"><span class="st" id="agents-hb-waybill-text" style="color:#ff6666">Offline</span><span class="tm" id="agents-hb-waybill-time">—</span></div>
+            </div>
+            <button class="act peach" id="ctrl-trigger-compile"><span class="material-symbols-outlined">play_arrow</span> Compile</button>
           </div>
           <div class="d4-cd" title="Syncs printer states, print queue, and job telemetry from SimplyPrint API into Supabase every 5 minutes. Runs inside the Orbot service.">
-            <div class="top"><span class="nm" style="color:var(--blue)">SP Telemetry</span><div class="dot" id="agents-hb-spsync-dot" style="background:#7ea6e8"></div></div>
-            <div class="st" id="agents-hb-spsync-text" style="color:#7ea6e8">Every 5m</div>
-            <div class="tm" id="agents-hb-spsync-time">—</div>
+            <div class="l">
+              <div class="top"><div class="dot" id="agents-hb-spsync-dot" style="background:#7ea6e8"></div><span class="nm">SP Telemetry</span></div>
+              <div class="sub"><span class="st" id="agents-hb-spsync-text" style="color:#7ea6e8">Every 5m</span><span class="tm" id="agents-hb-spsync-time">—</span></div>
+            </div>
+            <button class="act blue" id="ctrl-trigger-sync-simplyprint"><span class="material-symbols-outlined">refresh</span> Sync</button>
           </div>
         </div>
 
-        <!-- Quick agent triggers -->
-        <div class="d4-ops" style="margin-top:12px">
-          <div class="tier small" style="grid-template-columns:repeat(4,1fr)">
-            <button class="d4-opbtn" id="ctrl-trigger-scout"><span class="material-symbols-outlined">mail</span>Trigger Scan</button>
-            <button class="d4-opbtn go" id="ctrl-trigger-foreman"><span class="material-symbols-outlined">print</span>Trigger Dispatch</button>
-            <button class="d4-opbtn" id="ctrl-trigger-compile"><span class="material-symbols-outlined">local_shipping</span>Compile Batch</button>
-            <button class="d4-opbtn" id="ctrl-trigger-sync-simplyprint"><span class="material-symbols-outlined">refresh</span>Sync Now</button>
-          </div>
-        </div>
-
-        <!-- Printer connection alerts -->
-        <div class="d4-holdpanel hidden" id="printers-error-box" style="margin-top:12px">
-          <div class="ttl"><span class="material-symbols-outlined">error_outline</span><span>Printer Connection Alerts</span></div>
-          <ul class="d4-errlist" id="printers-error-list"></ul>
+        <!-- Fleet state filter chips -->
+        <div class="d4-pfilter" id="printers-filter">
+          <button class="chip active" data-pfilter="all">All <span class="ct" id="pfilter-count-all">0</span></button>
+          <button class="chip" data-pfilter="printing">Printing <span class="ct" id="pfilter-count-printing">0</span></button>
+          <button class="chip" data-pfilter="idle">Idle <span class="ct" id="pfilter-count-idle">0</span></button>
+          <button class="chip fault" data-pfilter="fault">Fault <span class="ct" id="pfilter-count-fault">0</span></button>
         </div>
 
         <!-- Fleet + queue -->
@@ -1898,6 +1905,6 @@
     </button>
   </div>
 
-  <script src="app.js?v=1.17.0"></script>
+  <script src="app.js?v=1.17.1"></script>
 </body>
 </html>
