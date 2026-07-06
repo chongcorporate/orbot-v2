@@ -3213,3 +3213,19 @@ tr.d4-orow.open td { background: var(--card-2); }
 .d4-iconbtn.danger { color: var(--red); }
 .d4-iconbtn.danger:hover { background: rgba(255, 102, 102, 0.12); border-color: rgba(255, 102, 102, 0.35); }
 .d4-holdpanel .hold-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--inset); border: 1px solid var(--line); border-radius: 9px; padding: 10px 13px; }
+
+/* D4 · products support */
+.d4-warnbanner { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid rgba(251, 191, 36, 0.35); border-left: 3px solid var(--amber); border-radius: 11px; padding: 12px 16px; margin-top: 12px; }
+.d4-warnbanner.hidden { display: none; }
+.d4-warnbanner > .material-symbols-outlined, .d4-warnbanner > svg { color: var(--amber); font-size: 18px; width: 18px; height: 18px; flex-shrink: 0; }
+.d4-warnbanner .bd { flex: 1; min-width: 0; }
+.d4-warnbanner .t { font: 600 13px var(--font-body); color: var(--ink); }
+.d4-warnbanner .s { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+.d4-lnk { border: none; background: none; color: var(--green); font: 600 10.5px var(--font-body); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
+.d4-lnk:hover { text-decoration: underline; }
+.d4-prodsplit { grid-template-columns: minmax(0, 1fr) 480px; }
+.omd-pcard.link { cursor: pointer; text-decoration: none; position: relative; }
+.omd-pcard.link:hover { border-color: var(--ink-4); background: var(--card-2); }
+.omd-pcard.link .pgo { font-size: 11px; width: 11px; height: 11px; color: var(--ink-4); margin-left: auto; flex-shrink: 0; }
+.omd-pcard.link:hover .pgo { color: var(--ink); }
+button.omd-pcard { font: inherit; text-align: left; width: 100%; }

@@ -2305,9 +2305,7 @@ function updateProductsAttentionUI(productsList) {
 
   document.querySelectorAll(".catalog-attn-btn").forEach(btn => {
     const isActive = btn.getAttribute("data-attn") === catalogAttentionFilter;
-    btn.classList.toggle("bg-primary/15", isActive);
-    btn.classList.toggle("text-primary", isActive);
-    btn.classList.toggle("text-outline", !isActive);
+    btn.classList.toggle("active", isActive);
   });
 
   const banner = document.getElementById("products-unmapped-banner");
@@ -2317,10 +2315,8 @@ function updateProductsAttentionUI(productsList) {
     if (unmappedVars > 0) {
       bannerTitle.textContent = `${unmappedVars} listing variation${unmappedVars !== 1 ? "s" : ""} ${unmappedVars !== 1 ? "aren't" : "isn't"} linked to a catalog SKU`;
       banner.classList.remove("hidden");
-      banner.classList.add("flex");
     } else {
       banner.classList.add("hidden");
-      banner.classList.remove("flex");
     }
   }
 }
@@ -2355,7 +2351,7 @@ function renderProductsMasterDetail(productsList) {
           <div class="omd-pname truncate" title="${escapeHtml(p.product_base_name)}">${escapeHtml(p.product_base_name)}</div>
         </div>
         <div class="omd-cat-cell"><b>${escapeHtml(p.brand_name)}</b><br>${escapeHtml(p.product_category)}</div>
-        <div class="text-[10.5px] font-data-mono ${isLowStock ? "text-warning" : "text-on-surface-variant/70"}"${isLowStock ? ` title="Has variant(s) with stock ≤ 5"` : ""}>${p.variations.length} var${p.variations.length !== 1 ? "s" : ""}${isLowStock ? ` <span class="material-symbols-outlined" style="font-size:11px; vertical-align:-2px;">inventory</span>` : ""}</div>
+        <div class="d4-mono10"${isLowStock ? ` style="color:var(--amber)" title="Has variant(s) with stock ≤ 5"` : ""}>${p.variations.length} var${p.variations.length !== 1 ? "s" : ""}${isLowStock ? ` <span class="material-symbols-outlined" style="font-size:11px; vertical-align:-2px;">inventory</span>` : ""}</div>
         <div class="omd-plat-dots"><div class="omd-plat-dots-row">${dotsHtml}</div><span class="omd-cov-label">${platformCount}/5</span></div>
         <div class="omd-subtotal-cell">${priceText}</div>
         <div class="omd-issue-cell">${issueIcon}</div>
@@ -2467,7 +2463,7 @@ async function fetchRecentOrdersForProduct(product) {
         <div class="omd-variant-row" style="justify-content:space-between;">
           <span class="omd-vsku" style="width:70px; flex-shrink:0;">${escapeHtml(order.platform_order_id || "—")}</span>
           <span class="omd-vname" style="flex:1;">${escapeHtml(order.customer_name || "—")} · ${escapeHtml(item.variant_sku || "")}</span>
-          <span class="badge ${statusClass}" style="font-size:9px; padding:2px 8px; flex-shrink:0;">${escapeHtml(order.overall_order_status || "pending")}</span>
+          <span class="d4-stchip sm ${d4StatusChipCls(statusClass)}" style="flex-shrink:0;"><i></i>${escapeHtml(order.overall_order_status || "pending")}</span>
           <span class="omd-vfile" style="width:70px; text-align:right; flex-shrink:0;">${relativeTime(order.order_timestamp || order.created_at)}</span>
         </div>
       `;
@@ -2516,14 +2512,37 @@ function buildProductDetailPanel(product) {
   if (listings.length > 0) {
     listingSectionHtml = listings.map(listing => {
       const platformCount = LISTING_PLATFORMS.filter(pl => !!listing[pl.key]).length;
+      const SHOPEE_SELLER_DOMAINS = { shopee_my: "seller.shopee.com.my", shopee_sg: "seller.shopee.sg", shopee_ph: "seller.shopee.com.ph", shopee_th: "seller.shopee.co.th" };
       const platformCardsHtml = LISTING_PLATFORMS.map(pl => {
         const val = listing[pl.key];
+        if (!val) {
+          return `
+            <div class="omd-pcard off">
+              <div class="pcolor" style="background:${pl.color}"></div>
+              <span class="plabel">${pl.label}</span>
+              <span class="pval">not listed</span>
+            </div>
+          `;
+        }
+        if (SHOPEE_SELLER_DOMAINS[pl.key]) {
+          const url = `https://${SHOPEE_SELLER_DOMAINS[pl.key]}/portal/product/${encodeURIComponent(val)}`;
+          return `
+            <a class="omd-pcard link" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open in Shopee Seller Centre">
+              <div class="pcolor" style="background:${pl.color}"></div>
+              <span class="plabel">${pl.label}</span>
+              <span class="pval">${escapeHtml(val)}</span>
+              <span class="material-symbols-outlined pgo">open_in_new</span>
+            </a>
+          `;
+        }
+        // Lazada has no deterministic seller-centre URL from the item id — copy it instead.
         return `
-          <div class="omd-pcard${val ? "" : " off"}">
+          <button class="omd-pcard link btn-copy-platform-id" data-platform-id="${escapeHtml(val)}" title="Copy Lazada item ID" type="button">
             <div class="pcolor" style="background:${pl.color}"></div>
             <span class="plabel">${pl.label}</span>
-            <span class="pval">${val ? escapeHtml(val) : "not listed"}</span>
-          </div>
+            <span class="pval">${escapeHtml(val)}</span>
+            <span class="material-symbols-outlined pgo">content_copy</span>
+          </button>
         `;
       }).join("");
 
@@ -2565,7 +2584,7 @@ function buildProductDetailPanel(product) {
               <div class="omd-price-div"></div>
               <div class="pb"><span class="pl">SGD</span><span class="pv">${listing.price_sgd != null ? Number(listing.price_sgd).toFixed(2) : "—"}</span></div>
             </div>
-            <span class="badge ${listing.is_active ? "completed" : "hold"}" style="margin-left:auto; font-size:9px; padding:3px 9px;">${listing.is_active ? "Active" : "Off"}</span>
+            <span class="d4-stchip sm ${listing.is_active ? "done" : "mut"}" style="margin-left:auto;"><i></i>${listing.is_active ? "Active" : "Off"}</span>
             <span class="omd-cov-label">${platformCount}/5 platforms</span>
           </div>
           <div class="omd-platform-grid">${platformCardsHtml}</div>
@@ -2602,12 +2621,12 @@ function buildProductDetailPanel(product) {
         <div class="omd-meta" style="margin-top:4px;">${escapeHtml(product.brand_name)} · ${escapeHtml(product.product_category)}</div>
       </div>
       <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-        ${picsUrl ? `<a href="${escapeHtml(sanitizeUrl(picsUrl))}" target="_blank" rel="noopener" class="p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center" title="Open product photos (Google Drive)"><span class="material-symbols-outlined text-[16px]">photo_library</span></a>` : ""}
-        <button class="btn-product-details p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center cursor-pointer" data-product-id="${product.id}" title="View Full Details">
-          <span class="material-symbols-outlined text-[16px]">info</span>
+        ${picsUrl ? `<a href="${escapeHtml(sanitizeUrl(picsUrl))}" target="_blank" rel="noopener" class="d4-iconbtn" title="Open product photos (Google Drive)"><span class="material-symbols-outlined">photo_library</span></a>` : ""}
+        <button class="d4-iconbtn btn-product-details" data-product-id="${product.id}" title="View Full Details">
+          <span class="material-symbols-outlined">info</span>
         </button>
-        <button class="btn-catalog-edit p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center cursor-pointer" data-product-id="${product.id}" title="Edit Product">
-          <span class="material-symbols-outlined text-[16px]">edit</span>
+        <button class="d4-iconbtn btn-catalog-edit" data-product-id="${product.id}" title="Edit Product">
+          <span class="material-symbols-outlined">edit</span>
         </button>
       </div>
     </div>
@@ -2628,8 +2647,8 @@ function buildProductDetailPanel(product) {
 
     <div class="omd-dp-footer">
       <div class="omd-dp-footer-actions">
-        <div class="btn-secondary btn-add-variant-for-product" data-product-id="${product.id}" style="cursor:pointer;"><span class="material-symbols-outlined text-sm">add</span>Add Variant</div>
-        <div class="btn-primary btn-fix-mapping${hasUnmappedVars ? "" : " off"}" style="cursor:pointer;"><span class="material-symbols-outlined text-sm">link</span>Fix Mapping</div>
+        <div class="d4-btn btn-add-variant-for-product" data-product-id="${product.id}"><span class="material-symbols-outlined">add</span>Add Variant</div>
+        <div class="d4-btn ${hasUnmappedVars ? "pri" : ""} btn-fix-mapping${hasUnmappedVars ? "" : " off"}"><span class="material-symbols-outlined">link</span>Fix Mapping</div>
       </div>
     </div>
   `;
@@ -2678,6 +2697,16 @@ function bindProductDetailPanelEvents(product) {
       for (const f of files) {
         await window.redispatchPrintFile(f.simplyprint_file_id, f.print_file_name, null, btn);
       }
+    });
+  });
+
+  // Lazada platform tiles copy their raw item id (no deterministic seller URL).
+  panel.querySelectorAll(".btn-copy-platform-id").forEach(btn => {
+    btn.addEventListener("click", () => {
+      navigator.clipboard.writeText(btn.getAttribute("data-platform-id") || "").then(
+        () => showToast("Lazada item ID copied.", "success"),
+        () => showToast("Copy failed.", "error")
+      );
     });
   });
 
@@ -7575,12 +7604,8 @@ function setupListingsTab() {
 
   document.querySelectorAll(".listings-filter-btn").forEach(btn => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".listings-filter-btn").forEach(b => {
-        b.classList.remove("bg-primary/15", "text-primary");
-        b.classList.add("text-outline");
-      });
-      btn.classList.add("bg-primary/15", "text-primary");
-      btn.classList.remove("text-outline");
+      document.querySelectorAll(".listings-filter-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
       listingsActiveFilter = btn.dataset.filter;
       renderListingsFromCache();
     });
@@ -7588,12 +7613,8 @@ function setupListingsTab() {
 
   document.querySelectorAll(".listings-platform-btn").forEach(btn => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".listings-platform-btn").forEach(b => {
-        b.classList.remove("bg-primary/15", "text-primary");
-        b.classList.add("text-outline");
-      });
-      btn.classList.add("bg-primary/15", "text-primary");
-      btn.classList.remove("text-outline");
+      document.querySelectorAll(".listings-platform-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
       listingsPlatformFilter = btn.dataset.platform;
       renderListingsFromCache();
     });
