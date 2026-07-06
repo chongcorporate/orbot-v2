@@ -3321,3 +3321,49 @@ button.omd-pcard { font: inherit; text-align: left; width: 100%; }
 .launch-step.done { color: var(--ink-3); }
 .launch-step.done .ls-dot { background: var(--green-dim); border-color: rgba(62, 207, 142, 0.4); color: var(--green); }
 .launch-step-line { width: 22px; height: 1px; background: var(--line-2); }
+
+/* ═══════════════ D4 · settings ═══════════════ */
+.d4-setgrid { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
+.d4-snav { display: flex; flex-direction: column; gap: 3px; position: sticky; top: 80px; }
+.d4-snav .settings-nav-btn { display: flex; align-items: center; gap: 9px; padding: 9px 13px; border-radius: 9px; border: 1px solid transparent; background: none; color: var(--ink-3); font: 500 12.5px var(--font-body); cursor: pointer; text-align: left; }
+.d4-snav .settings-nav-btn:hover { color: var(--ink-2); background: var(--card); }
+.d4-snav .settings-nav-btn.active { color: var(--ink); background: var(--card); border-color: var(--line); }
+.d4-snav .settings-nav-btn .material-symbols-outlined, .d4-snav .settings-nav-btn svg { font-size: 14px; width: 14px; height: 14px; color: var(--ink-4); }
+.d4-snav .settings-nav-btn.active .material-symbols-outlined, .d4-snav .settings-nav-btn.active svg { color: var(--green); }
+.d4-setbody { padding: 16px 18px; display: flex; flex-direction: column; gap: 16px; }
+.d4-frow { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 14px; align-items: start; }
+.d4-frow .lb label, .d4-trow .lb label { font: 600 12px var(--font-body); color: var(--ink); display: block; }
+.d4-frow .lb .ds, .d4-trow .lb .ds { font: 400 10.5px var(--font-mono); color: var(--ink-4); margin-top: 2px; display: block; }
+.d4-frow .ctl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.d4-inp { display: flex; align-items: center; gap: 4px; background: var(--inset); border: 1px solid var(--line); border-radius: 8px; padding: 0 6px 0 0; flex: 1; min-width: 0; }
+.d4-inp:focus-within { border-color: var(--line-2); }
+.d4-inp input { flex: 1; border: none; background: none; color: var(--ink); font: 500 12px var(--font-mono); padding: 9px 12px; outline: none; min-width: 0; }
+.d4-inp input::placeholder { color: var(--ink-4); }
+.d4-inp .act { border: none; background: none; color: var(--ink-4); font: 600 9px var(--font-mono); letter-spacing: 0.1em; cursor: pointer; padding: 4px 6px; border-radius: 5px; flex-shrink: 0; }
+.d4-inp .act:hover { color: var(--ink); background: var(--card-2); }
+.d4-conn { font: 600 9.5px var(--font-mono); letter-spacing: 0.08em; padding: 3px 9px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+.d4-conn.ok { color: var(--green); border-color: rgba(62, 207, 142, 0.35); background: var(--green-dim); }
+.d4-conn.bad { color: var(--red); border-color: rgba(255, 102, 102, 0.35); background: rgba(255, 102, 102, 0.08); }
+.d4-conn.mut { color: var(--ink-4); border-color: var(--line-2); background: var(--card-2); }
+.d4-fcol { display: flex; flex-direction: column; gap: 7px; }
+.d4-fcol .lbrow { display: flex; align-items: center; justify-content: space-between; }
+.d4-cc { font: 500 10px var(--font-mono); color: var(--ink-4); }
+.d4-cc.over { color: var(--red); }
+.d4-tplinput { background: var(--inset) !important; border: 1px solid var(--line) !important; border-radius: 8px !important; color: var(--ink) !important; font: 500 12px var(--font-mono) !important; padding: 10px 12px !important; outline: none !important; width: 100%; }
+.d4-tplinput:focus { border-color: var(--line-2) !important; box-shadow: none !important; }
+.d4-tokens { display: flex; flex-wrap: wrap; gap: 6px; }
+.tpl-token { font: 500 10.5px var(--font-mono); color: var(--cyan); background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 2.5px 9px; cursor: pointer; }
+.tpl-token:hover { background: rgba(56, 189, 248, 0.16); }
+.d4-pvw { border: 1px dashed var(--line-2); border-radius: 10px; padding: 13px 15px; background: var(--inset); }
+.d4-pvw .pt { font: 600 9px var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-4); margin-bottom: 8px; }
+.d4-pvw .pv-title { font: 600 13.5px var(--font-body); color: var(--ink); }
+.d4-pvw .pv-desc { font-size: 12px; color: var(--ink-2); white-space: pre-wrap; margin-top: 6px; line-height: 1.6; }
+.d4-savebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--line); }
+.d4-savebar .ts { font: 400 10.5px var(--font-mono); color: var(--ink-4); }
+.d4-trow { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.d4-tglwrap { position: relative; display: inline-block; cursor: pointer; flex-shrink: 0; }
+.d4-tglwrap input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.d4-tglui { display: block; width: 38px; height: 21px; border-radius: 999px; background: var(--card-2); border: 1px solid var(--line-2); position: relative; transition: all 0.15s; }
+.d4-tglui:after { content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: var(--ink-3); transition: all 0.15s; }
+.d4-tglwrap input:checked + .d4-tglui { background: var(--green-dim); border-color: rgba(62, 207, 142, 0.5); }
+.d4-tglwrap input:checked + .d4-tglui:after { left: 19px; background: var(--green); }

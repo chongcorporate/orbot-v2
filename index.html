@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.15.6">
+  <link rel="stylesheet" href="index.css?v=1.15.7">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -1247,101 +1247,112 @@
       </section>
 
       <!-- Settings Pane -->
-      <section class="tab-content hidden w-full max-w-5xl mx-auto space-y-5" id="pane-settings">
-        <div>
-          <h2 class="font-headline-md text-headline-md font-bold text-on-surface">Settings</h2>
-          <p class="text-xs text-on-surface-variant mt-1">Connections, defaults &amp; Launch templates</p>
+      <section class="tab-content hidden d4-pane" id="pane-settings" style="max-width:1060px">
+        <div class="d4-phead">
+          <div>
+            <h2>Settings</h2>
+            <div class="sub">Connections, defaults &amp; Launch templates</div>
+          </div>
         </div>
 
-        <div class="grid grid-cols-12 gap-5 items-start">
+        <div class="d4-setgrid">
           <!-- Side nav -->
-          <div class="col-span-12 md:col-span-3 flex md:flex-col gap-1" id="settings-subnav">
+          <div class="d4-snav" id="settings-subnav">
             <button class="settings-nav-btn active" data-settings-section="conn">
-              <span class="material-symbols-outlined text-sm">link</span> API &amp; Connections
+              <span class="material-symbols-outlined">link</span> API &amp; Connections
             </button>
             <button class="settings-nav-btn" data-settings-section="templates">
-              <span class="material-symbols-outlined text-sm">rocket_launch</span> Launch Templates
+              <span class="material-symbols-outlined">rocket_launch</span> Launch Templates
             </button>
             <button class="settings-nav-btn" data-settings-section="prefs">
-              <span class="material-symbols-outlined text-sm">settings_applications</span> Preferences
+              <span class="material-symbols-outlined">settings_applications</span> Preferences
             </button>
           </div>
 
-          <div class="col-span-12 md:col-span-9 space-y-5">
+          <div class="d4-col" style="gap:14px">
             <!-- API & Connections -->
-            <div class="glass-panel p-5 space-y-4 settings-section" id="settings-section-conn">
-              <div class="flex items-center justify-between border-b border-outline-variant/10 pb-3">
-                <div>
-                  <h3 class="font-headline-sm text-headline-sm text-on-surface">API &amp; Connections</h3>
-                  <p class="text-xs text-on-surface-variant mt-0.5">Keys are stored in this browser only (localStorage)</p>
+            <div class="d4-card settings-section" id="settings-section-conn">
+              <div class="hd">
+                <h2>API &amp; Connections</h2>
+                <span class="cnt">stored in this browser only</span>
+              </div>
+              <div class="d4-setbody">
+                <div class="d4-frow">
+                  <div class="lb"><label for="setting-supabase-url">Supabase URL</label><span class="ds">Project REST endpoint</span></div>
+                  <div class="ctl">
+                    <div class="d4-inp"><input type="text" class="d4-in" id="setting-supabase-url" placeholder="https://your-project.supabase.co"><button type="button" class="act d4-copy-btn" data-copy-target="setting-supabase-url">COPY</button></div>
+                    <button type="button" class="d4-btn sm d4-test-btn" data-test="supabase">TEST</button>
+                    <span class="d4-conn mut" id="settings-test-supabase">—</span>
+                  </div>
+                </div>
+                <div class="d4-frow">
+                  <div class="lb"><label for="setting-supabase-key">Supabase Anon Key</label><span class="ds">RLS-gated public key</span></div>
+                  <div class="ctl">
+                    <div class="d4-inp"><input type="password" class="d4-in" id="setting-supabase-key" placeholder="eyJhbGciOi…"><button type="button" class="act d4-show-btn" data-show-target="setting-supabase-key">SHOW</button><button type="button" class="act d4-copy-btn" data-copy-target="setting-supabase-key">COPY</button></div>
+                  </div>
+                </div>
+                <div class="d4-frow">
+                  <div class="lb"><label for="setting-backend-url">Backend URL</label><span class="ds">Railway service</span></div>
+                  <div class="ctl">
+                    <div class="d4-inp"><input type="text" class="d4-in" id="setting-backend-url" placeholder="https://your-app.railway.app"><button type="button" class="act d4-copy-btn" data-copy-target="setting-backend-url">COPY</button></div>
+                    <button type="button" class="d4-btn sm d4-test-btn" data-test="backend">TEST</button>
+                    <span class="d4-conn mut" id="settings-test-backend">—</span>
+                  </div>
+                </div>
+                <div class="d4-frow">
+                  <div class="lb"><label for="setting-orbot-api-key">Orbot API Key</label><span class="ds">Sent as X-Orbot-Key</span></div>
+                  <div class="ctl">
+                    <div class="d4-inp"><input type="password" class="d4-in" id="setting-orbot-api-key" placeholder="shared secret"><button type="button" class="act d4-show-btn" data-show-target="setting-orbot-api-key">SHOW</button><button type="button" class="act d4-copy-btn" data-copy-target="setting-orbot-api-key">COPY</button></div>
+                  </div>
                 </div>
               </div>
-              <div class="flex flex-col gap-1.5">
-                <label for="setting-supabase-url" class="text-xs font-label-caps text-on-surface-variant uppercase">Supabase Project URL</label>
-                <input type="text" id="setting-supabase-url" placeholder="https://your-project.supabase.co" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
-              </div>
-              <div class="flex flex-col gap-1.5">
-                <label for="setting-supabase-key" class="text-xs font-label-caps text-on-surface-variant uppercase">Supabase Anon Key</label>
-                <input type="password" id="setting-supabase-key" placeholder="eyJhbGciOi..." class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
-              </div>
-              <div class="flex flex-col gap-1.5">
-                <label for="setting-backend-url" class="text-xs font-label-caps text-on-surface-variant uppercase">Backend URL (Railway)</label>
-                <input type="text" id="setting-backend-url" placeholder="https://your-app.railway.app" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
-              </div>
-              <div class="flex flex-col gap-1.5">
-                <label for="setting-orbot-api-key" class="text-xs font-label-caps text-on-surface-variant uppercase">Orbot API Key</label>
-                <input type="password" id="setting-orbot-api-key" placeholder="Shared secret sent as X-Orbot-Key to the backend" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-body-md">
-              </div>
-              <div class="flex justify-between items-center border-t border-outline-variant/10 pt-4">
-                <span class="text-xs text-on-surface-variant/70" id="settings-conn-saved-at"></span>
-                <button class="px-5 py-2 btn-primary rounded-lg font-label-caps" id="settings-save-btn">Save Connections</button>
+              <div class="d4-savebar">
+                <span class="ts" id="settings-conn-saved-at"></span>
+                <button class="d4-btn pri" id="settings-save-btn">Save Connections</button>
               </div>
             </div>
 
             <!-- Launch Templates -->
-            <div class="glass-panel p-5 space-y-4 settings-section hidden" id="settings-section-templates">
-              <div class="border-b border-outline-variant/10 pb-3">
-                <h3 class="font-headline-sm text-headline-sm text-on-surface">Launch Templates</h3>
-                <p class="text-xs text-on-surface-variant mt-0.5">Used by Launch when generating new product listings. Leave blank to use AI-generated copy by default.</p>
+            <div class="d4-card settings-section hidden" id="settings-section-templates">
+              <div class="hd">
+                <h2>Launch Templates</h2>
+                <span class="cnt">blank = AI-generated copy</span>
               </div>
-              <div class="flex flex-col gap-1.5">
-                <label for="setting-tpl-title" class="text-xs font-label-caps text-on-surface-variant uppercase">Listing title template</label>
-                <input type="text" id="setting-tpl-title" placeholder="{variant_types} for LEGO {theme} {set_name} ({set_number})" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-data-mono text-xs">
-                <div class="flex flex-wrap gap-1.5 mt-1" id="settings-tpl-title-tokens"></div>
+              <div class="d4-setbody">
+                <div class="d4-fcol">
+                  <div class="lbrow"><label class="d4-lb" for="setting-tpl-title" style="margin-bottom:0">Listing title template</label><span class="d4-cc" id="settings-tpl-title-count"></span></div>
+                  <input type="text" class="d4-in d4-tplinput" id="setting-tpl-title" placeholder="{variant_types} for LEGO {theme} {set_name} ({set_number})">
+                  <div class="d4-tokens" id="settings-tpl-title-tokens"></div>
+                </div>
+                <div class="d4-fcol">
+                  <div class="lbrow"><label class="d4-lb" for="setting-tpl-desc" style="margin-bottom:0">Description template</label><span class="d4-cc" id="settings-tpl-desc-count"></span></div>
+                  <textarea class="d4-in d4-tplinput" id="setting-tpl-desc" rows="7" placeholder="Display your LEGO {theme} {set_name} ({set_number}) in style!" style="resize:vertical"></textarea>
+                  <div class="d4-tokens" id="settings-tpl-desc-tokens"></div>
+                </div>
+                <div class="d4-pvw">
+                  <div class="pt">Live preview · sample data (75389 Dark Falcon)</div>
+                  <p class="pv-title" id="settings-tpl-preview-title">—</p>
+                  <p class="pv-desc" id="settings-tpl-preview-desc">—</p>
+                </div>
               </div>
-              <div class="flex flex-col gap-1.5">
-                <label for="setting-tpl-desc" class="text-xs font-label-caps text-on-surface-variant uppercase">Description template</label>
-                <textarea id="setting-tpl-desc" rows="7" placeholder="Display your LEGO {theme} {set_name} ({set_number}) in style!" class="w-full bg-surface-container border border-outline-variant/30 text-on-surface rounded-lg p-3 font-data-mono text-xs" style="resize:vertical"></textarea>
-                <div class="flex flex-wrap gap-1.5 mt-1" id="settings-tpl-desc-tokens"></div>
-              </div>
-              <div class="flex flex-col gap-1.5 bg-black/20 rounded-lg p-3 border border-outline-variant/10">
-                <span class="text-xs font-label-caps text-on-surface-variant uppercase">Live preview (sample data)</span>
-                <p class="text-sm text-on-surface" id="settings-tpl-preview-title">—</p>
-                <p class="text-xs text-on-surface-variant whitespace-pre-wrap" id="settings-tpl-preview-desc">—</p>
-              </div>
-              <div class="flex justify-between items-center border-t border-outline-variant/10 pt-4">
-                <span class="text-xs text-on-surface-variant/70" id="settings-tpl-saved-at"></span>
-                <button class="px-5 py-2 btn-primary rounded-lg font-label-caps" id="settings-tpl-save-btn">Save Templates</button>
+              <div class="d4-savebar">
+                <span class="ts" id="settings-tpl-saved-at"></span>
+                <button class="d4-btn pri" id="settings-tpl-save-btn">Save Templates</button>
               </div>
             </div>
 
             <!-- Preferences -->
-            <div class="glass-panel p-5 space-y-4 settings-section hidden" id="settings-section-prefs">
-              <div class="border-b border-outline-variant/10 pb-3">
-                <h3 class="font-headline-sm text-headline-sm text-on-surface">Preferences</h3>
-              </div>
-              <div class="flex items-center justify-between py-1">
-                <div class="flex flex-col gap-0.5">
-                  <span class="text-xs font-label-caps text-on-surface-variant uppercase">SimplyPrint Dispatch</span>
-                  <span class="text-xs text-on-surface-variant/60">When off, files are processed but not sent to SimplyPrint</span>
+            <div class="d4-card settings-section hidden" id="settings-section-prefs">
+              <div class="hd"><h2>Preferences</h2></div>
+              <div class="d4-setbody">
+                <div class="d4-trow">
+                  <div class="lb"><label for="setting-sp-dispatch">SimplyPrint Dispatch</label><span class="ds">When off, files are processed but not sent to SimplyPrint (dry run)</span></div>
+                  <label class="d4-tglwrap"><input type="checkbox" id="setting-sp-dispatch" checked><span class="d4-tglui"></span></label>
                 </div>
-                <label class="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input type="checkbox" id="setting-sp-dispatch" class="sr-only peer" checked>
-                  <div class="w-11 h-6 bg-surface-container-highest rounded-full transition-colors peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white/70 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5 peer-checked:after:bg-on-primary"></div>
-                </label>
               </div>
-              <div class="flex justify-end border-t border-outline-variant/10 pt-4">
-                <button class="px-5 py-2 btn-primary rounded-lg font-label-caps" id="settings-prefs-save-btn">Save Preferences</button>
+              <div class="d4-savebar">
+                <span class="ts"></span>
+                <button class="d4-btn pri" id="settings-prefs-save-btn">Save Preferences</button>
               </div>
             </div>
           </div>
@@ -1926,6 +1937,6 @@
     </button>
   </div>
 
-  <script src="app.js?v=1.15.6"></script>
+  <script src="app.js?v=1.15.7"></script>
 </body>
 </html>

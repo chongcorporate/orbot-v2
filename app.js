@@ -3192,6 +3192,66 @@ function setupCommandPalette() {
 }
 
 // Settings Page Handling (full nav tab — see pane-settings — not a modal)
+// Settings field tools: SHOW toggles password visibility, COPY copies the
+// value, TEST fires a real round-trip (Supabase head query / backend /config).
+function setupSettingsFieldTools() {
+  const pane = document.getElementById("pane-settings");
+  if (!pane) return;
+
+  pane.addEventListener("click", async (e) => {
+    const showBtn = e.target.closest(".d4-show-btn");
+    if (showBtn) {
+      const input = document.getElementById(showBtn.getAttribute("data-show-target"));
+      if (!input) return;
+      const reveal = input.type === "password";
+      input.type = reveal ? "text" : "password";
+      showBtn.textContent = reveal ? "HIDE" : "SHOW";
+      return;
+    }
+    const copyBtn = e.target.closest(".d4-copy-btn");
+    if (copyBtn) {
+      const input = document.getElementById(copyBtn.getAttribute("data-copy-target"));
+      if (!input || !input.value) { showToast("Nothing to copy.", "warning"); return; }
+      navigator.clipboard.writeText(input.value).then(
+        () => showToast("Copied.", "success"),
+        () => showToast("Copy failed.", "error")
+      );
+      return;
+    }
+    const testBtn = e.target.closest(".d4-test-btn");
+    if (testBtn) {
+      const kind = testBtn.getAttribute("data-test");
+      const chip = document.getElementById(`settings-test-${kind}`);
+      const setChip = (cls, text) => { if (chip) { chip.className = `d4-conn ${cls}`; chip.textContent = text; } };
+      setChip("mut", "testing…");
+      testBtn.disabled = true;
+      try {
+        if (kind === "supabase") {
+          const url = document.getElementById("setting-supabase-url").value.trim() || localStorage.getItem("orbot_supabase_url");
+          const key = document.getElementById("setting-supabase-key").value.trim() || localStorage.getItem("orbot_supabase_key");
+          if (!url || !key) throw new Error("URL and key required");
+          const res = await fetch(`${url.replace(/\/$/, "")}/rest/v1/shops?select=id&limit=1`, {
+            headers: { apikey: key, Authorization: `Bearer ${key}` },
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          setChip("ok", "connected");
+        } else if (kind === "backend") {
+          let base = document.getElementById("setting-backend-url").value.trim() || localStorage.getItem("orbot_backend_url") || "";
+          if (base && !base.startsWith("http")) base = "https://" + base;
+          if (!base) throw new Error("URL required");
+          const res = await fetch(`${base.replace(/\/$/, "")}/config`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          setChip("ok", "connected");
+        }
+      } catch (err) {
+        setChip("bad", err.message.length > 24 ? "failed" : err.message);
+      } finally {
+        testBtn.disabled = false;
+      }
+    }
+  });
+}
+
 function setupSettings() {
   const openBtn = document.getElementById("settings-open-btn");
   const saveBtn = document.getElementById("settings-save-btn");
@@ -3305,10 +3365,17 @@ function setupLaunchTemplatesSettings() {
   descEl.value = localStorage.getItem("orbot_launch_desc_template") || "";
 
   const updatePreview = () => {
+    const titleOut = titleEl.value ? expandLaunchTemplate(titleEl.value, LAUNCH_TEMPLATE_SAMPLE) : "";
+    const descOut = descEl.value ? expandLaunchTemplate(descEl.value, LAUNCH_TEMPLATE_SAMPLE) : "";
     document.getElementById("settings-tpl-preview-title").textContent =
-      titleEl.value ? expandLaunchTemplate(titleEl.value, LAUNCH_TEMPLATE_SAMPLE) : "— no title template set, AI-generated copy will be used —";
+      titleOut || "— no title template set, AI-generated copy will be used —";
     document.getElementById("settings-tpl-preview-desc").textContent =
-      descEl.value ? expandLaunchTemplate(descEl.value, LAUNCH_TEMPLATE_SAMPLE) : "— no description template set, AI-generated copy will be used —";
+      descOut || "— no description template set, AI-generated copy will be used —";
+    // Platform limits: Shopee titles 120 chars, descriptions 3000.
+    const tc = document.getElementById("settings-tpl-title-count");
+    const dc = document.getElementById("settings-tpl-desc-count");
+    if (tc) { tc.textContent = titleOut ? `${titleOut.length} / 120` : ""; tc.classList.toggle("over", titleOut.length > 120); }
+    if (dc) { dc.textContent = descOut ? `${descOut.length} / 3000` : ""; dc.classList.toggle("over", descOut.length > 3000); }
   };
 
   const renderTokens = (containerId, fieldEl, tokens) => {
@@ -5561,6 +5628,7 @@ window.addEventListener("DOMContentLoaded", () => {
   setupDock();
   renderGreeting();
   setupSettings();
+  setupSettingsFieldTools();
   setupLogsFiltering();
   setupCatalogSearch();
   setupProductsKeyboardNav();
