@@ -3300,3 +3300,24 @@ button.omd-pcard { font: inherit; text-align: left; width: 100%; }
 .d4-su.err .v { color: var(--red); }
 .d4-su.warn .v { color: var(--amber); }
 .d4-su .l { font: 500 8.5px var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); margin-top: 3px; }
+
+/* ═══════════════ D4 · launch ═══════════════ */
+.d4-stack { display: flex; flex-direction: column; gap: 14px; }
+.d4-row { display: flex; align-items: center; }
+.d4-2col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.d4-sect { font: 600 9.5px var(--font-mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-4); margin-bottom: 14px; }
+.d4-lb { display: block; font: 600 9.5px var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); margin-bottom: 6px; }
+.d4-btn.ml-auto { margin-left: auto; }
+#pane-launch table { width: 100%; border-collapse: collapse; }
+#pane-launch thead th { font: 600 10px var(--font-body); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-4); border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+#pane-launch tbody td { border-bottom: 1px solid var(--line); }
+#pane-launch tbody tr:last-child td { border-bottom: none; }
+/* launch stepper — Draft 4 look, class names unchanged (setLaunchStep hooks) */
+.launch-stepper { display: flex; align-items: center; gap: 8px; }
+.launch-step { display: flex; align-items: center; gap: 7px; font: 500 11.5px var(--font-body); color: var(--ink-4); }
+.launch-step .ls-dot { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 600 10px var(--font-mono); background: var(--card-2); border: 1px solid var(--line-2); color: var(--ink-3); }
+.launch-step.current { color: var(--ink); }
+.launch-step.current .ls-dot { background: var(--green); border-color: var(--green); color: #04120b; box-shadow: 0 0 12px rgba(62, 207, 142, 0.35); }
+.launch-step.done { color: var(--ink-3); }
+.launch-step.done .ls-dot { background: var(--green-dim); border-color: rgba(62, 207, 142, 0.4); color: var(--green); }
+.launch-step-line { width: 22px; height: 1px; background: var(--line-2); }

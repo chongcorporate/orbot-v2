@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.15.5">
+  <link rel="stylesheet" href="index.css?v=1.15.6">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -930,14 +930,14 @@
         </div>
       </section>
 
-      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-4" id="pane-launch">
+      <section class="tab-content hidden d4-pane d4-stack" id="pane-launch">
 
         <!-- Header bar -->
-        <div class="glass-panel px-5 py-3 flex items-center justify-between">
+        <div class="d4-card d4-row" style="padding:12px 18px;justify-content:space-between">
           <div class="flex items-center gap-3">
             <span class="material-symbols-outlined text-[#3ecf8e]" style="font-size:20px">rocket_launch</span>
-            <span class="text-white font-medium">Product Launch</span>
-            <div class="launch-stepper ml-4 hidden md:flex" id="launch-stepper">
+            <span style="font:600 15px var(--font-title);color:var(--ink)">Product Launch</span>
+            <div class="launch-stepper" id="launch-stepper" style="margin-left:16px">
               <div class="launch-step current" data-step="1"><span class="ls-dot">1</span>Details</div>
               <div class="launch-step-line"></div>
               <div class="launch-step" data-step="2"><span class="ls-dot">2</span>Images</div>
@@ -947,50 +947,50 @@
               <div class="launch-step" data-step="4"><span class="ls-dot">4</span>Download</div>
             </div>
           </div>
-          <button id="launch-preview-btn" class="btn btn-primary rounded-lg px-4 py-2 text-sm flex items-center gap-2">
+          <button id="launch-preview-btn" class="d4-btn pri">
             <span class="material-symbols-outlined text-base">auto_awesome</span>
             Generate
           </button>
         </div>
 
         <!-- Import from link -->
-        <div class="glass-panel px-5 py-3 flex items-center gap-3">
+        <div class="d4-card d4-row" style="padding:12px 18px;gap:12px">
           <span class="material-symbols-outlined text-[#3ecf8e]" style="font-size:18px">link</span>
           <input id="launch-scrape-url" type="text" class="flex-1"
                  placeholder="Paste a product link (MakerWorld, Printables, Cults3D, Etsy…) to auto-fill details &amp; images" />
-          <button id="launch-scrape-btn" class="btn btn-primary rounded-lg px-4 py-2 text-sm flex items-center gap-2 whitespace-nowrap">
+          <button id="launch-scrape-btn" class="d4-btn">
             <span class="material-symbols-outlined text-base">travel_explore</span>
             Fetch from Link
           </button>
         </div>
 
         <!-- Form + Images row -->
-        <div class="grid grid-cols-2 gap-4">
+        <div class="d4-2col">
 
           <!-- Left: Form fields -->
           <div class="space-y-4">
 
             <!-- Product Details card -->
-            <div class="glass-panel p-5">
-              <p class="text-xs text-[#6b7280] uppercase tracking-widest mb-4">Product Details</p>
+            <div class="d4-card" style="padding:18px">
+              <p class="d4-sect">Product Details</p>
               <div class="space-y-3">
                 <div class="grid grid-cols-2 gap-3">
                   <div>
-                    <label class="text-xs text-[#9ca3af] block mb-1">Set Name</label>
+                    <label class="d4-lb">Set Name</label>
                     <input id="launch-set-name" type="text" placeholder="e.g. Millennium Falcon" class="w-full" />
                   </div>
                   <div>
-                    <label class="text-xs text-[#9ca3af] block mb-1">Brand Name</label>
+                    <label class="d4-lb">Brand Name</label>
                     <input id="launch-brand-name" type="text" value="Blocked Off" class="w-full" />
                   </div>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
-                    <label class="text-xs text-[#9ca3af] block mb-1">Set Number</label>
+                    <label class="d4-lb">Set Number</label>
                     <input id="launch-set-number" type="text" placeholder="e.g. 75389" class="w-full" />
                   </div>
                   <div>
-                    <label class="text-xs text-[#9ca3af] block mb-1">Theme</label>
+                    <label class="d4-lb">Theme</label>
                     <select id="launch-theme" class="w-full">
                       <option value="">Select theme...</option>
                       <option value="SWR">Star Wars</option>
@@ -1012,16 +1012,16 @@
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
-                    <label class="text-xs text-[#9ca3af] block mb-1">Price (MYR)</label>
+                    <label class="d4-lb">Price (MYR)</label>
                     <input id="launch-price" type="text" placeholder="45.00" class="w-full" />
                   </div>
                   <div>
-                    <label class="text-xs text-[#9ca3af] block mb-1">Price (SGD)</label>
+                    <label class="d4-lb">Price (SGD)</label>
                     <input id="launch-price-sgd" type="text" placeholder="14.00" class="w-full" />
                   </div>
                 </div>
                 <div>
-                  <label class="text-xs text-[#9ca3af] block mb-1">Platforms</label>
+                  <label class="d4-lb">Platforms</label>
                   <div class="flex gap-4 pt-1">
                     <label class="flex items-center gap-2 cursor-pointer select-none">
                       <input type="checkbox" id="launch-plat-shopee" checked style="accent-color:#3ecf8e" />
@@ -1037,13 +1037,13 @@
             </div>
 
             <!-- Product Types card -->
-            <div class="glass-panel p-5">
-              <p class="text-xs text-[#6b7280] uppercase tracking-widest mb-4">Product Types</p>
+            <div class="d4-card" style="padding:18px">
+              <p class="d4-sect">Product Types</p>
               <div id="launch-types-list" class="space-y-3"></div>
               <div class="grid grid-cols-[80px_1fr_auto] gap-2 mt-4 pt-4 border-t border-white/5">
                 <input id="launch-new-type-code" type="text" placeholder="Code" class="w-full text-center" />
                 <input id="launch-new-type-label" type="text" placeholder="Category name, e.g. Light Kit" class="w-full" />
-                <button id="launch-add-type-btn" class="text-xs text-[#3ecf8e] hover:text-white transition-colors px-2 flex items-center gap-1">
+                <button id="launch-add-type-btn" class="d4-lnk" style="display:inline-flex;align-items:center;gap:4px">
                   <span class="material-symbols-outlined" style="font-size:14px">add</span>
                   Add
                 </button>
@@ -1053,11 +1053,11 @@
           </div>
 
           <!-- Right: Image upload -->
-          <div class="glass-panel p-5" id="launch-image-panel">
+          <div class="d4-card" style="padding:18px" id="launch-image-panel">
             <div class="flex items-center justify-between mb-4">
-              <p class="text-xs text-[#6b7280] uppercase tracking-widest">Product Images</p>
+              <p class="d4-sect" style="margin-bottom:0">Product Images</p>
               <div class="flex items-center gap-3">
-                <button id="launch-clean-btn" class="text-xs text-[#3ecf8e] hover:text-white transition-colors flex items-center gap-1">
+                <button id="launch-clean-btn" class="d4-lnk" style="display:inline-flex;align-items:center;gap:4px">
                   <span class="material-symbols-outlined" style="font-size:14px">auto_fix_high</span>
                   Remove Logos
                 </button>
@@ -1075,27 +1075,27 @@
         <div id="launch-preview-section" class="hidden space-y-4">
 
           <!-- Generated copy -->
-          <div class="glass-panel p-5 space-y-4">
+          <div class="d4-card d4-stack" style="padding:18px;gap:12px">
             <div class="flex items-center gap-3 mb-1">
-              <p class="text-xs text-[#6b7280] uppercase tracking-widest">Generated Listing</p>
+              <p class="d4-sect" style="margin-bottom:0">Generated Listing</p>
               <span class="text-xs text-[#3ecf8e]" id="launch-copy-source">— edit as needed before downloading</span>
-              <button type="button" id="launch-regen-ai-btn" class="ml-auto hidden items-center gap-1.5 px-2.5 py-1 rounded-md border border-outline-variant/30 text-on-surface-variant hover:text-primary hover:border-primary/40 text-xs font-label-caps">
+              <button type="button" id="launch-regen-ai-btn" class="d4-btn sm ml-auto hidden">
                 <span class="material-symbols-outlined text-sm">auto_awesome</span> Regenerate with AI
               </button>
             </div>
             <div>
-              <label class="text-xs text-[#9ca3af] block mb-1">Listing Title</label>
+              <label class="d4-lb">Listing Title</label>
               <input id="launch-listing-title" type="text" class="w-full" />
             </div>
             <div>
-              <label class="text-xs text-[#9ca3af] block mb-1">Description</label>
+              <label class="d4-lb">Description</label>
               <textarea id="launch-description" rows="7" class="w-full" style="resize:vertical"></textarea>
             </div>
           </div>
 
           <!-- Variants table -->
-          <div class="glass-panel p-5">
-            <p class="text-xs text-[#6b7280] uppercase tracking-widest mb-4">Variants &amp; Platform Variation Names</p>
+          <div class="d4-card" style="padding:18px">
+            <p class="d4-sect">Variants &amp; Platform Variation Names</p>
             <table class="w-full">
               <thead class="text-xs text-[#6b7280] uppercase border-b border-white/10">
                 <tr>
@@ -1109,8 +1109,8 @@
           </div>
 
           <!-- Per-variant details -->
-          <div class="glass-panel p-5">
-            <p class="text-xs text-[#6b7280] uppercase tracking-widest mb-4">Variant Details</p>
+          <div class="d4-card" style="padding:18px">
+            <p class="d4-sect">Variant Details</p>
             <div class="overflow-x-auto">
               <table class="w-full" style="min-width:860px">
                 <thead class="text-xs text-[#6b7280] uppercase border-b border-white/10">
@@ -1129,30 +1129,30 @@
           </div>
 
           <!-- Platform listing IDs -->
-          <div class="glass-panel p-5">
+          <div class="d4-card" style="padding:18px">
             <div class="flex items-center gap-3 mb-4">
-              <p class="text-xs text-[#6b7280] uppercase tracking-widest">Platform Listing IDs</p>
+              <p class="d4-sect" style="margin-bottom:0">Platform Listing IDs</p>
               <span class="text-xs text-[#4b5563]">— fill in after creating listings on each platform</span>
             </div>
             <div class="grid grid-cols-3 gap-3">
               <div>
-                <label class="text-xs text-[#9ca3af] block mb-1">Shopee MY</label>
+                <label class="d4-lb">Shopee MY</label>
                 <input id="launch-shopee-my" type="text" placeholder="listing ID or URL" class="w-full" />
               </div>
               <div>
-                <label class="text-xs text-[#9ca3af] block mb-1">Shopee SG</label>
+                <label class="d4-lb">Shopee SG</label>
                 <input id="launch-shopee-sg" type="text" placeholder="listing ID or URL" class="w-full" />
               </div>
               <div>
-                <label class="text-xs text-[#9ca3af] block mb-1">Shopee PH</label>
+                <label class="d4-lb">Shopee PH</label>
                 <input id="launch-shopee-ph" type="text" placeholder="listing ID or URL" class="w-full" />
               </div>
               <div>
-                <label class="text-xs text-[#9ca3af] block mb-1">Shopee TH</label>
+                <label class="d4-lb">Shopee TH</label>
                 <input id="launch-shopee-th" type="text" placeholder="listing ID or URL" class="w-full" />
               </div>
               <div>
-                <label class="text-xs text-[#9ca3af] block mb-1">Lazada MY</label>
+                <label class="d4-lb">Lazada MY</label>
                 <input id="launch-lazada-my" type="text" placeholder="listing ID or URL" class="w-full" />
               </div>
             </div>
@@ -1160,7 +1160,7 @@
 
           <!-- Status + download -->
           <div class="flex justify-end">
-            <button id="launch-download-btn" class="btn btn-primary rounded-lg px-6 py-3 text-sm flex items-center gap-2">
+            <button id="launch-download-btn" class="d4-btn pri" style="padding:11px 22px">
               <span class="material-symbols-outlined text-base">download</span>
               Download Launch Package
             </button>
@@ -1169,7 +1169,7 @@
         </div>
 
         <!-- Status bar — outside preview section so validation errors are always visible -->
-        <div id="launch-status" class="hidden glass-panel px-5 py-3 text-sm"></div>
+        <div id="launch-status" class="hidden d4-card" style="padding:12px 18px;font-size:13px"></div>
 
       </section>
 
@@ -1926,6 +1926,6 @@
     </button>
   </div>
 
-  <script src="app.js?v=1.15.5"></script>
+  <script src="app.js?v=1.15.6"></script>
 </body>
 </html>
