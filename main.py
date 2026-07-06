@@ -1523,6 +1523,7 @@ class ScoutAgent:
     # Subjects that clearly mark an ORDER — always parse, regardless of other signals.
     _ORDER_SUBJECT_RE = re.compile(
         r'(?i)('
+        r'^cod\s+order|'
         r'time\s+to\s+ship|new\s+order|order\s+confirmation|order\s+placed|to\s+ship|'
         r'you\s+(have|\'?ve)\s+(got\s+)?a?\s*new\s+order|new\s+sale|made\s+a\s+sale|'
         r'pesanan\s+bahar?u|ada\s+pesanan'
@@ -1548,7 +1549,7 @@ class ScoutAgent:
         only probable-order candidates are returned with their full body."""
         try:
             # Include subject-based fallback in case Shopee/Lazada route emails via third-party domains
-            query = '(from:shopee OR from:lazada OR subject:"time to ship" OR subject:"new order" OR subject:"Order Confirmation") newer_than:14d -label:orbot-processed'
+            query = '(from:shopee OR from:lazada OR subject:"time to ship" OR subject:"new order" OR subject:"Order Confirmation" OR subject:"COD order") newer_than:14d -label:orbot-processed'
             logger.info(f"Scout Gmail query: {query}")
 
             # 1) List every matching id, following pagination so a backlog >100 isn't truncated.
