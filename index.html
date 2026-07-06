@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.15.0">
+  <link rel="stylesheet" href="index.css?v=1.15.1">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -180,8 +180,9 @@
 
     /* Nav pill styling lives in index.css (.tab-btn, Draft 4) */
 
-    /* Override input borders & focus states dynamically */
-    input[type="text"], input[type="password"], textarea, select {
+    /* Override input borders & focus states dynamically.
+       Draft 4 elements ([class*="d4-"]) opt out — they carry their own styling. */
+    input[type="text"]:not([class*="d4-"]), input[type="password"]:not([class*="d4-"]), textarea:not([class*="d4-"]), select:not([class*="d4-"]) {
       background-color: #1c1b1b !important;
       border: 1px solid rgba(255, 255, 255, 0.08) !important;
       border-radius: 0.5rem !important;
@@ -190,7 +191,7 @@
       outline: none !important;
       transition: all 0.2s ease !important;
     }
-    input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
+    input[type="text"]:not([class*="d4-"]):focus, input[type="password"]:not([class*="d4-"]):focus, textarea:not([class*="d4-"]):focus, select:not([class*="d4-"]):focus {
       border-color: #3ecf8e !important;
       box-shadow: 0 0 8px rgba(62, 207, 142, 0.35) !important;
     }
@@ -484,255 +485,146 @@
     <main class="flex-1 p-gutter overflow-y-auto relative bg-background h-[calc(100vh-64px)]" style="padding-bottom:110px">
       
       <!-- 0. Overview Home Pane -->
-      <section class="tab-content active w-full max-w-[1440px] mx-auto space-y-5" id="pane-overview">
-        <!-- Top Row: Stats Summary Cards & Print Queue Depth -->
-        <div class="grid grid-cols-12 gap-5">
-          <div class="col-span-12 lg:col-span-10 grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div id="stat-card-orders-today" class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-orange cursor-pointer" title="Go to Orders">
-              <div class="absolute inset-0 bg-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div class="flex justify-between items-start">
-                <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Orders Today</span>
-                <span class="material-symbols-outlined text-[13px] text-outline opacity-0 group-hover:opacity-60 transition-opacity">arrow_forward</span>
-              </div>
-              <div class="absolute bottom-0 left-0 right-0 h-9 opacity-70 pointer-events-none" id="spark-orders"></div>
-              <div class="flex items-end justify-between mt-auto pt-2 relative z-10">
-                <span class="font-headline-md text-display-lg text-[#ff8c00] drop-shadow-[0_0_12px_rgba(255,140,0,0.2)]" id="stats-orders">-</span>
-                <span class="font-data-mono text-[10px] text-outline self-end pb-1" id="stats-orders-trend"></span>
-              </div>
+      <section class="tab-content active d4-pane" id="pane-overview">
+        <!-- Greeting -->
+        <div class="d4-greet">
+          <h2 id="overview-greeting">Welcome back, Joel</h2>
+          <div class="sub" id="overview-greeting-sub">&nbsp;</div>
+        </div>
+
+        <!-- KPI row -->
+        <div class="d4-kpis">
+          <div class="d4-kpi d4-kpi-link" id="stat-card-orders-today" title="Go to Orders">
+            <div class="l"><span class="material-symbols-outlined">receipt_long</span>Orders Today</div>
+            <div class="v" id="stats-orders">–</div>
+            <div class="foot" id="stats-orders-trend"></div>
+            <div class="spark" id="spark-orders"></div>
+          </div>
+          <div class="d4-kpi d4-kpi-link" id="stat-card-pending" title="Go to Orders">
+            <div class="l"><span class="material-symbols-outlined">schedule</span>Pending Orders</div>
+            <div class="v" id="stats-items">–</div>
+            <div class="foot" id="stats-pending-oldest"></div>
+          </div>
+          <div class="d4-kpi d4-kpi-link" id="stat-card-hold" title="Go to Orders">
+            <div class="l"><span class="material-symbols-outlined">error_outline</span>Orders On Hold</div>
+            <div class="v" id="stats-hold">–</div>
+            <div class="foot">discrepancies need review</div>
+          </div>
+          <div class="d4-kpi d4-kpi-link" id="stat-card-queue" title="Go to Printers">
+            <div class="l"><span class="material-symbols-outlined">list_alt</span>Queue Depth</div>
+            <div class="v" id="stats-queue-depth">–</div>
+            <div class="foot">est. clear <span id="stats-queue-time">–</span></div>
+          </div>
+          <div class="d4-kpi err d4-kpi-link" id="stat-card-errors" title="Go to Logs">
+            <div class="l">
+              <span class="material-symbols-outlined">emergency_home</span>System Errors
+              <button class="reset" id="reset-errors-btn" title="Reset error counter"><span class="material-symbols-outlined">restart_alt</span></button>
             </div>
-            <div id="stat-card-pending" class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-purple cursor-pointer" title="Go to Orders">
-              <div class="absolute inset-0 bg-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div class="flex justify-between items-start">
-                <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Pending Orders</span>
-                <span class="material-symbols-outlined text-[13px] text-outline opacity-0 group-hover:opacity-60 transition-opacity">arrow_forward</span>
+            <div class="v" id="stats-errors">–</div>
+            <div class="foot">error-level system logs</div>
+          </div>
+        </div>
+
+        <!-- Main grid: pending orders + right rail -->
+        <div class="d4-ovgrid">
+          <!-- Left: pending orders table -->
+          <div class="d4-col">
+            <div class="d4-card">
+              <div class="hd">
+                <h2>Pending Orders</h2>
+                <span class="cnt" id="overview-orders-count">–</span>
+                <span class="fresh-stamp" data-fresh="orders"></span>
+                <button class="more" id="overview-orders-btn-refresh">Refresh</button>
               </div>
-              <div class="flex items-end justify-between mt-auto pt-2">
-                <span class="font-headline-md text-display-lg text-[#38bdf8] drop-shadow-[0_0_12px_rgba(56, 189, 248,0.2)]" id="stats-items">-</span>
-              </div>
-            </div>
-            <div id="stat-card-hold" class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-yellow cursor-pointer" title="Go to Orders">
-              <div class="absolute inset-0 bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div class="flex justify-between items-start">
-                <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Orders On Hold</span>
-                <span class="material-symbols-outlined text-[13px] text-outline opacity-0 group-hover:opacity-60 transition-opacity">arrow_forward</span>
-              </div>
-              <div class="flex items-end justify-between mt-auto pt-2">
-                <span class="font-headline-md text-display-lg text-[#eab308] drop-shadow-[0_0_12px_rgba(234,179,8,0.2)]" id="stats-hold">-</span>
-              </div>
-            </div>
-            <div id="stat-card-queue" class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden group h-full glow-hover-cyan cursor-pointer" title="Go to Printers">
-              <div class="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div class="flex justify-between items-start">
-                <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Queue Depth</span>
-                <span class="material-symbols-outlined text-[13px] text-outline opacity-0 group-hover:opacity-60 transition-opacity">arrow_forward</span>
-              </div>
-              <div class="flex items-baseline justify-between mt-auto pt-2">
-                <span class="font-headline-md text-display-lg text-primary drop-shadow-[0_0_12px_rgba(62, 207, 142,0.2)]" id="stats-queue-depth">-</span>
-                <span class="font-data-mono text-[11px] text-outline" id="stats-queue-time">0m</span>
+              <div class="d4-otbl-scroll" id="overview-orders-list">
+                <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
               </div>
             </div>
           </div>
-          <!-- System Errors Card -->
-          <div class="col-span-12 lg:col-span-2">
-            <div id="stat-card-errors" class="glass-panel-gradient rounded-xl p-4 flex flex-col relative overflow-hidden border-error/30 shadow-[0_0_15px_rgba(147,0,10,0.1)] group h-full glow-hover-red cursor-pointer" title="Go to Logs">
-              <div class="absolute inset-0 bg-error/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div class="flex justify-between items-center w-full z-10">
-                <span class="font-label-caps text-label-caps text-error uppercase">System Errors</span>
-                <button id="reset-errors-btn" class="p-1 rounded bg-error/10 hover:bg-error/20 border border-error/30 text-error hover:scale-105 transition-transform flex items-center justify-center cursor-pointer select-none" title="Reset Errors">
-                  <span class="material-symbols-outlined text-[14px]">restart_alt</span>
+
+          <!-- Right rail -->
+          <div class="d4-col">
+            <!-- Quick operations -->
+            <div class="d4-ops">
+              <div class="tier big">
+                <button class="d4-opbtn" id="overview-ctrl-trigger-scout" title="Poll Gmail for new orders now">
+                  <span class="material-symbols-outlined">mail</span>Scan Gmail
+                </button>
+                <button class="d4-opbtn" id="overview-ctrl-trigger-compile" title="Build master waybill PDF">
+                  <span class="material-symbols-outlined">picture_as_pdf</span>Compile Batch
+                </button>
+                <button class="d4-opbtn go" id="overview-ctrl-trigger-foreman" title="Send pending items to printers">
+                  <span class="material-symbols-outlined">print</span>Dispatch
                 </button>
               </div>
-              <div class="flex items-end justify-between mt-auto pt-2">
-                <span class="font-headline-md text-display-lg text-error drop-shadow-[0_0_12px_rgba(255, 102, 102,0.2)]" id="stats-errors">-</span>
+              <div class="tier small">
+                <button class="d4-opbtn" id="overview-qo-batch-pdfs" title="Open compiled waybill batches">
+                  <span class="material-symbols-outlined">folder_open</span>Batch PDFs
+                </button>
+                <button class="d4-opbtn" id="overview-ctrl-trigger-sync-simplyprint" title="Refresh printer telemetry">
+                  <span class="material-symbols-outlined">refresh</span>Sync SP
+                </button>
+                <button class="d4-opbtn" id="overview-waybill-browse-btn" title="Upload raw waybill PDFs">
+                  <span class="material-symbols-outlined">cloud_upload</span>Waybills
+                </button>
+              </div>
+              <div class="tier small">
+                <a href="https://simplyprint.io/panel" target="_blank" class="d4-opbtn"><span class="material-symbols-outlined">print</span>SimplyPrint<span class="ext">↗</span></a>
+                <a href="https://supabase.com/dashboard/project/velgortxgdouxbkonirr" target="_blank" class="d4-opbtn"><span class="material-symbols-outlined">database</span>Supabase<span class="ext">↗</span></a>
+                <a href="https://railway.app/dashboard" target="_blank" class="d4-opbtn"><span class="material-symbols-outlined">dns</span>Railway<span class="ext">↗</span></a>
+              </div>
+
+              <!-- Hidden upload-zone stub: bindUploadEvents needs the zone + file
+                   input + browse button trio to exist; the visible "Waybills"
+                   action above IS the browse button. -->
+              <div class="hidden" id="overview-waybill-upload-zone">
+                <input type="file" id="overview-waybill-file-input" accept="application/pdf" style="display: none;" multiple>
+              </div>
+
+              <!-- Upload progress -->
+              <div id="overview-upload-status" class="hidden d4-upload-status">
+                <div class="row">
+                  <div class="left">
+                    <span class="material-symbols-outlined animate-spin" id="overview-upload-status-icon">autorenew</span>
+                    <span id="overview-upload-status-text">Uploading PDF...</span>
+                  </div>
+                  <span id="overview-upload-progress-percent">0%</span>
+                </div>
+                <div class="d4-meter"><i id="overview-upload-progress-bar" style="width:0%"></i></div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <!-- Analytics Row (Aurora 3.0): 30-day trends, hand-rolled SVG -->
-        <div class="grid grid-cols-12 gap-5">
-          <div class="glass-panel rounded-xl p-4 col-span-12 xl:col-span-5 flex flex-col gap-2">
-            <h3 class="text-xs font-bold text-on-surface flex items-center gap-2 select-none w-full">
-              <span class="material-symbols-outlined text-primary text-base">bar_chart</span> Orders · Last 30 Days
-              <span class="fresh-stamp ml-auto" data-fresh="analytics"></span>
-            </h3>
-            <div id="chart-orders-daily" class="flex-grow min-h-[160px]"><div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div>
-          </div>
-          <div class="glass-panel rounded-xl p-4 col-span-12 md:col-span-6 xl:col-span-3 flex flex-col gap-2">
-            <h3 class="text-xs font-bold text-on-surface flex items-center gap-2 select-none">
-              <span class="material-symbols-outlined text-primary text-base">donut_small</span> Platform Split · 30d
-            </h3>
-            <div id="chart-platform-donut" class="flex-grow min-h-[160px]"><div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div>
-          </div>
-          <div class="glass-panel rounded-xl p-4 col-span-12 md:col-span-6 xl:col-span-4 flex flex-col gap-2">
-            <h3 class="text-xs font-bold text-on-surface flex items-center gap-2 select-none">
-              <span class="material-symbols-outlined text-primary text-base">show_chart</span> Print Throughput · 30d
-            </h3>
-            <div id="chart-throughput" class="flex-grow min-h-[160px]"><div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div>
-          </div>
-        </div>
-
-        <!-- Printers, Queue & Operations Row -->
-        <div class="grid grid-cols-12 gap-5 border-b border-outline-variant/10 pb-5 items-start">
-          <!-- Printers Grid (Left Column - col-span-5) -->
-          <div class="col-span-12 lg:col-span-5 flex flex-col gap-3">
-            <div class="flex justify-between items-center flex-wrap gap-3">
-              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
-                <span class="material-symbols-outlined text-primary">robot</span>
-                <span>Printers</span>
+            <!-- Fleet status -->
+            <div class="d4-card">
+              <div class="hd">
+                <h2>Fleet Status</h2>
                 <span class="fresh-stamp" data-fresh="printers"></span>
-              </h3>
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <a href="https://simplyprint.io/panel/printers" target="_blank" class="px-2 py-1 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-[10px] font-semibold inline-flex items-center gap-1 no-underline" title="SimplyPrint Portal">
-                  <span class="material-symbols-outlined text-xs">open_in_new</span>
-                </a>
-                <button class="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-[#3ecf8e] border border-primary/30 rounded-lg text-[10px] font-semibold flex items-center gap-1" id="overview-printers-btn-sync" title="Sync API">
-                  <span class="material-symbols-outlined text-xs">sync</span> Sync
-                </button>
-                <button class="px-2 py-1 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-[10px] font-semibold flex items-center gap-1" id="overview-printers-btn-ready-all" title="Ready All">
-                  <span class="material-symbols-outlined text-xs">done_all</span> Ready
-                </button>
-                <button class="px-2 py-1 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-[10px] font-semibold flex items-center gap-1" id="overview-printers-btn-clear-cycles" title="Clear Cycles">
-                  <span class="material-symbols-outlined text-xs">restart_alt</span> Clear
-                </button>
-                <button class="px-2 py-1 bg-error/15 hover:bg-error/25 text-error border border-error/40 rounded-lg text-[10px] font-bold flex items-center gap-1" id="overview-printers-btn-estop-all" title="E-STOP ALL">
-                  <span class="material-symbols-outlined text-xs font-bold text-error">emergency_home</span> E-Stop
-                </button>
-              </div>
-            </div>
-
-            <!-- Error Notification Box in Overview -->
-            <div class="glass-panel border-l-4 border-error bg-error/5 p-3 rounded-r-xl hidden" id="overview-printers-error-box">
-              <div class="flex items-start gap-2.5">
-                <span class="material-symbols-outlined text-error text-base shrink-0">error_outline</span>
-                <div class="flex-grow">
-                  <h4 class="font-bold text-xs text-on-surface">Printer Connection Alerts</h4>
-                  <ul class="list-disc pl-4 mt-1 text-[11px] text-on-surface-variant space-y-0.5" id="overview-printers-error-list">
-                    <!-- Dynamically populated -->
-                  </ul>
+                <div class="d4-hd-acts">
+                  <button id="overview-printers-btn-sync" title="Sync API"><span class="material-symbols-outlined">refresh</span></button>
+                  <button id="overview-printers-btn-ready-all" title="Ready All"><span class="material-symbols-outlined">done_all</span></button>
+                  <button id="overview-printers-btn-clear-cycles" title="Clear Cycles"><span class="material-symbols-outlined">restart_alt</span></button>
+                  <button class="danger" id="overview-printers-btn-estop-all" title="E-STOP ALL"><span class="material-symbols-outlined">emergency_home</span></button>
                 </div>
               </div>
-            </div>
-
-            <div class="grid grid-cols-1 gap-3" id="overview-printers-grid">
-              <!-- Dynamically populated printer cards (2 columns, 2 rows) -->
-              <div class="skeleton-stack"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div>
-            </div>
-          </div>
-
-          <!-- Print Queue Sidebar (Middle Column - col-span-3) -->
-          <div class="col-span-12 lg:col-span-3 glass-panel rounded-xl p-4 flex flex-col gap-3 self-stretch">
-            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center justify-between w-full select-none">
-              <div class="flex items-center gap-2">
-                <span class="material-symbols-outlined text-primary">list_alt</span>
-                <span>Print Queue</span>
+              <div class="d4-alertbox hidden" id="overview-printers-error-box">
+                <span class="material-symbols-outlined">error_outline</span>
+                <ul id="overview-printers-error-list"></ul>
               </div>
-
-              <span class="text-xs font-data-mono text-outline" id="overview-queue-header-stats">0 (0m)</span>
-            </h3>
-
-            <div class="flex flex-col gap-2 h-[440px] overflow-y-auto pr-1" id="overview-printers-queue-list">
-              <!-- Dynamically populated queue items -->
-              <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
-            </div>
-          </div>
-
-          <!-- Quick Operations Panel (Right Column - col-span-4) — Aurora 3.0 redesign:
-               compact action rows grouped by kind (agent triggers / external links),
-               upload zone kept prominent. Original IDs preserved so the existing
-               registerClick triads, dispatch indicator, and upload bindings reconnect
-               without JS changes; overview-ctrl-trigger-foreman and the Batch PDFs
-               shortcut are additions. -->
-          <div class="col-span-12 lg:col-span-4 glass-panel rounded-xl p-4 flex flex-col gap-3 self-stretch">
-            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
-              <span class="material-symbols-outlined text-surface-tint">settings_applications</span>
-              <span>Quick Operations</span>
-            </h3>
-
-            <div class="flex flex-col gap-1.5">
-              <div class="qo-group-label">Actions</div>
-              <div class="qo-grid">
-                <button class="qo-action" id="overview-ctrl-trigger-scout" style="--qo-color:#22d3ee; --qo-soft:#22d3ee1f; --qo-line:#22d3ee47;" title="Poll Gmail for new orders now">
-                  <span class="qo-icon material-symbols-outlined">mail</span>
-                  <span class="qo-body"><span class="qo-label">Scan Gmail</span></span>
-                </button>
-                <button class="qo-action" id="overview-ctrl-trigger-foreman" style="--qo-color:#3ecf8e; --qo-soft:#3ecf8e1f; --qo-line:#3ecf8e47;" title="Send pending items to printers">
-                  <span class="qo-icon material-symbols-outlined">print</span>
-                  <span class="qo-body"><span class="qo-label">Dispatch</span></span>
-                </button>
-                <button class="qo-action" id="overview-ctrl-trigger-compile" style="--qo-color:#ffaa6b; --qo-soft:#ffaa6b1f; --qo-line:#ffaa6b47;" title="Build master waybill PDF">
-                  <span class="qo-icon material-symbols-outlined">picture_as_pdf</span>
-                  <span class="qo-body"><span class="qo-label">Compile Batch</span></span>
-                </button>
-                <button class="qo-action" id="overview-qo-batch-pdfs" style="--qo-color:#3ecf8e; --qo-soft:#3ecf8e1f; --qo-line:#3ecf8e47;" title="Open compiled waybill batches">
-                  <span class="qo-icon material-symbols-outlined">folder_open</span>
-                  <span class="qo-body"><span class="qo-label">Batch PDFs</span></span>
-                </button>
-                <button class="qo-action" id="overview-ctrl-trigger-sync-simplyprint" style="--qo-color:#7ea6e8; --qo-soft:#7ea6e81f; --qo-line:#7ea6e847;" title="Refresh printer telemetry">
-                  <span class="qo-icon material-symbols-outlined">sync</span>
-                  <span class="qo-body"><span class="qo-label">Sync SP</span></span>
-                </button>
-                <button class="qo-action" id="overview-waybill-browse-btn" style="--qo-color:#7ea6e8; --qo-soft:#7ea6e81f; --qo-line:#7ea6e847;" title="Upload raw waybill PDFs">
-                  <span class="qo-icon material-symbols-outlined">cloud_upload</span>
-                  <span class="qo-body"><span class="qo-label">Upload Waybills</span></span>
-                </button>
+              <div class="d4-bays" id="overview-printers-grid">
+                <div class="skeleton-stack"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div>
               </div>
             </div>
 
-            <div class="flex flex-col gap-1.5">
-              <div class="qo-group-label">External</div>
-              <div class="grid grid-cols-3 gap-1.5">
-                <a href="https://simplyprint.io/panel" target="_blank" class="qo-ext" style="--qo-color:#22d3ee; --qo-soft:#22d3ee1f; --qo-line:#22d3ee47;">
-                  <span class="material-symbols-outlined">print</span>SimplyPrint
-                </a>
-                <a href="https://supabase.com/dashboard/project/velgortxgdouxbkonirr" target="_blank" class="qo-ext" style="--qo-color:#3ecf8e; --qo-soft:#3ecf8e1f; --qo-line:#3ecf8e47;">
-                  <span class="material-symbols-outlined">database</span>Supabase
-                </a>
-                <a href="https://railway.app/dashboard" target="_blank" class="qo-ext" style="--qo-color:#ff6666; --qo-soft:#ff66661f; --qo-line:#ff666647;">
-                  <span class="material-symbols-outlined">train</span>Railway
-                </a>
+            <!-- Agent activity feed -->
+            <div class="d4-card">
+              <div class="hd">
+                <h2>Agent Activity</h2>
+                <button class="more" onclick="navigateToTab('logs')">All logs →</button>
+              </div>
+              <div class="d4-feed" id="overview-agent-feed">
+                <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
               </div>
             </div>
-
-            <!-- Hidden upload-zone stub: bindUploadEvents needs the zone + file
-                 input + browse button trio to exist; the visible "Upload
-                 Waybills" action above IS the browse button. -->
-            <div class="hidden" id="overview-waybill-upload-zone">
-              <input type="file" id="overview-waybill-file-input" accept="application/pdf" style="display: none;" multiple>
-            </div>
-
-            <!-- Upload Status Progress in Overview Page -->
-            <div id="overview-upload-status" class="hidden p-2 rounded-xl bg-surface-container-low/60 backdrop-blur-md border border-outline-variant/20 flex flex-col gap-1 transition-all duration-300 shadow-lg">
-              <div class="flex justify-between items-center w-full">
-                <div class="flex items-center gap-2">
-                  <span class="material-symbols-outlined animate-spin text-surface-tint text-[10px]" id="overview-upload-status-icon">autorenew</span>
-                  <span id="overview-upload-status-text" class="text-[9px] font-medium text-on-surface">Uploading PDF...</span>
-                </div>
-                <span id="overview-upload-progress-percent" class="text-[9px] font-semibold text-surface-tint font-data-mono">0%</span>
-              </div>
-              <div class="w-full h-1 bg-black/40 rounded-full overflow-hidden border border-outline-variant/10">
-                <div id="overview-upload-progress-bar" class="h-full bg-gradient-to-r from-primary/80 to-surface-tint rounded-full transition-all duration-300 w-0"></div>
-              </div>
-            </div>
-
-            <div class="text-[9.5px] font-data-mono text-outline/60 text-center select-none">Press <kbd class="cp-kbd">⌘K</kbd> for all actions &amp; search</div>
-          </div>
-        </div>
-
-        <!-- Pending Orders (Full Width) -->
-        <div class="glass-panel rounded-xl p-5 flex flex-col">
-          <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 mb-4">
-            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
-              <span class="material-symbols-outlined text-primary">shopping_cart</span>
-              <span>Pending Orders</span>
-              <span class="fresh-stamp" data-fresh="orders"></span>
-            </h3>
-            <button class="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-[#3ecf8e] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="overview-orders-btn-refresh">
-              <span class="material-symbols-outlined text-sm">refresh</span> Refresh Orders
-            </button>
-          </div>
-          <div class="h-[400px] overflow-auto pr-1 bg-black/10 rounded-lg border border-outline-variant/10" id="overview-orders-list">
-            <!-- Loaded dynamically -->
           </div>
         </div>
       </section>
@@ -2217,6 +2109,6 @@
     </button>
   </div>
 
-  <script src="app.js?v=1.15.0"></script>
+  <script src="app.js?v=1.15.1"></script>
 </body>
 </html>

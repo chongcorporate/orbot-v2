@@ -639,9 +639,52 @@ async function fetchSummaryStats() {
       errorEl.style.color = "var(--text-primary)";
       errorEl.style.textShadow = "none";
     }
+    // Greeting subline (Overview) — real counts, no fabrication.
+    const greetSub = document.getElementById("overview-greeting-sub");
+    if (greetSub) {
+      greetSub.innerHTML = `<b>${pendingOrdersCount} pending order${pendingOrdersCount === 1 ? "" : "s"}</b> · ${ordersTodayCount} new today · ${ordersOnHoldCount} on hold`;
+    }
+    fetchAndRenderAgentFeed();
+
     markFresh("stats");
   } catch (err) {
     console.error("Error fetching stats:", err);
+  }
+}
+
+// Time-of-day greeting header (static per page load; name is cosmetic).
+function renderGreeting() {
+  const el = document.getElementById("overview-greeting");
+  if (!el) return;
+  const h = new Date().getHours();
+  const part = h < 5 ? "Burning the midnight oil" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  el.textContent = `${part}, Joel`;
+}
+
+// Overview agent-activity feed: latest system_logs rows as a Draft 4 timeline.
+async function fetchAndRenderAgentFeed() {
+  if (!supabaseClient) return;
+  const feedEl = document.getElementById("overview-agent-feed");
+  if (!feedEl) return;
+  try {
+    const { data: logs, error } = await supabaseClient
+      .from("system_logs")
+      .select("created_at, log_level, agent_name, message")
+      .order("created_at", { ascending: false })
+      .limit(8);
+    if (error) throw error;
+    if (!logs || logs.length === 0) {
+      feedEl.innerHTML = emptyDiv("No recent agent activity.", "history");
+      return;
+    }
+    feedEl.innerHTML = logs.map(l => {
+      const lvl = (l.log_level || "info").toLowerCase();
+      const cls = lvl === "error" ? "bad" : lvl === "warning" ? "warn" : "ok";
+      const who = escapeHtml(l.agent_name || "system");
+      return `<div class="d4-fe ${cls}"><div class="ic"></div><div style="min-width:0"><div class="m"><b>${who}</b> · ${escapeHtml(l.message || "")}</div><div class="t">${timeAgo(l.created_at)}</div></div></div>`;
+    }).join("");
+  } catch (err) {
+    console.error("Agent feed fetch failed:", err);
   }
 }
 
@@ -867,6 +910,21 @@ async function fetchAndRenderOrders(forceFetch = true) {
         return ordersDateSortDirection === "asc" ? dateA - dateB : dateB - dateA;
       });
       renderOrdersTableToContainer(overviewContainer, "overview-", pendingOrders);
+
+      // KPI footer: age of the oldest pending order.
+      const oldestEl = document.getElementById("stats-pending-oldest");
+      if (oldestEl) {
+        if (pendingOrders.length === 0) {
+          oldestEl.textContent = "";
+        } else {
+          const oldest = pendingOrders.reduce((min, o) => {
+            const t = new Date(o.order_timestamp || o.created_at || 0).getTime();
+            return t < min ? t : min;
+          }, Infinity);
+          const days = Math.floor((Date.now() - oldest) / 86400000);
+          oldestEl.textContent = days >= 1 ? `oldest ${days}d ago` : "all from today";
+        }
+      }
     }
 
     // Update hold panel using full cachedOrders list
@@ -879,289 +937,196 @@ async function fetchAndRenderOrders(forceFetch = true) {
   }
 }
 
-// Reusable spreadsheet orders table rendering helper
+// Draft 4 pending-orders table: d4-otbl with expandable inline detail rows.
+// Expanded rows are tracked in a module-level Set of order ids so the periodic
+// poll's re-render can restore them (the DOM is rebuilt from scratch each time).
+const expandedOrderRowIds = new Set();
+
+function d4OrderStatusMeta(order) {
+  const s = (order.overall_order_status || "").toLowerCase();
+  if (s === "printing") return "printing";
+  if (s === "printed") return "printed";
+  if (s === "pending") return "pending";
+  if (s === "hold" || s === "on hold") return "hold";
+  return "completed";
+}
+
+function d4WaybillChip(order) {
+  const w = (order.waybill_processing_status || "pending").toLowerCase();
+  let cls = "queue", label = w;
+  if (w === "ready" || w === "ready to print") { cls = "done"; label = "ready"; }
+  else if (w === "compiled") { cls = "done"; label = "compiled"; }
+  else if (w === "printed") { cls = "print"; label = "printed"; }
+  else if (w === "pending") { cls = "queue"; label = "pending"; }
+  else if (w === "hold" || w === "on hold" || w === "failed") { cls = "err"; label = w; }
+  return `<span class="d4-stchip ${cls}"><i></i>${escapeHtml(label)}</span>`;
+}
+
+function d4SkuPill(sku, qty) {
+  const s = (sku || "").toUpperCase();
+  const type = s.startsWith("FWM") ? "fwm" : s.startsWith("WM") ? "wm" : s.startsWith("DS") ? "ds" : "";
+  const qtyHtml = qty > 1 ? ` ×${qty}` : "";
+  return `<span class="d4-pill ${type}">${escapeHtml(sku || "?")}${qtyHtml}</span>`;
+}
+
+function d4JobChip(status) {
+  const s = (status || "").toLowerCase();
+  const cls = s === "printing" ? "print" : s === "completed" ? "done" : s === "failed" ? "err" : "queue";
+  return `<span class="d4-stchip ${cls}"><i></i>${escapeHtml(status || "pending")}</span>`;
+}
+
 function renderOrdersTableToContainer(container, prefix, filtered) {
+  const countEl = document.getElementById(`${prefix}orders-count`);
+  if (countEl) countEl.textContent = String(filtered.length);
+
   if (filtered.length === 0) {
     container.innerHTML = emptyDiv("No matching orders found.", "receipt_long", `<button class="empty-action" onclick="document.getElementById('ctrl-trigger-scout')?.click()"><span class="material-symbols-outlined">mail</span>Trigger Gmail Scan</button>`);
     return;
   }
 
+  const showBrand = currentShop === "all";
+  const colCount = 9 + (showBrand ? 1 : 0);
+
   let html = `
-    <table class="w-full text-left border-collapse text-xs font-body-md" id="${prefix}orders-table">
+    <table class="d4-otbl" id="${prefix}orders-table">
       <thead>
-        <tr class="bg-surface-container-low border-b border-outline-variant/20 sticky top-0 z-20">
-          <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10 w-8 text-center"></th>
-          <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10">Order ID</th>
-          ${currentShop === "all" ? `<th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10">Brand</th>` : ""}
-          <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10">Platform</th>
-          <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10 cursor-pointer select-none hover:bg-surface-container-high transition-colors" id="${prefix}sort-date-col">
-            <span class="flex items-center gap-1 justify-between">
-              Date of Order
-              <span class="material-symbols-outlined text-sm transform transition-transform select-none ${ordersDateSortDirection === "asc" ? "rotate-180" : ""}">arrow_drop_down</span>
-            </span>
-          </th>
-          <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10">Customer Name</th>
-          <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10">Items</th>
-          <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10">Subtotal</th>
-          <th class="py-2 px-3 font-semibold text-on-surface-variant border-r border-outline-variant/10 text-center">Waybill Status</th>
-          <th class="py-2 px-3 font-semibold text-on-surface-variant${prefix === "" ? " border-r border-outline-variant/10" : ""}">Status</th>
-          ${prefix === "" ? `<th class="py-2 px-3 font-semibold text-on-surface-variant text-center w-12">Action</th>` : ""}
+        <tr>
+          <th>Order ID</th>
+          ${showBrand ? `<th>Brand</th>` : ""}
+          <th>Platform</th>
+          <th id="${prefix}sort-date-col" style="cursor:pointer" title="Toggle date sort">Date <span class="sort">${ordersDateSortDirection === "asc" ? "▲" : "▼"}</span></th>
+          <th>Customer</th>
+          <th>Items</th>
+          <th>Subtotal</th>
+          <th>Waybill</th>
+          <th>Status</th>
+          <th style="width:26px"></th>
         </tr>
       </thead>
       <tbody>
   `;
 
+  const now = Date.now();
   for (const order of filtered) {
     const orderDateVal = order.order_timestamp || order.created_at;
-    const dateStr = orderDateVal ? new Date(orderDateVal).toLocaleString() : "N/A";
-    let statusClass = "completed";
-    let statusLower = (order.overall_order_status || "").toLowerCase();
-    
-    if (statusLower === "printing") {
-      statusClass = "printing";
-    } else if (statusLower === "printed") {
-      statusClass = "printed";
-    } else if (statusLower === "pending") {
-      statusClass = "pending";
-    } else if (statusLower === "hold" || statusLower === "on hold") {
-      statusClass = "hold";
-    }
-
-    let waybillStatusClass = "pending";
-    const waybillStatusLower = (order.waybill_processing_status || "pending").toLowerCase();
-    if (waybillStatusLower === "ready" || waybillStatusLower === "ready to print") waybillStatusClass = "completed";
-    else if (waybillStatusLower === "compiled") waybillStatusClass = "completed";
-    else if (waybillStatusLower === "printed") waybillStatusClass = "printing";
-    else if (waybillStatusLower === "pending") waybillStatusClass = "pending";
-    else if (waybillStatusLower === "on hold" || waybillStatusLower === "hold" || waybillStatusLower === "failed") waybillStatusClass = "hold";
-    
-    let waybillStatusDisplay = order.waybill_processing_status || 'pending';
-    if (waybillStatusDisplay.toLowerCase() === 'ready to print' || waybillStatusDisplay.toLowerCase() === 'ready') {
-      waybillStatusDisplay = 'ready';
-    }
+    const oDate = orderDateVal ? new Date(orderDateVal) : null;
+    const dateStr = oDate
+      ? `${oDate.toLocaleDateString([], { month: "short", day: "numeric" })}, ${oDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}`
+      : "N/A";
+    const statusLower = (order.overall_order_status || "").toLowerCase();
+    const isDone = statusLower === "completed";
+    const isHot = !isDone && oDate && (now - oDate.getTime()) > 2 * 86400000;
+    const statusClass = d4OrderStatusMeta(order);
 
     const itemsList = order.order_items || [];
-    
-    // Build inline items representation
-    let itemsHtml = itemsList.map(item => {
-      const qty = item.purchased_quantity;
-      const qtyHtml = qty > 1 
-        ? `<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-[#ffaa00] font-bold border border-amber-500/30">x${qty}</span>`
-        : `<span class="ml-1 opacity-50 text-[11px]">x${qty}</span>`;
-      return `
-        <span class="order-item-inline flex items-center gap-1 select-none" title="${escapeHtml(item.variant_name || item.variant_sku)} (${escapeHtml(item.variant_sku)})">
-          <span class="font-medium">${escapeHtml(item.variant_sku)}</span>${qtyHtml}
-        </span>
-      `;
-    }).join("");
-    if (!itemsHtml) {
-      itemsHtml = `<span style="color: var(--text-muted); font-size: 0.85rem;">No items</span>`;
-    }
-    
-    // Build Details HTML (Pre-rendered for zero-latency toggle)
-    let detailsHtml = "";
-    if (itemsList.length === 0) {
-      detailsHtml = `<div class="font-data-mono text-xs text-outline py-2 text-center">No items found in this order.</div>`;
-    } else {
-      // Total print time across all items
-      let totalPrintMin = 0;
-      for (const item of itemsList) {
-        for (const j of (item.print_jobs || [])) {
-          totalPrintMin += ((j.print_files?.print_time_m || 0) * (item.purchased_quantity || 1));
-        }
-      }
-      const totalTimeHtml = totalPrintMin > 0
-        ? `<div class="flex items-center gap-1.5 text-[11px] text-on-surface-variant/60 font-data-mono mb-1">
-             <span class="material-symbols-outlined text-xs select-none">schedule</span>
-             <span>Total print time: <span class="text-on-surface-variant">${totalPrintMin}m</span></span>
-           </div>`
-        : "";
-
-      detailsHtml = `<div class="flex flex-col gap-3">${totalTimeHtml}`;
-      for (const item of itemsList) {
-        const dateStr = item.sent_to_print_timestamp ? new Date(item.sent_to_print_timestamp).toLocaleString() : "Not Dispatched";
-        const stickerUrl = item.variants?.seal_sticker_gdrive_url || "";
-        const stickerBtn = stickerUrl
-          ? `<a href="${escapeHtml(sanitizeUrl(stickerUrl))}" target="_blank" rel="noopener"
-               class="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors font-semibold whitespace-nowrap">
-               <span class="material-symbols-outlined text-xs">label</span> Sticker
-             </a>`
-          : `<span class="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-outline/40 border border-outline/10 whitespace-nowrap cursor-not-allowed select-none" title="No seal sticker configured for this variant">
-               <span class="material-symbols-outlined text-xs">label_off</span> Sticker
-             </span>`;
-
-        const jobs = item.print_jobs || [];
-        let jobsHtml = "";
-        if (jobs.length > 0) {
-          jobsHtml = `
-            <div class="flex flex-col gap-2 mt-2 w-full">
-              ${jobs.map(j => {
-                let badgeClass = "pending";
-                let extraStatus = "";
-                let progressHtml = "";
-
-                if (j.job_execution_status === "printing") {
-                  badgeClass = "printing";
-                  extraStatus = `
-                    <span class="px-2 py-0.5 rounded bg-surface-tint/10 text-surface-tint border border-surface-tint/20 font-data-mono text-[10px]">
-                      ${j.printer_name || "Printing"}
-                    </span>
-                    <span class="text-surface-tint/80 font-data-mono text-[10px] ml-1">
-                      ${j.percent_complete}%
-                    </span>
-                  `;
-                  progressHtml = `
-                    <div class="w-full bg-black/40 rounded-full h-1.5 mt-2 border border-outline-variant/10 overflow-hidden">
-                      <div class="bg-surface-tint h-full transition-all duration-500" style="width: ${j.percent_complete}%"></div>
-                    </div>
-                  `;
-                } else if (j.job_execution_status === "completed") {
-                  badgeClass = "completed";
-                } else if (j.job_execution_status === "failed") {
-                  badgeClass = "hold";
-                } else if (j.job_execution_status === "pending" && j.queue_position) {
-                  extraStatus = `
-                    <span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 font-data-mono text-[10px]">
-                      Queue Pos: #${j.queue_position}
-                    </span>
-                  `;
-                }
-
-                const etaText = j.job_execution_status !== "completed" && j.estimated_finish_time ? formatEta(j.estimated_finish_time) : "";
-                const etaHtml = etaText ? `<span class="text-on-surface-variant/60 font-data-mono text-[10px] ml-auto">${etaText}</span>` : "";
-                const spFileId = j.print_files?.simplyprint_file_id || "";
-                const safeJobId = j.id || "";
-                const redispatchBtn = j.print_file_name
-                  ? `<button class="btn-redispatch-file flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors font-semibold whitespace-nowrap"
-                       data-sp-file-id="${escapeHtml(spFileId)}" data-file-name="${escapeHtml(j.print_file_name)}" data-job-id="${escapeHtml(safeJobId)}">
-                       <span class="material-symbols-outlined text-xs">refresh</span> Re-dispatch
-                     </button>`
-                  : "";
-                const printTimeHtml = j.print_files?.print_time_m
-                  ? `<span class="text-on-surface-variant/40 font-data-mono text-[10px]">${j.print_files.print_time_m}m</span>`
-                  : "";
-
-                return `
-                  <div class="flex flex-col p-2.5 rounded bg-black/30 border border-outline-variant/10 text-xs w-full">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                      <div class="flex items-center gap-1.5 min-w-0 flex-1">
-                        <span class="material-symbols-outlined text-surface-tint text-base flex-shrink-0">code</span>
-                        <div class="font-data-mono text-on-surface-variant break-all" title="${escapeHtml(j.print_file_name)}">${escapeHtml(j.print_file_name)}</div>
-                        ${printTimeHtml}
-                      </div>
-                      <div class="flex items-center gap-1.5 flex-wrap">
-                        ${extraStatus}
-                        ${etaHtml}
-                        <span class="badge ${badgeClass} text-[10px] py-0.5 px-2.5">${escapeHtml(j.job_execution_status)}</span>
-                        ${redispatchBtn}
-                      </div>
-                    </div>
-                    ${progressHtml}
-                  </div>
-                `;
-              }).join("")}
-            </div>
-          `;
-        } else {
-          jobsHtml = `
-            <div class="flex items-center gap-1.5 text-[11px] text-on-surface-variant/40 mt-2 font-data-mono">
-              <span class="material-symbols-outlined text-xs">info</span>
-              <span>No print jobs dispatched yet.</span>
-            </div>
-          `;
-        }
-
-        detailsHtml += `
-          <div class="flex flex-col md:flex-row justify-between items-start md:items-center p-3 rounded-lg bg-surface-container-low/40 border border-outline-variant/10 gap-3">
-            <div class="flex-grow flex flex-col gap-1 min-w-0 w-full">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="font-data-mono text-xs text-primary bg-primary/10 px-2 py-0.5 rounded font-bold">${escapeHtml(item.variant_sku) || 'UNKNOWN'}</span>
-                <span class="text-sm font-medium text-on-surface truncate">${escapeHtml(item.variant_name) || 'Generic Item'}</span>
-              </div>
-              <div class="flex items-center gap-1.5 text-[11px] text-on-surface-variant/60 font-data-mono mt-0.5">
-                <span class="material-symbols-outlined text-xs select-none">local_shipping</span>
-                <span>Dispatched: ${dateStr}</span>
-              </div>
-              ${jobsHtml}
-            </div>
-            <div class="flex flex-row md:flex-col items-center md:items-end justify-between w-full md:w-auto border-t md:border-t-0 border-outline-variant/5 pt-2 md:pt-0 mt-1 md:mt-0 gap-3">
-              <span class="text-sm font-bold text-on-surface font-data-mono">Qty: ${item.purchased_quantity}</span>
-              <span class="badge ${item.item_print_status.toLowerCase() === 'printing' ? 'printing' : (item.item_print_status.toLowerCase() === 'pending' ? 'pending' : 'completed')}">${escapeHtml(item.item_print_status)}</span>
-              ${stickerBtn}
-            </div>
-          </div>
-        `;
-      }
-      detailsHtml += `</div>`;
-    }
-    
-    const selectHtml = `
-      <select class="badge ${statusClass} overall-status-select" data-order-id="${order.id}" style="text-transform: capitalize;">
-        <option value="pending" ${statusLower === 'pending' ? 'selected' : ''}>Pending</option>
-        <option value="printing" ${statusLower === 'printing' ? 'selected' : ''}>Printing</option>
-        <option value="printed" ${statusLower === 'printed' ? 'selected' : ''}>Printed</option>
-        <option value="completed" ${statusLower === 'completed' ? 'selected' : ''}>Completed</option>
-        <option value="hold" ${statusLower === 'hold' || statusLower === 'on hold' ? 'selected' : ''}>Hold</option>
-      </select>
-    `;
+    const itemsHtml = itemsList.length
+      ? itemsList.map(item => d4SkuPill(item.variant_sku, item.purchased_quantity)).join(" ")
+      : `<span style="color:var(--ink-4);font-size:11px">no items</span>`;
 
     const platformLower = (order.sales_platform || "").toLowerCase();
-    let platformBadgeClass = "bg-surface-container text-on-surface-variant/80";
-    if (platformLower.includes("shopee")) {
-      platformBadgeClass = "bg-orange-500/15 text-orange-400 border border-orange-500/20";
-    } else if (platformLower.includes("lazada")) {
-      platformBadgeClass = "bg-blue-600/15 text-blue-400 border border-blue-600/20";
-    } else if (platformLower.includes("shopify")) {
-      platformBadgeClass = "bg-green-600/15 text-green-400 border border-green-600/20";
+    const platClass = platformLower.includes("lazada") ? "plat lz" : "plat";
+    const platLabel = platformLower.includes("shopee") ? "SHOPEE" : platformLower.includes("lazada") ? "LAZADA" : (order.sales_platform || "?").toUpperCase();
+
+    const selectHtml = `
+      <select class="d4-stsel ${statusClass} overall-status-select" data-order-id="${order.id}">
+        <option value="pending" ${statusLower === "pending" ? "selected" : ""}>Pending</option>
+        <option value="printing" ${statusLower === "printing" ? "selected" : ""}>Printing</option>
+        <option value="printed" ${statusLower === "printed" ? "selected" : ""}>Printed</option>
+        <option value="completed" ${statusLower === "completed" ? "selected" : ""}>Completed</option>
+        <option value="hold" ${statusLower === "hold" || statusLower === "on hold" ? "selected" : ""}>Hold</option>
+      </select>`;
+
+    // ── Expansion strip: print jobs · shipping · actions ──
+    let totalPrintMin = 0;
+    let jobsCol = "";
+    for (const item of itemsList) {
+      const jobs = item.print_jobs || [];
+      jobsCol += `<div style="margin-bottom:9px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          ${d4SkuPill(item.variant_sku, item.purchased_quantity)}
+          <span style="font-size:11.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(item.variant_name || "")}</span>
+        </div>`;
+      if (jobs.length > 0) {
+        jobsCol += jobs.map(j => {
+          totalPrintMin += ((j.print_files?.print_time_m || 0) * (item.purchased_quantity || 1));
+          let note = "";
+          if (j.job_execution_status === "printing") note = `${escapeHtml(j.printer_name || "printing")} · ${j.percent_complete ?? 0}%`;
+          else if (j.job_execution_status === "pending" && j.queue_position) note = `queue #${j.queue_position}`;
+          else if (j.print_files?.print_time_m) note = `${j.print_files.print_time_m}m`;
+          const spFileId = j.print_files?.simplyprint_file_id || "";
+          const redispatchBtn = j.print_file_name
+            ? `<button class="btn-redispatch-file d4-xbtn" style="padding:3px 9px;font-size:10px" data-sp-file-id="${escapeHtml(spFileId)}" data-file-name="${escapeHtml(j.print_file_name)}" data-job-id="${escapeHtml(j.id || "")}">↻</button>`
+            : "";
+          return `<div class="d4-xgc">
+            <span class="fx">GC</span>
+            <span class="f" title="${escapeHtml(j.print_file_name || "")}">${escapeHtml(j.print_file_name || "unnamed")}</span>
+            ${note ? `<span class="note">${note}</span>` : ""}
+            ${d4JobChip(j.job_execution_status)}
+            ${redispatchBtn}
+          </div>`;
+        }).join("");
+      } else {
+        jobsCol += `<div class="d4-xgc"><span class="note">no print jobs dispatched yet</span></div>`;
+      }
+      jobsCol += `</div>`;
     }
+    if (!jobsCol) jobsCol = `<div class="d4-xgc"><span class="note">no items in this order</span></div>`;
+
+    const rawUrl = order.raw_waybill_gdrive_url ? sanitizeUrl(order.raw_waybill_gdrive_url) : "";
+    const procUrl = order.processed_waybill_gdrive_url ? sanitizeUrl(order.processed_waybill_gdrive_url) : "";
+    const shipCol = `
+      <div class="d4-xkv"><b>Customer</b><span>${escapeHtml(order.customer_name || "N/A")}</span></div>
+      <div class="d4-xkv"><b>Ordered</b><span class="mono2">${oDate ? oDate.toLocaleString() : "N/A"}</span></div>
+      <div class="d4-xkv"><b>Waybill</b><span>${escapeHtml(order.waybill_processing_status || "pending")}</span></div>
+      ${totalPrintMin > 0 ? `<div class="d4-xkv"><b>Print time</b><span class="mono2">${totalPrintMin}m total</span></div>` : ""}
+      ${order.shop_id && showBrand ? `<div class="d4-xkv"><b>Shop</b><span>${escapeHtml(shopName(order.shop_id))}</span></div>` : ""}
+    `;
+
+    const stickerBtns = itemsList
+      .filter(it => it.variants?.seal_sticker_gdrive_url)
+      .map(it => `<a class="d4-xbtn" href="${escapeHtml(sanitizeUrl(it.variants.seal_sticker_gdrive_url))}" target="_blank" rel="noopener">Sticker · ${escapeHtml(it.variant_sku || "")}</a>`)
+      .join("");
+    const actsCol = `
+      ${rawUrl ? `<a class="d4-xbtn" href="${escapeHtml(rawUrl)}" target="_blank" rel="noopener">Raw waybill</a>` : ""}
+      ${procUrl ? `<a class="d4-xbtn pri" href="${escapeHtml(procUrl)}" target="_blank" rel="noopener">Waybill PDF</a>` : ""}
+      ${stickerBtns}
+      <button class="delete-order-btn d4-xbtn warn" data-order-id="${order.id}" data-platform-order-id="${escapeHtml(order.platform_order_id)}">Delete order</button>
+    `;
 
     html += `
-      <tr class="order-row border-b border-outline-variant/10 hover:bg-surface-container/20 transition-colors cursor-pointer" data-order-id="${order.id}">
-        <td class="py-2.5 px-3 border-r border-outline-variant/10 text-center select-none">
-          <span class="material-symbols-outlined text-outline text-base transition-transform duration-250 toggle-icon">expand_more</span>
-        </td>
-        <td class="py-2.5 px-3 border-r border-outline-variant/10 font-data-mono font-bold text-on-surface select-all max-w-[200px] truncate" title="${escapeHtml(order.platform_order_id)}">${escapeHtml(order.platform_order_id)}</td>
-        ${currentShop === "all" ? `
-        <td class="py-2.5 px-3 border-r border-outline-variant/10">
-          <span class="px-1.5 py-0.5 rounded text-[9px] font-body-md font-bold uppercase tracking-wide ${order.shop_id ? 'bg-surface-tint/15 text-surface-tint border border-surface-tint/25' : 'bg-amber-500/15 text-amber-400 border border-amber-500/25'}">${escapeHtml(shopName(order.shop_id))}</span>
-        </td>` : ""}
-        <td class="py-2.5 px-3 border-r border-outline-variant/10">
-          <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wide ${platformBadgeClass}">${escapeHtml(order.sales_platform)}</span>
-        </td>
-        <td class="py-2.5 px-3 border-r border-outline-variant/10 text-on-surface-variant/70 font-data-mono">${dateStr}</td>
-        <td class="py-2.5 px-3 border-r border-outline-variant/10 text-on-surface font-medium">${escapeHtml(order.customer_name) || 'N/A'}</td>
-        <td class="py-2.5 px-3 border-r border-outline-variant/10">
-          <div class="flex flex-wrap gap-1">${itemsHtml}</div>
-        </td>
-        <td class="py-2.5 px-3 border-r border-outline-variant/10 font-data-mono text-on-surface-variant/80">${escapeHtml(order.order_subtotal)} ${escapeHtml(order.order_currency)}</td>
-        <td class="py-2.5 px-3 border-r border-outline-variant/10 text-center">
-          <span class="badge ${waybillStatusClass} text-[10px] py-0.5 px-2.5 uppercase font-bold tracking-wide">${waybillStatusDisplay}</span>
-        </td>
-        <td class="py-2.5 px-3${prefix === "" ? " border-r border-outline-variant/10" : ""}">
-          <div class="overall-status-select-container">${selectHtml}</div>
-        </td>
-        ${prefix === "" ? `
-        <td class="py-2.5 px-3 text-center">
-          <button class="delete-order-btn p-1 rounded hover:bg-error/20 border border-transparent hover:border-error/30 text-error hover:scale-105 transition-transform flex items-center justify-center cursor-pointer select-none mx-auto" data-order-id="${order.id}" data-platform-order-id="${escapeHtml(order.platform_order_id)}" title="Delete Order">
-            <span class="material-symbols-outlined text-[16px]">delete</span>
-          </button>
-        </td>` : ""}
+      <tr class="d4-orow" data-order-id="${order.id}">
+        <td class="id" title="${escapeHtml(order.platform_order_id)}">${escapeHtml(order.platform_order_id)}</td>
+        ${showBrand ? `<td class="brand">${escapeHtml(shopName(order.shop_id))}</td>` : ""}
+        <td><span class="${platClass}">${escapeHtml(platLabel)}</span></td>
+        <td class="dt${isHot ? " hot" : ""}">${dateStr}</td>
+        <td class="buyer" title="${escapeHtml(order.customer_name || "")}">${escapeHtml(order.customer_name) || "N/A"}</td>
+        <td>${itemsHtml}</td>
+        <td class="sum">${escapeHtml(order.order_subtotal)} ${escapeHtml(order.order_currency)}</td>
+        <td>${d4WaybillChip(order)}</td>
+        <td>${selectHtml}</td>
+        <td><span class="chev">▼</span></td>
       </tr>
-      <tr class="hidden border-b border-outline-variant/10 bg-black/10 order-details-row" id="${prefix}details-${order.id}">
-        <td colspan="${prefix === "" ? (currentShop === "all" ? "11" : "10") : (currentShop === "all" ? "10" : "9")}" class="p-3 border-r border-outline-variant/10">
-          <div class="order-items-detail" id="${prefix}items-container-${order.id}">
-            ${detailsHtml}
+      <tr class="d4-xrow" id="${prefix}details-${order.id}">
+        <td colspan="${colCount}">
+          <div class="d4-xin">
+            <div><div class="d4-xt">Print Jobs</div>${jobsCol}</div>
+            <div><div class="d4-xt">Shipping</div>${shipCol}</div>
+            <div class="d4-xacts"><div class="d4-xt">Actions</div>${actsCol}</div>
           </div>
         </td>
       </tr>
     `;
   }
 
-  html += `
-      </tbody>
-    </table>
-  `;
+  html += `</tbody></table>`;
   container.innerHTML = html;
+
+  // Restore rows that were expanded before this re-render.
+  for (const id of expandedOrderRowIds) {
+    const row = container.querySelector(`tr.d4-orow[data-order-id="${id}"]`);
+    const details = document.getElementById(`${prefix}details-${id}`);
+    if (row && details) { row.classList.add("open"); details.classList.add("show"); }
+  }
 
   // Bind change listeners to overall status selectors
   container.querySelectorAll(".overall-status-select").forEach(select => {
@@ -1195,7 +1160,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
   });
 
   // Attach click events for expansion
-  container.querySelectorAll(".order-row").forEach(row => {
+  container.querySelectorAll("tr.d4-orow").forEach(row => {
     row.addEventListener("click", (e) => {
       if (e.target.closest("select") || e.target.closest("a") || e.target.closest("button") || window.getSelection().toString()) {
         return;
@@ -1205,10 +1170,8 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
     });
   });
 
-  // Bind click listeners to re-dispatch buttons (delegated: dataset values are
-  // already HTML-escaped by escapeHtml() at render time, unlike the old inline
-  // onclick="redispatchPrintFile('...')" string interpolation which only
-  // neutralized single quotes and could be broken out of by a double quote).
+  // Bind click listeners to re-dispatch buttons (dataset values are already
+  // HTML-escaped by escapeHtml() at render time).
   container.querySelectorAll(".btn-redispatch-file").forEach(btn => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1225,20 +1188,18 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
       e.stopPropagation();
       const orderId = btn.getAttribute("data-order-id");
       const platformOrderId = btn.getAttribute("data-platform-order-id");
-      
+
       const confirmed = await showConfirmModal(
         "Delete Order",
         `Are you sure you want to delete order ${platformOrderId}? This will cancel any associated SimplyPrint jobs and remove the order from the database.`,
         "Delete"
       );
-      
+
       if (!confirmed) return;
-      
+
       btn.disabled = true;
       btn.style.opacity = "0.5";
-      const icon = btn.querySelector(".material-symbols-outlined");
-      if (icon) icon.textContent = "sync";
-      
+
       try {
         // Fetch order item IDs first
         const { data: items, error: itemsErr } = await supabaseClient
@@ -1264,12 +1225,12 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         if (oErr) throw oErr;
 
         logAction(`Order deleted: ${platformOrderId}`, "warning", { order_id: orderId, platform_order_id: platformOrderId });
+        expandedOrderRowIds.delete(orderId);
         patchOrderDeletedLocally(orderId);
       } catch (err) {
         showToast("Error deleting order: " + err.message, "error");
         btn.disabled = false;
         btn.style.opacity = "1";
-        if (icon) icon.textContent = "delete";
       }
     });
   });
@@ -1991,19 +1952,14 @@ function setupOrderFilters() {
 }
 
 // Toggle Order details row
-function toggleOrderDetails(orderId, cardElement, prefix = "") {
-  const detailsContainer = cardElement.nextElementSibling || document.getElementById(`${prefix}details-${orderId}`);
-  const icon = cardElement.querySelector(".toggle-icon");
-
-  if (!detailsContainer || !icon) return;
-
-  if (!detailsContainer.classList.contains("hidden")) {
-    detailsContainer.classList.add("hidden");
-    icon.style.transform = "rotate(0deg)";
-  } else {
-    detailsContainer.classList.remove("hidden");
-    icon.style.transform = "rotate(180deg)";
-  }
+function toggleOrderDetails(orderId, rowElement, prefix = "") {
+  const details = rowElement.nextElementSibling || document.getElementById(`${prefix}details-${orderId}`);
+  if (!details) return;
+  const nowOpen = !details.classList.contains("show");
+  details.classList.toggle("show", nowOpen);
+  rowElement.classList.toggle("open", nowOpen);
+  if (nowOpen) expandedOrderRowIds.add(orderId);
+  else expandedOrderRowIds.delete(orderId);
 }
 
 // Fetch and Render System Logs
@@ -4458,7 +4414,9 @@ async function fetchAndRenderMissionControl() {
   const barsEl = document.getElementById("chart-orders-daily");
   const donutEl = document.getElementById("chart-platform-donut");
   const lineEl = document.getElementById("chart-throughput");
-  if (!barsEl && !donutEl && !lineEl) return;
+  // The KPI sparkline lives on Overview even when the three big charts don't
+  // (charts moved to the Logs pane) — keep fetching if either is mounted.
+  if (!barsEl && !donutEl && !lineEl && !document.getElementById("spark-orders")) return;
 
   try {
     const sinceIso = new Date(Date.now() - 30 * 86400000).toISOString();
@@ -5209,8 +5167,40 @@ async function fetchAndRenderPrintersAndQueue() {
       }).join("");
     };
 
+    // Overview gets Draft 4 compact bays; the Operations pane keeps the full cards.
+    const renderFleetBaysHtml = () => {
+      if (!printers || printers.length === 0) {
+        return `<div style="grid-column:1/-1">${emptyDiv("No printers configured in database.", "print")}</div>`;
+      }
+      return printers.map(p => {
+        const stateLower = (p.state || "").toLowerCase();
+        const isPrinting = p.online && stateLower === "printing";
+        const bayClass = !p.online ? "err" : isPrinting ? "print" : "idle";
+        let stateDisplay = p.online ? (p.state || "idle") : "offline";
+        if (stateDisplay.toLowerCase() === "starting" || stateDisplay.toLowerCase() === "starting print") stateDisplay = "finishing";
+        const progress = Math.max(0, Math.min(100, p.percent_complete || 0));
+        const remainingMinutes = p.remaining_seconds ? Math.round(p.remaining_seconds / 60) : 0;
+        const remainingStr = remainingMinutes > 0
+          ? (remainingMinutes >= 60 ? `${Math.floor(remainingMinutes / 60)}h ${remainingMinutes % 60}m` : `${remainingMinutes}m`)
+          : "";
+        const jobLine = p.online && p.current_job_name
+          ? `<div class="jb" title="${escapeHtml(p.current_job_name)}">${escapeHtml(p.current_job_name)}</div>`
+          : `<div class="jb">${p.online ? "idle — ready for jobs" : "printer offline"}</div>`;
+        const meterAndFoot = isPrinting || (p.online && p.percent_complete !== null && p.current_job_name)
+          ? `<div class="d4-meter"><i style="width:${progress}%"></i></div>
+             <div class="ft"><span class="pc">${progress}%</span><span>${remainingStr}</span></div>`
+          : "";
+        return `
+          <div class="d4-bay ${bayClass}">
+            <div class="top"><span class="nm" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span><span class="tag">${escapeHtml(stateDisplay.toUpperCase())}</span></div>
+            ${jobLine}
+            ${meterAndFoot}
+          </div>`;
+      }).join("");
+    };
+
     if (printersContainer) printersContainer.innerHTML = renderPrintersHtml("main-");
-    if (overviewPrintersContainer) overviewPrintersContainer.innerHTML = renderPrintersHtml("overview-");
+    if (overviewPrintersContainer) overviewPrintersContainer.innerHTML = renderFleetBaysHtml();
 
     if (queueError) throw queueError;
 
@@ -5430,6 +5420,7 @@ function setupDock() {
 window.addEventListener("DOMContentLoaded", () => {
   setupTabs();
   setupDock();
+  renderGreeting();
   setupSettings();
   setupLogsFiltering();
   setupCatalogSearch();
