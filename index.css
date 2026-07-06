@@ -3229,3 +3229,44 @@ tr.d4-orow.open td { background: var(--card-2); }
 .omd-pcard.link .pgo { font-size: 11px; width: 11px; height: 11px; color: var(--ink-4); margin-left: auto; flex-shrink: 0; }
 .omd-pcard.link:hover .pgo { color: var(--ink); }
 button.omd-pcard { font: inherit; text-align: left; width: 100%; }
+
+/* ═══════════════ D4 · printers ═══════════════ */
+.d4-btn.estop { color: var(--red); border-color: rgba(255, 102, 102, 0.5); background: rgba(255, 102, 102, 0.1); animation: d4estop 2.2s infinite; }
+.d4-btn.estop:hover { background: rgba(255, 102, 102, 0.2); color: var(--red); }
+@keyframes d4estop { 50% { box-shadow: 0 0 14px rgba(255, 102, 102, 0.35); } }
+.d4-cmd { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 14px; }
+.d4-cd { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; min-width: 0; }
+.d4-cd .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.d4-cd .nm { font: 600 12px var(--font-body); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d4-cd .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
+.d4-cd .st { font: 600 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; }
+.d4-cd .tm { font: 400 9.5px var(--font-mono); color: var(--ink-4); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d4-errlist { list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--ink-2); }
+.d4-errlist li strong { color: var(--ink); font-weight: 600; }
+.d4-opsgrid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; margin-top: 14px; align-items: start; }
+.d4-fleet { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.d4-pcard { background: var(--inset); border: 1px solid var(--line); border-radius: 10px; padding: 13px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.d4-pcard.pcard-error { border-color: rgba(255, 102, 102, 0.3); }
+.d4-qlist { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; max-height: 560px; overflow-y: auto; }
+.d4-qitem { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--inset); border: 1px solid var(--line); border-radius: 9px; padding: 9px 12px; }
+.d4-qitem .pos { width: 24px; height: 24px; border-radius: 50%; background: var(--green-dim); border: 1px solid rgba(62, 207, 142, 0.25); display: grid; place-items: center; font: 700 9.5px var(--font-mono); color: var(--green); flex-shrink: 0; }
+.d4-qitem .f { flex: 1; min-width: 0; }
+.d4-qitem .f .n { font: 500 11.5px var(--font-mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d4-qitem .f .m { font: 400 9.5px var(--font-mono); color: var(--ink-4); margin-top: 1px; }
+.d4-qitem .eta { font: 500 10px var(--font-mono); color: var(--green); background: var(--green-dim); border: 1px solid rgba(62, 207, 142, 0.2); padding: 2px 8px; border-radius: 5px; flex-shrink: 0; }
+.d4-ganttwrap { overflow-x: auto; padding: 16px 18px; }
+.d4-jobslist { max-height: 420px; overflow-y: auto; }
+.d4-gem { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.d4-gem .row .lbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-bottom: 6px; }
+.d4-gem .val { font: 600 11px var(--font-mono); color: var(--ink); }
+.d4-gem .row.cost { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); }
+.d4-gem .io { display: flex; justify-content: space-between; font: 400 10px var(--font-mono); color: var(--ink-4); }
+.d4-gem .brk { display: flex; flex-wrap: wrap; gap: 10px; font: 400 10px var(--font-mono); color: var(--ink-4); border-top: 1px solid var(--line); padding-top: 10px; }
+.d4-danger { border-color: rgba(255, 102, 102, 0.3); }
+.d4-danger .hd h2 { color: var(--red); }
+.d4-danger .bd { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
+.d4-danger .drow { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--inset); border: 1px solid var(--line); border-radius: 9px; padding: 10px 13px; }
+.d4-danger .drow .t { font: 600 12px var(--font-body); color: var(--ink); }
+.d4-danger .drow .s { font-size: 10.5px; color: var(--ink-4); margin-top: 2px; }
+/* gantt zoom buttons inside d4-seg */
+.d4-seg .gantt-zoom-btn { font: 600 10px var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; }

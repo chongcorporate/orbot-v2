@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.15.3">
+  <link rel="stylesheet" href="index.css?v=1.15.4">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -1319,288 +1319,141 @@
       </section>
 
       <!-- 7. Printers Pane -->
-      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-5" id="pane-operations">
-        <div class="glass-panel rounded-xl p-5 flex flex-col gap-6">
-          <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 flex-wrap gap-4">
-            <div>
-              <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">
-                <span class="material-symbols-outlined text-primary">hub</span>
-                <span>Operations</span>
-              </h2>
-              <p class="text-[11px] font-data-mono text-outline mt-0.5 pl-8">Printer fleet &amp; automation agents, unified</p>
-            </div>
-            <div class="flex items-center gap-2 flex-wrap">
-              <a href="https://simplyprint.io/panel/printers" target="_blank" class="px-3 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 no-underline">
-                <span class="material-symbols-outlined text-sm">open_in_new</span> SimplyPrint Portal
-              </a>
-              <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-[#3ecf8e] border border-primary/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="printers-btn-sync">
-                <span class="material-symbols-outlined text-sm">sync</span> Sync API
-              </button>
-              <button class="px-3 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="printers-btn-ready-all">
-                <span class="material-symbols-outlined text-sm">done_all</span> Ready All
-              </button>
-              <button class="px-3 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-lg text-xs font-semibold flex items-center gap-1.5" id="printers-btn-clear-cycles">
-                <span class="material-symbols-outlined text-sm">restart_alt</span> Clear Cycles
-              </button>
-              <button class="px-3 py-2 bg-error/15 hover:bg-error/25 text-error border border-error/40 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-[0_0_12px_rgba(255, 102, 102,0.15)] animate-pulse" id="printers-btn-estop-all">
-                <span class="material-symbols-outlined text-sm font-bold">emergency_home</span> E-STOP ALL
-              </button>
+      <section class="tab-content hidden d4-pane" id="pane-operations">
+        <!-- Page head -->
+        <div class="d4-phead">
+          <div>
+            <h2>Printers</h2>
+            <div class="sub">Printer fleet &amp; automation agents, unified</div>
+          </div>
+          <div class="acts">
+            <a href="https://simplyprint.io/panel/printers" target="_blank" class="d4-btn"><span class="material-symbols-outlined">open_in_new</span> SimplyPrint</a>
+            <button class="d4-btn" id="printers-btn-sync"><span class="material-symbols-outlined">refresh</span> Sync API</button>
+            <button class="d4-btn" id="printers-btn-ready-all"><span class="material-symbols-outlined">done_all</span> Ready All</button>
+            <button class="d4-btn" id="printers-btn-clear-cycles"><span class="material-symbols-outlined">restart_alt</span> Clear Cycles</button>
+            <button class="d4-btn estop" id="printers-btn-estop-all"><span class="material-symbols-outlined">emergency_home</span> E-STOP ALL</button>
+          </div>
+        </div>
+
+        <!-- Command strip: service + agents heartbeat cards -->
+        <div class="d4-cmd">
+          <div class="d4-cd">
+            <div class="top"><span class="nm">Orbot Service</span><div class="status-light-offline" id="ops-strip-hb-orbot_service-dot"></div></div>
+            <div class="st" id="ops-strip-hb-orbot_service-text">Offline</div>
+            <div class="tm" id="ops-strip-hb-orbot_service-time">Railway daemon</div>
+          </div>
+          <div class="d4-cd" title="Polls orders@gmail.com every 5 min. Parses Shopee/Lazada Time-to-Ship emails with Gemini and ingests orders automatically.">
+            <div class="top"><span class="nm" style="color:var(--cyan)">Scout</span><div class="dot" id="agents-hb-scout-dot"></div></div>
+            <div class="st" id="agents-hb-scout-text" style="color:#ff6666">Offline</div>
+            <div class="tm" id="agents-hb-scout-time">—</div>
+          </div>
+          <div class="d4-cd" title="Resolves pending order items to print files and dispatches them to the correct printer group via SimplyPrint queue. Runs inside the Orbot service.">
+            <div class="top"><span class="nm" style="color:var(--green)">Foreman</span><div class="dot" id="agents-hb-foreman-dot"></div></div>
+            <div class="st" id="agents-hb-foreman-text" style="color:#ff6666">Offline</div>
+            <div class="tm" id="agents-hb-foreman-time">—</div>
+          </div>
+          <div class="d4-cd" title="Processes waybill PDFs, classifies pages, stitches seal stickers, and compiles master print batches. Uploads to Google Drive.">
+            <div class="top"><span class="nm" style="color:var(--peach)">Waybill Agent</span><div class="dot" id="agents-hb-waybill-dot"></div></div>
+            <div class="st" id="agents-hb-waybill-text" style="color:#ff6666">Offline</div>
+            <div class="tm" id="agents-hb-waybill-time">—</div>
+          </div>
+          <div class="d4-cd" title="Syncs printer states, print queue, and job telemetry from SimplyPrint API into Supabase every 5 minutes. Runs inside the Orbot service.">
+            <div class="top"><span class="nm" style="color:var(--blue)">SP Telemetry</span><div class="dot" id="agents-hb-spsync-dot" style="background:#7ea6e8"></div></div>
+            <div class="st" id="agents-hb-spsync-text" style="color:#7ea6e8">Every 5m</div>
+            <div class="tm" id="agents-hb-spsync-time">—</div>
+          </div>
+        </div>
+
+        <!-- Quick agent triggers -->
+        <div class="d4-ops" style="margin-top:12px">
+          <div class="tier small" style="grid-template-columns:repeat(4,1fr)">
+            <button class="d4-opbtn" id="ctrl-trigger-scout"><span class="material-symbols-outlined">mail</span>Trigger Scan</button>
+            <button class="d4-opbtn go" id="ctrl-trigger-foreman"><span class="material-symbols-outlined">print</span>Trigger Dispatch</button>
+            <button class="d4-opbtn" id="ctrl-trigger-compile"><span class="material-symbols-outlined">local_shipping</span>Compile Batch</button>
+            <button class="d4-opbtn" id="ctrl-trigger-sync-simplyprint"><span class="material-symbols-outlined">refresh</span>Sync Now</button>
+          </div>
+        </div>
+
+        <!-- Printer connection alerts -->
+        <div class="d4-holdpanel hidden" id="printers-error-box" style="margin-top:12px">
+          <div class="ttl"><span class="material-symbols-outlined">error_outline</span><span>Printer Connection Alerts</span></div>
+          <ul class="d4-errlist" id="printers-error-list"></ul>
+        </div>
+
+        <!-- Fleet + queue -->
+        <div class="d4-opsgrid">
+          <div class="d4-card">
+            <div class="hd"><h2>Fleet</h2><span class="fresh-stamp" data-fresh="printers"></span></div>
+            <div class="d4-fleet" id="printers-grid">
+              <div class="skeleton-stack" style="grid-column:1/-1"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div>
             </div>
           </div>
-
-          <!-- System Status: every status indicator (service + all 4 agents) in
-               one element, instead of scattered across a header strip plus 4
-               separate large cards. -->
-          <div class="glass-panel rounded-xl p-4 flex flex-col gap-3">
-            <h3 class="text-xs font-bold text-on-surface flex items-center gap-2">
-              <span class="material-symbols-outlined text-primary text-base">monitor_heart</span> System Status
-            </h3>
-            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-              <div class="flex items-start gap-2.5 bg-black/20 rounded-lg border border-outline-variant/10 p-3">
-                <div class="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-                  <span class="material-symbols-outlined text-primary text-base select-none">dns</span>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <span class="text-[11px] font-bold text-on-surface truncate block">Orbot Service</span>
-                  <div class="flex items-center gap-1.5 mt-1">
-                    <div class="status-light-offline" id="ops-strip-hb-orbot_service-dot"></div>
-                    <span class="font-data-mono text-[10px] font-bold uppercase" id="ops-strip-hb-orbot_service-text">Offline</span>
-                  </div>
-                  <div class="font-data-mono text-[9px] text-outline mt-0.5" id="ops-strip-hb-orbot_service-time">Railway daemon</div>
-                </div>
-              </div>
-              <div class="flex items-start gap-2.5 bg-black/20 rounded-lg border border-outline-variant/10 p-3">
-                <div class="w-8 h-8 rounded-lg bg-[#22d3ee]/10 border border-[#22d3ee]/20 flex items-center justify-center flex-shrink-0">
-                  <span class="material-symbols-outlined text-[#22d3ee] text-base select-none">mail</span>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-1">
-                    <span class="text-[11px] font-bold text-on-surface truncate">Scout</span>
-                    <span class="material-symbols-outlined text-outline/40 hover:text-outline text-[12px] cursor-help flex-shrink-0" title="Polls orders@gmail.com every 5 min. Parses Shopee/Lazada &quot;Time to Ship&quot; emails with Gemini and ingests orders automatically.">info</span>
-                  </div>
-                  <div class="flex items-center gap-1.5 mt-1">
-                    <div class="w-2 h-2 rounded-full bg-error flex-shrink-0" id="agents-hb-scout-dot"></div>
-                    <span class="font-data-mono text-[10px] font-bold" id="agents-hb-scout-text" style="color:#ff6666">Offline</span>
-                  </div>
-                  <div class="font-data-mono text-[9px] text-outline mt-0.5" id="agents-hb-scout-time">—</div>
-                </div>
-              </div>
-              <div class="flex items-start gap-2.5 bg-black/20 rounded-lg border border-outline-variant/10 p-3">
-                <div class="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-                  <span class="material-symbols-outlined text-primary text-base select-none">print</span>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-1">
-                    <span class="text-[11px] font-bold text-on-surface truncate">Foreman</span>
-                    <span class="material-symbols-outlined text-outline/40 hover:text-outline text-[12px] cursor-help flex-shrink-0" title="Resolves pending order items to print files and dispatches them to the correct printer group via SimplyPrint queue.">info</span>
-                  </div>
-                  <div class="flex items-center gap-1.5 mt-1">
-                    <div class="w-2 h-2 rounded-full bg-error flex-shrink-0" id="agents-hb-foreman-dot"></div>
-                    <span class="font-data-mono text-[10px] font-bold" id="agents-hb-foreman-text" style="color:#ff6666">Offline</span>
-                  </div>
-                  <div class="font-data-mono text-[9px] text-outline mt-0.5" id="agents-hb-foreman-time">—</div>
-                </div>
-              </div>
-              <div class="flex items-start gap-2.5 bg-black/20 rounded-lg border border-outline-variant/10 p-3">
-                <div class="w-8 h-8 rounded-lg bg-[#ffaa6b]/10 border border-[#ffaa6b]/20 flex items-center justify-center flex-shrink-0">
-                  <span class="material-symbols-outlined text-[#ffaa6b] text-base select-none">local_shipping</span>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-1">
-                    <span class="text-[11px] font-bold text-on-surface truncate">Waybill Agent</span>
-                    <span class="material-symbols-outlined text-outline/40 hover:text-outline text-[12px] cursor-help flex-shrink-0" title="Processes waybill PDFs, classifies pages, stitches seal stickers, and compiles master print batches. Uploads to Google Drive.">info</span>
-                  </div>
-                  <div class="flex items-center gap-1.5 mt-1">
-                    <div class="w-2 h-2 rounded-full bg-error flex-shrink-0" id="agents-hb-waybill-dot"></div>
-                    <span class="font-data-mono text-[10px] font-bold" id="agents-hb-waybill-text" style="color:#ff6666">Offline</span>
-                  </div>
-                  <div class="font-data-mono text-[9px] text-outline mt-0.5" id="agents-hb-waybill-time">—</div>
-                </div>
-              </div>
-              <div class="flex items-start gap-2.5 bg-black/20 rounded-lg border border-outline-variant/10 p-3">
-                <div class="w-8 h-8 rounded-lg bg-[#7ea6e8]/10 border border-[#7ea6e8]/20 flex items-center justify-center flex-shrink-0">
-                  <span class="material-symbols-outlined text-[#7ea6e8] text-base select-none">sync</span>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-1">
-                    <span class="text-[11px] font-bold text-on-surface truncate">SP Telemetry</span>
-                    <span class="material-symbols-outlined text-outline/40 hover:text-outline text-[12px] cursor-help flex-shrink-0" title="Syncs printer states, print queue, and job telemetry from SimplyPrint API into Supabase every 5 minutes.">info</span>
-                  </div>
-                  <div class="flex items-center gap-1.5 mt-1">
-                    <div class="w-2 h-2 rounded-full flex-shrink-0" id="agents-hb-spsync-dot" style="background:#7ea6e8"></div>
-                    <span class="font-data-mono text-[10px] font-bold" id="agents-hb-spsync-text" style="color:#7ea6e8">Every 5m</span>
-                  </div>
-                  <div class="font-data-mono text-[9px] text-outline mt-0.5" id="agents-hb-spsync-time">—</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Quick Actions: every agent trigger button in one element, instead
-               of one button buried inside each of the 4 separate agent cards. -->
-          <div class="glass-panel rounded-xl p-4 flex flex-col gap-3">
-            <h3 class="text-xs font-bold text-on-surface flex items-center gap-2">
-              <span class="material-symbols-outlined text-primary text-base">bolt</span> Quick Actions
-            </h3>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <button class="flex items-center justify-center gap-2 py-2.5 bg-[#22d3ee]/10 hover:bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] rounded-lg font-label-caps text-[11px] font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all" id="ctrl-trigger-scout">
-                <span class="material-symbols-outlined text-base">mail</span> Trigger Scan
-              </button>
-              <button class="flex items-center justify-center gap-2 py-2.5 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg font-label-caps text-[11px] font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all" id="ctrl-trigger-foreman">
-                <span class="material-symbols-outlined text-base">print</span> Trigger Dispatch
-              </button>
-              <button class="flex items-center justify-center gap-2 py-2.5 bg-[#ffaa6b]/10 hover:bg-[#ffaa6b]/20 border border-[#ffaa6b]/30 text-[#ffaa6b] rounded-lg font-label-caps text-[11px] font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all" id="ctrl-trigger-compile">
-                <span class="material-symbols-outlined text-base">local_shipping</span> Compile Batch
-              </button>
-              <button class="flex items-center justify-center gap-2 py-2.5 bg-[#7ea6e8]/10 hover:bg-[#7ea6e8]/20 border border-[#7ea6e8]/30 text-[#7ea6e8] rounded-lg font-label-caps text-[11px] font-bold tracking-wider hover:scale-[1.01] active:scale-[0.98] transition-all" id="ctrl-trigger-sync-simplyprint">
-                <span class="material-symbols-outlined text-base">sync</span> Sync Now
-              </button>
-            </div>
-          </div>
-
-          <!-- Gemini Quota Monitor (merged from former Agents tab) -->
-          <div class="glass-panel rounded-xl p-4 flex flex-col gap-3">
-            <div class="flex justify-between items-center">
-              <h3 class="text-xs font-bold text-on-surface flex items-center gap-2">
-                <span class="material-symbols-outlined text-primary text-base">analytics</span> Gemini API · Daily Quota <span class="fresh-stamp" data-fresh="gemini"></span>
-              </h3>
-              <span class="text-[9px] font-data-mono text-primary uppercase bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded">gemini-2.0-flash-lite</span>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div class="flex flex-col gap-1.5 bg-black/20 p-3 rounded-lg border border-outline-variant/10">
-                <div class="flex justify-between text-[11px]">
-                  <span class="text-outline">Daily Requests</span>
-                  <span class="font-data-mono font-bold text-on-surface" id="gemini-requests-count">0 / 1,500</span>
-                </div>
-                <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
-                  <div id="gemini-requests-bar" class="h-full bg-primary rounded-full transition-all duration-500 w-0"></div>
-                </div>
-              </div>
-              <div class="flex flex-col gap-1.5 bg-black/20 p-3 rounded-lg border border-outline-variant/10">
-                <div class="flex justify-between text-[11px]">
-                  <span class="text-outline">Daily Tokens</span>
-                  <span class="font-data-mono font-bold text-on-surface" id="gemini-tokens-count">0 / 1,000,000</span>
-                </div>
-                <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
-                  <div id="gemini-tokens-bar" class="h-full bg-[#22d3ee] rounded-full transition-all duration-500 w-0"></div>
-                </div>
-              </div>
-              <div class="flex flex-col justify-between bg-black/20 p-3 rounded-lg border border-outline-variant/10">
-                <div class="flex justify-between items-center text-[11px]">
-                  <span class="text-outline">Est. Cost (USD)</span>
-                  <span class="font-data-mono font-bold text-primary text-sm" id="gemini-cost-est">$0.00</span>
-                </div>
-                <div class="flex justify-between text-[9.5px] text-outline">
-                  <span>In: <span class="font-data-mono text-on-surface" id="gemini-input-tokens">0</span></span>
-                  <span>Out: <span class="font-data-mono text-on-surface" id="gemini-output-tokens">0</span></span>
-                </div>
-              </div>
-            </div>
-            <div class="flex flex-wrap gap-3 text-[9.5px] text-outline border-t border-outline-variant/10 pt-2" id="gemini-breakdown-list">
-              <span class="text-outline/50">No requests today.</span>
-            </div>
-          </div>
-
-          <!-- Error Notification Box -->
-          <div class="glass-panel border-l-4 border-error bg-error/5 p-4 rounded-r-xl hidden" id="printers-error-box">
-            <div class="flex items-start gap-3">
-              <span class="material-symbols-outlined text-error text-xl shrink-0">error_outline</span>
-              <div class="flex-grow">
-                <h4 class="font-bold text-sm text-on-surface">Printer Connection Alerts</h4>
-                <ul class="list-disc pl-5 mt-1.5 text-xs text-on-surface-variant space-y-1" id="printers-error-list">
-                  <!-- Dynamically populated if any printers are offline -->
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-12 gap-gutter items-start">
-            <!-- Printers Grid (Left Column) -->
-            <div class="col-span-12 lg:col-span-8 flex flex-col gap-4">
-              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
-                <span class="material-symbols-outlined text-primary">robot</span>
-                <span>Printers</span>
-                <span class="fresh-stamp" data-fresh="printers"></span>
-              </h3>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="printers-grid">
-                <!-- Dynamically populated printer cards -->
-                <div class="col-span-2 skeleton-stack"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div>
-              </div>
-            </div>
-
-            <!-- Print Queue Sidebar (Right Column) -->
-            <div class="col-span-12 lg:col-span-4 glass-panel rounded-xl p-5 flex flex-col gap-4">
-              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center justify-between w-full select-none">
-                <div class="flex items-center gap-2">
-                  <span class="material-symbols-outlined text-primary">list_alt</span>
-                  <span>Print Queue</span>
-                </div>
-                <span class="flex items-center gap-2"><span class="fresh-stamp" data-fresh="printers"></span><span class="text-xs font-data-mono text-outline" id="printers-queue-header-stats">0 (0m)</span></span>
-              </h3>
-              <div class="flex flex-col gap-2.5 h-[500px] overflow-y-auto pr-1" id="printers-queue-list">
-                <!-- Dynamically populated queue items -->
-                <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Gantt Chart Panel (Full Width) -->
-          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 mt-6" id="printers-gantt-panel">
-            <div class="flex justify-between items-center select-none">
-              <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
-                <span class="material-symbols-outlined text-primary">view_timeline</span>
-                <span>Printer Dispatch Timeline</span>
-              </h3>
-              <div class="flex gap-1.5 p-1 bg-surface-container-low rounded-lg border border-outline-variant/20">
-                <button class="gantt-zoom-btn px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all duration-200" data-hours="12" id="gantt-zoom-12">12h</button>
-                <button class="gantt-zoom-btn px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all duration-200 active" data-hours="24" id="gantt-zoom-24">24h</button>
-                <button class="gantt-zoom-btn px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all duration-200" data-hours="48" id="gantt-zoom-48">48h</button>
-              </div>
-            </div>
-            
-            <div class="overflow-x-auto w-full border border-outline-variant/10 rounded-lg bg-black/10 p-4 min-w-[800px]" id="gantt-chart-container">
-              <!-- Dynamically populated gantt chart -->
+          <div class="d4-card">
+            <div class="hd"><h2>Print Queue</h2><span class="cnt" id="printers-queue-header-stats">0 (0m)</span><span class="fresh-stamp" data-fresh="printers" style="margin-left:auto"></span></div>
+            <div class="d4-qlist" id="printers-queue-list">
               <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
             </div>
           </div>
+        </div>
 
-          <!-- Print Jobs Table (Full Width) -->
-          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 mt-6">
-            <h3 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 select-none">
-              <span class="material-symbols-outlined text-primary">dynamic_feed</span>
-              <span>Dispatched Print Jobs</span>
-              <span class="fresh-stamp" data-fresh="printjobs"></span>
-            </h3>
-            <div class="h-[400px] overflow-y-auto pr-1 bg-black/10 rounded-lg border border-outline-variant/10" id="printers-jobs-list">
-              <!-- Dynamically populated print jobs table -->
+        <!-- Dispatch timeline (Gantt) -->
+        <div class="d4-card" id="printers-gantt-panel" style="margin-top:14px">
+          <div class="hd">
+            <h2>Dispatch Timeline</h2>
+            <div class="d4-seg" style="margin-left:auto">
+              <button class="gantt-zoom-btn" data-hours="12" id="gantt-zoom-12">12h</button>
+              <button class="gantt-zoom-btn active" data-hours="24" id="gantt-zoom-24">24h</button>
+              <button class="gantt-zoom-btn" data-hours="48" id="gantt-zoom-48">48h</button>
+            </div>
+          </div>
+          <div class="d4-ganttwrap" id="gantt-chart-container">
+            <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+          </div>
+        </div>
+
+        <!-- Dispatched jobs + quota/danger rail -->
+        <div class="d4-opsgrid" style="margin-top:14px">
+          <div class="d4-card">
+            <div class="hd"><h2>Dispatched Print Jobs</h2><span class="fresh-stamp" data-fresh="printjobs"></span></div>
+            <div class="d4-jobslist" id="printers-jobs-list">
               <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
             </div>
           </div>
-
-          <!-- Danger Zone -->
-          <div class="glass-panel rounded-xl p-5 flex flex-col gap-4 border-l-4 border-error/60 mt-6">
-            <h3 class="font-headline-sm text-headline-sm text-error flex items-center gap-2">
-              <span class="material-symbols-outlined">warning</span> Danger Zone
-            </h3>
-            <p class="text-xs text-on-surface-variant/70 leading-relaxed">Destructive operations on the database. These actions cannot be undone.</p>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div class="flex items-center justify-between bg-black/20 border border-outline-variant/10 rounded-lg px-4 py-3">
-                <div>
-                  <div class="text-xs font-semibold text-on-surface">Purge Job Queue</div>
-                  <div class="text-[10px] text-outline mt-0.5">Remove all active/failed waybill jobs.</div>
+          <div class="d4-col">
+            <!-- Gemini quota -->
+            <div class="d4-card">
+              <div class="hd"><h2>Gemini Quota</h2><span class="fresh-stamp" data-fresh="gemini"></span><span class="cnt" style="margin-left:auto">gemini-2.0-flash-lite</span></div>
+              <div class="d4-gem">
+                <div class="row">
+                  <div class="lbl"><span>Daily Requests</span><span class="val" id="gemini-requests-count">0 / 1,500</span></div>
+                  <div class="d4-meter"><i id="gemini-requests-bar" style="width:0%;background:var(--green)"></i></div>
                 </div>
-                <button class="px-3 py-1.5 btn-outlined-red rounded font-label-caps text-xs flex items-center gap-1.5 flex-shrink-0 ml-4" id="ctrl-purge-jobs">
-                  <span class="material-symbols-outlined text-sm">clear_all</span> Purge
-                </button>
+                <div class="row">
+                  <div class="lbl"><span>Daily Tokens</span><span class="val" id="gemini-tokens-count">0 / 1,000,000</span></div>
+                  <div class="d4-meter"><i id="gemini-tokens-bar" style="width:0%"></i></div>
+                </div>
+                <div class="row cost">
+                  <span>Est. Cost (USD)</span><span class="val" style="color:var(--green)" id="gemini-cost-est">$0.00</span>
+                </div>
+                <div class="io">
+                  <span>In: <span class="val" id="gemini-input-tokens">0</span></span>
+                  <span>Out: <span class="val" id="gemini-output-tokens">0</span></span>
+                </div>
+                <div class="brk" id="gemini-breakdown-list"><span style="color:var(--ink-4)">No requests today.</span></div>
               </div>
-              <div class="flex items-center justify-between bg-error/5 border border-error/20 rounded-lg px-4 py-3">
-                <div>
-                  <div class="text-xs font-semibold text-error">Clear Database</div>
-                  <div class="text-[10px] text-outline mt-0.5">Wipes all orders, jobs, and catalog data.</div>
+            </div>
+            <!-- Danger zone -->
+            <div class="d4-card d4-danger">
+              <div class="hd"><h2>Danger Zone</h2></div>
+              <div class="bd">
+                <div class="drow">
+                  <div><div class="t">Purge Job Queue</div><div class="s">Remove all active/failed waybill jobs.</div></div>
+                  <button class="d4-btn warn sm" id="ctrl-purge-jobs"><span class="material-symbols-outlined">clear_all</span> Purge</button>
                 </div>
-                <button class="px-3 py-1.5 btn-red rounded font-label-caps text-xs flex items-center gap-1.5 flex-shrink-0 ml-4" id="clear-db-btn">
-                  <span class="material-symbols-outlined text-sm">delete</span> Clear
-                </button>
+                <div class="drow">
+                  <div><div class="t" style="color:var(--red)">Clear Database</div><div class="s">Wipes all orders, jobs, and catalog data.</div></div>
+                  <button class="d4-btn warn sm" id="clear-db-btn"><span class="material-symbols-outlined">delete</span> Clear</button>
+                </div>
               </div>
             </div>
           </div>
@@ -2043,6 +1896,6 @@
     </button>
   </div>
 
-  <script src="app.js?v=1.15.3"></script>
+  <script src="app.js?v=1.15.4"></script>
 </body>
 </html>

@@ -5171,7 +5171,7 @@ async function fetchAndRenderPrintersAndQueue() {
           : "";
 
         return `
-          <div class="glass-panel rounded-xl p-4 flex flex-col gap-3 ${cardAccentClass} ${p.online ? "glow-hover-cyan" : "glow-hover-red"}${!p.online ? " pt-card-offline" : ""}">
+          <div class="d4-pcard ${cardAccentClass}${!p.online ? " pt-card-offline" : ""}">
             <div class="flex justify-between items-center gap-2">
               <div class="flex items-center gap-2.5 min-w-0">
                 <div class="pt-icon" style="--pt-color:${stateColor}; --pt-soft:${stateColor}1f; --pt-line:${stateColor}47;">
@@ -5247,22 +5247,13 @@ async function fetchAndRenderPrintersAndQueue() {
         const durationStr = minVal > 0 ? (minVal >= 60 ? `${Math.floor(minVal/60)}h ${minVal%60}m` : `${minVal}m`) : "No estimate";
 
         return `
-          <div class="bg-surface-container-lowest/40 border border-outline-variant/10 p-3 rounded-lg flex items-center justify-between gap-3 hover:border-surface-tint/20 transition-all duration-200">
-            <div class="flex items-center gap-3 min-w-0">
-              <span class="w-6 h-6 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-data-mono text-[10px] text-primary font-bold shrink-0">#${q.position}</span>
-              <div class="min-w-0">
-                <p class="text-xs text-on-surface font-medium overflow-hidden text-ellipsis whitespace-nowrap max-w-[180px] cursor-help" 
-                   interestfor="tooltip-${prefix}queue-${q.id}" 
-                   id="trigger-${prefix}queue-${q.id}" 
-                   tabindex="0" 
-                   style="anchor-name: --tooltip-${prefix}queue-${q.id};">${escapeHtml(q.name)}</p>
-                <div popover="hint" id="tooltip-${prefix}queue-${q.id}" style="position-anchor: --tooltip-${prefix}queue-${q.id}; top: anchor(bottom); left: anchor(left); margin: unset;">
-                  ${escapeHtml(q.name)}
-                </div>
-                <p class="text-[9px] text-outline font-data-mono mt-0.5">SimplyPrint ID: ${q.id}</p>
-              </div>
+          <div class="d4-qitem">
+            <span class="pos">#${q.position}</span>
+            <div class="f">
+              <div class="n" title="${escapeHtml(q.name)}">${escapeHtml(q.name)}</div>
+              <div class="m">SimplyPrint ID: ${q.id}</div>
             </div>
-            <span class="text-[10px] font-data-mono text-primary bg-primary/5 px-2 py-0.5 rounded border border-primary/10 shrink-0">${durationStr}</span>
+            <span class="eta">${durationStr}</span>
           </div>
         `;
       }).join("");
