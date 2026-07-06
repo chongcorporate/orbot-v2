@@ -12,9 +12,11 @@ Before writing or editing any UI (HTML, CSS, Tailwind classes, JS-rendered marku
 
 ## Frontend
 
-- `app.js` is the entire frontend (~4100 lines). Bump `?v=X.X.X` in `index.html` after every `app.js` change (always read the current value from `index.html` — never trust a version number written elsewhere).
-- `index.css` holds all custom CSS. Tailwind handles utilities.
-- Vercel serves static files — no server-side rendering, no env vars at runtime. Supabase credentials come from localStorage (`orbot_supabase_url`, `orbot_supabase_key`).
+- `app.js` is the entire frontend (~8200 lines). Bump `?v=X.X.X` in `index.html` after every `app.js` change (always read the current value from `index.html` — never trust a version number written elsewhere).
+- `index.css` holds all custom CSS. Draft 4 component classes are `d4-` prefixed (appended sections at the bottom of the file); legacy classes above them are being retired as renderers migrate.
+- Tailwind CDN is still loaded: modal internals, the platform-listings cards, and the job-table renderers in `app.js` still emit utility classes. Do NOT remove the CDN until those are migrated to `d4-` classes. New markup should use `d4-` classes, not Tailwind utilities.
+- Two legacy `!important` input/select overrides (one in `index.html`'s inline `<style>`, one in `index.css`) skip any element whose class contains `d4-` — give styled form controls a `d4-` class or they'll be clobbered.
+- Vercel serves static files — no server-side rendering, no env vars at runtime. Supabase credentials come from localStorage (`orbot_supabase_url`, `orbot_supabase_key`). Deploy with `vercel --prod` (GitHub is not connected to Vercel).
 
 ## Backend
 
