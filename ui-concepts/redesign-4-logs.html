@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbot — Logs</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#0c0f14; --card:#12161d; --card-2:#171c25; --inset:#0a0d11;
+  --line:#1f2530; --line-2:#2b3342;
+  --ink:#edf0f4; --ink-2:#b6bec9; --ink-3:#7d8794; --ink-4:#525c69;
+  --green:#3ecf8e; --green-dim:rgba(62,207,142,.12); --green-glow:rgba(62,207,142,.35);
+  --blue:#7ea6e8; --peach:#ffaa6b; --orange:#ff8c00;
+  --cyan:#38bdf8; --red:#f66; --amber:#fbbf24; --violet:#a78bfa;
+  --r:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--canvas);color:var(--ink);font:400 13.5px/1.55 Inter,sans-serif;-webkit-font-smoothing:antialiased}
+.mono{font-family:'IBM Plex Mono',monospace}
+.wrap{max-width:1280px;margin:0 auto;padding:20px 24px 110px}
+header{display:flex;align-items:center;gap:18px;position:relative}
+.logo{display:flex;align-items:center;gap:11px}
+.logo .core{width:34px;height:34px;border-radius:10px;background:var(--green-dim);border:1px solid var(--green-glow);display:grid;place-items:center;color:var(--green);font:700 15px Outfit;box-shadow:0 0 22px rgba(62,207,142,.22);animation:pl 2s infinite}
+.logo h1{font:700 16px Outfit;letter-spacing:.02em}
+.logo .sub{font:500 9px 'IBM Plex Mono';letter-spacing:.22em;color:var(--ink-4)}
+nav{display:flex;gap:2px;position:absolute;left:50%;transform:translateX(-50%);padding:4px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
+.logo .core.offline{background:rgba(255,102,102,.12);border-color:rgba(255,102,102,.45);color:var(--red);box-shadow:0 0 22px rgba(255,102,102,.25);animation:none}
+nav a{padding:7px 15px;border-radius:9px;color:var(--ink-3);font:500 12.5px Inter;text-decoration:none}
+nav a:hover{color:var(--ink-2);background:var(--card-2)}
+nav a.on{color:#04120b;background:var(--green);font-weight:600;box-shadow:0 0 16px rgba(62,207,142,.35)}
+header .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+@keyframes pl{50%{opacity:.4}}
+.scope-wrap{position:relative}
+.scope{display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;border:1px solid var(--line-2);font:500 12px Inter;color:var(--ink-2);cursor:pointer;background:var(--card);user-select:none}
+.scope:hover{color:var(--ink);border-color:var(--ink-4)}
+.scope i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.scope .car{font-size:9px;color:var(--ink-4);transition:transform .15s}
+.scope-wrap.open .scope .car{transform:rotate(180deg)}
+.scope-menu{display:none;position:absolute;top:calc(100% + 7px);right:0;min-width:210px;background:var(--card);border:1px solid var(--line-2);border-radius:11px;padding:5px;box-shadow:0 14px 40px rgba(0,0,0,.55);z-index:50}
+.scope-wrap.open .scope-menu{display:block}
+.so{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;font:500 12px Inter;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.so:hover{background:var(--card-2);color:var(--ink)}
+.so i{width:7px;height:7px;border-radius:50%;background:var(--ink-4);flex-shrink:0}
+.so.on{color:var(--ink)}
+.so.on:after{content:"\2713";margin-left:auto;color:var(--green);font-size:11px}
+.so.all{border-top:1px solid var(--line);border-radius:0 0 8px 8px;margin-top:4px;padding-top:10px}
+.phead{display:flex;align-items:center;gap:14px;margin-top:24px}
+.phead h2{font:600 20px Outfit;letter-spacing:-.3px}
+.phead .sub{color:var(--ink-3);font-size:12.5px}
+.phead .acts{margin-left:auto;display:flex;gap:9px}
+.btn{display:flex;align-items:center;gap:7px;border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);border-radius:9px;padding:8px 14px;font:600 12.5px Outfit;cursor:pointer}
+.btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8}
+/* filters */
+.tools{display:flex;gap:10px;margin-top:16px;align-items:center;flex-wrap:wrap}
+.search{flex:1;min-width:260px;display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 13px;color:var(--ink-4)}
+.search input{flex:1;background:none;border:none;outline:none;color:var(--ink);font:400 13px Inter}
+.search svg{width:14px;height:14px;stroke:var(--ink-4);fill:none;stroke-width:1.8}
+.seg{display:flex;padding:3px;border-radius:10px;background:var(--card);border:1px solid var(--line)}
+.seg span{padding:6px 13px;border-radius:8px;font:500 12px Inter;color:var(--ink-3);cursor:pointer}
+.seg span.on{background:var(--card-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2)}
+.seg span.warn.on{color:var(--amber)} .seg span.err.on{color:var(--red)}
+.achips{display:flex;gap:6px}
+.ac{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card);font:500 11.5px 'IBM Plex Mono';color:var(--ink-3);cursor:pointer}
+.ac i{width:7px;height:7px;border-radius:50%}
+.ac.on{color:var(--ink);border-color:var(--line-2);background:var(--card-2)}
+/* layout */
+.cols{display:grid;grid-template-columns:1.8fr 1fr;gap:14px;margin-top:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+.card .hd{display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid var(--line)}
+.card .hd h2{font:600 14px Outfit}
+.card .hd .cnt{font:500 11px 'IBM Plex Mono';color:var(--ink-4);background:var(--inset);border:1px solid var(--line);padding:1px 8px;border-radius:999px}
+.card .hd .live{margin-left:auto;display:flex;align-items:center;gap:6px;font:500 10px 'IBM Plex Mono';color:var(--green)}
+.card .hd .live i{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pl 2s infinite}
+/* log rows */
+.day{font:600 10px 'IBM Plex Mono';letter-spacing:.1em;color:var(--ink-4);padding:10px 18px 4px;text-transform:uppercase}
+.lg{display:flex;gap:12px;padding:8px 18px;align-items:flex-start;border-left:2px solid transparent}
+.lg:hover{background:var(--card-2)}
+.lg .t{font:500 11px 'IBM Plex Mono';color:var(--ink-4);min-width:52px;padding-top:2px}
+.lg .who{min-width:76px;font:600 10px 'IBM Plex Mono';letter-spacing:.06em;padding:3px 0;text-align:center;border-radius:5px;border:1px solid var(--line-2);color:var(--ink-3)}
+.lg.scout .who{color:var(--cyan);border-color:rgba(56,189,248,.3)}
+.lg.foreman .who{color:var(--green);border-color:rgba(62,207,142,.3)}
+.lg.waybill .who{color:var(--violet);border-color:rgba(167,139,250,.3)}
+.lg.pm .who{color:var(--peach);border-color:rgba(255,170,107,.3)}
+.lg .m{font-size:12.5px;color:var(--ink-2);flex:1}
+.lg .m b{color:var(--ink);font-weight:600}
+.lg .m .mono{font-size:11.5px;color:var(--ink-3)}
+.lg.warn{border-left-color:var(--amber)} .lg.warn .m b{color:var(--amber)}
+.lg.err{border-left-color:var(--red);background:rgba(255,102,102,.04)} .lg.err .m b{color:var(--red)}
+.lg .act{border:1px solid var(--line-2);background:var(--inset);color:var(--ink-2);border-radius:6px;padding:3px 9px;font:600 10.5px Outfit;cursor:pointer;white-space:nowrap}
+.lg .act:hover{color:var(--ink)}
+/* agents panel */
+.ag{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.ag:last-child{border-bottom:none}
+.ag .dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 8px rgba(62,207,142,.5)}
+.ag .dot.stale{background:var(--amber);box-shadow:0 0 8px rgba(251,191,36,.4)}
+.ag .nm{font:600 12.5px Inter}
+.ag .role{font:400 10.5px 'IBM Plex Mono';color:var(--ink-4)}
+.ag .hb{margin-left:auto;text-align:right;font:500 10.5px 'IBM Plex Mono';color:var(--ink-3)}
+.ag .hb small{display:block;color:var(--ink-4);font-size:9.5px}
+/* summary */
+.sum{padding:12px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.su{background:var(--inset);border:1px solid var(--line);border-radius:9px;padding:9px 11px;text-align:center}
+.su .v{font:600 18px Outfit}
+.su .l{font:500 9.5px 'IBM Plex Mono';letter-spacing:.08em;color:var(--ink-4);margin-top:2px}
+.su.err .v{color:var(--red)} .su.warn .v{color:var(--amber)}
+.dock{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);display:flex;gap:10px;padding:10px;border-radius:16px;background:rgba(10,13,17,.85);border:1px solid var(--line-2);backdrop-filter:blur(18px);box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.dock button{border:none;border-radius:10px;padding:10px 18px;font:600 12.5px Outfit;cursor:pointer;letter-spacing:.02em;display:flex;align-items:center;gap:7px}
+.dock button svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8}
+.dock .ghost{background:var(--card-2);color:var(--ink-2);border:1px solid var(--line-2)}
+.dock .pri{background:var(--green);color:#04120b;box-shadow:0 0 24px rgba(62,207,142,.4)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><div class="core">◆</div><div><h1>ORBOT</h1><div class="sub">PRINT OPS · MISSION CONTROL</div></div></div>
+    <nav>
+      <a href="redesign-4-combined.html">Overview</a><a href="redesign-4-orders.html">Orders</a><a href="redesign-4-products.html">Products</a><a href="redesign-4-printers.html">Printers</a><a href="redesign-4-launch.html">Launch</a><a class="on" href="redesign-4-logs.html">Logs</a><a href="redesign-4-settings.html">Settings</a>
+    </nav>
+    <div class="right">
+      <div class="scope-wrap" id="scopeWrap">
+        <div class="scope" onclick="document.getElementById('scopeWrap').classList.toggle('open')"><i id="scopeDot"></i><span id="scopeLbl">Blocked Off · Shopee</span><span class="car">▾</span></div>
+        <div class="scope-menu">
+          <div class="so on" data-c="var(--green)" onclick="setShop(this)"><i style="background:var(--green)"></i>Blocked Off · Shopee</div>
+          <div class="so" data-c="var(--cyan)" onclick="setShop(this)"><i style="background:var(--cyan)"></i>Blocked Off · TikTok</div>
+          <div class="so" data-c="var(--blue)" onclick="setShop(this)"><i style="background:var(--blue)"></i>Blocked Off · Lazada</div>
+          <div class="so all" data-c="var(--ink-3)" onclick="setShop(this)"><i style="background:var(--ink-3)"></i>All shops</div>
+        </div>
+      </div>
+      <script>
+      function setShop(el){
+        document.querySelectorAll('.so').forEach(o=>o.classList.remove('on'));
+        el.classList.add('on');
+        document.getElementById('scopeLbl').textContent = el.textContent.trim();
+        document.getElementById('scopeDot').style.background = el.dataset.c;
+        document.getElementById('scopeWrap').classList.remove('open');
+        event.stopPropagation();
+      }
+      document.addEventListener('click',e=>{
+        if(!e.target.closest('#scopeWrap')) document.getElementById('scopeWrap').classList.remove('open');
+      });
+      </script>
+    </div>
+  </header>
+
+  <div class="phead">
+    <h2>Logs</h2><span class="sub">agent activity · live stream</span>
+    <div class="acts"><button class="btn"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5l5 5M4 20h16"/></svg>Export CSV</button></div>
+  </div>
+
+  <div class="tools">
+    <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Search order ID, file, message…"></div>
+    <div class="seg"><span class="on">All</span><span class="warn">Warnings</span><span class="err">Errors</span></div>
+    <div class="achips">
+      <div class="ac on"><i style="background:var(--ink-3)"></i>ALL</div>
+      <div class="ac"><i style="background:var(--cyan)"></i>SCOUT</div>
+      <div class="ac"><i style="background:var(--green)"></i>FOREMAN</div>
+      <div class="ac"><i style="background:var(--violet)"></i>WAYBILL</div>
+      <div class="ac"><i style="background:var(--peach)"></i>PROD-MGR</div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="card">
+      <div class="hd"><h2>Event stream</h2><span class="cnt">214 today</span><div class="live"><i></i>LIVE</div></div>
+      <div class="day">Today · Jul 05</div>
+      <div class="lg foreman"><span class="t">14:32:08</span><span class="who">FOREMAN</span><div class="m"><b>Dispatched</b> <span class="mono">DS-75357_x2.gcode</span> → Ender KE #1 · order <span class="mono">2506SPX7K41</span></div></div>
+      <div class="lg err foreman"><span class="t">14:18:41</span><span class="who">FOREMAN</span><div class="m"><b>Match failed</b> — no SKU match for listing “wall mount v2 gray” · order <span class="mono">2506SPX7F03</span></div><button class="act">Fix match</button></div>
+      <div class="lg warn pm"><span class="t">14:15:02</span><span class="who">PROD-MGR</span><div class="m"><b>Low filament</b> predicted for queue — Grey PLA 0.4 kg vs 0.9 kg required</div><button class="act">View queue</button></div>
+      <div class="lg err foreman"><span class="t">14:02:33</span><span class="who">FOREMAN</span><div class="m"><b>Printer fault</b> — K1 Max #1 thermal runaway halt at 64% · job preserved</div><button class="act">Reset</button></div>
+      <div class="lg scout"><span class="t">13:55:19</span><span class="who">SCOUT</span><div class="m"><b>Poll complete</b> — 12 new orders, 3 cancellations · Shopee · 1.8s</div></div>
+      <div class="lg waybill"><span class="t">13:20:44</span><span class="who">WAYBILL</span><div class="m"><b>Waybill generated</b> for <span class="mono">2506SPX7G88</span> · SPX tracking <span class="mono">MY2547719301</span></div></div>
+      <div class="lg foreman"><span class="t">13:04:12</span><span class="who">FOREMAN</span><div class="m"><b>Print complete</b> — <span class="mono">WM-71043.gcode</span> on A1 Mini #2 · 1h 12m actual vs 1h 15m est</div></div>
+      <div class="lg scout"><span class="t">12:55:07</span><span class="who">SCOUT</span><div class="m"><b>Poll complete</b> — 4 new orders · Shopee · 1.6s</div></div>
+      <div class="lg warn waybill"><span class="t">12:31:58</span><span class="who">WAYBILL</span><div class="m"><b>Retry 2/3</b> — SPX API timeout while fetching waybill for <span class="mono">2506SPX7B02</span></div></div>
+      <div class="lg pm"><span class="t">11:48:23</span><span class="who">PROD-MGR</span><div class="m"><b>Catalog import</b> — 4 SKUs updated in place via /catalog/import · 0 created</div></div>
+      <div class="day">Yesterday · Jul 04</div>
+      <div class="lg foreman"><span class="t">23:12:40</span><span class="who">FOREMAN</span><div class="m"><b>Night batch dispatched</b> — 6 jobs across 5 printers · est completion 06:40</div></div>
+      <div class="lg scout"><span class="t">22:55:11</span><span class="who">SCOUT</span><div class="m"><b>Poll complete</b> — 9 new orders · Shopee · 2.1s</div></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="hd"><h2>Agent health</h2></div>
+        <div class="ag"><span class="dot"></span><div><div class="nm">Scout</div><div class="role">order polling · 5 min cron</div></div><div class="hb">2m ago<small>heartbeat</small></div></div>
+        <div class="ag"><span class="dot"></span><div><div class="nm">Foreman</div><div class="role">dispatch & matching</div></div><div class="hb">1m ago<small>heartbeat</small></div></div>
+        <div class="ag"><span class="dot"></span><div><div class="nm">Waybill</div><div class="role">SPX label generation</div></div><div class="hb">4m ago<small>heartbeat</small></div></div>
+        <div class="ag"><span class="dot stale"></span><div><div class="nm">Product Manager</div><div class="role">catalog & stock sync</div></div><div class="hb">38m ago<small>heartbeat</small></div></div>
+        <div class="ag"><span class="dot"></span><div><div class="nm">Archivist</div><div class="role">telemetry & history</div></div><div class="hb">6m ago<small>heartbeat</small></div></div>
+      </div>
+      <div class="card">
+        <div class="hd"><h2>Last 24 h</h2></div>
+        <div class="sum">
+          <div class="su"><div class="v">214</div><div class="l">EVENTS</div></div>
+          <div class="su warn"><div class="v">7</div><div class="l">WARNINGS</div></div>
+          <div class="su err"><div class="v">2</div><div class="l">ERRORS</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dock">
+  <button class="ghost"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6"/></svg>Sync Shopee</button>
+  <button class="ghost"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5l5 5M4 20h16"/></svg>Upload Waybills</button>
+  <button class="pri"><svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg>Dispatch Queue</button>
+</div>
+</body>
+</html>

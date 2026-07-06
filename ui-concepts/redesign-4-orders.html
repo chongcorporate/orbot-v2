@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbot — Orders</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#0c0f14; --card:#12161d; --card-2:#171c25; --inset:#0a0d11;
+  --line:#1f2530; --line-2:#2b3342;
+  --ink:#edf0f4; --ink-2:#b6bec9; --ink-3:#7d8794; --ink-4:#525c69;
+  --green:#3ecf8e; --green-dim:rgba(62,207,142,.12); --green-glow:rgba(62,207,142,.35);
+  --blue:#7ea6e8; --peach:#ffaa6b; --orange:#ff8c00;
+  --cyan:#38bdf8; --red:#f66; --amber:#fbbf24;
+  --r:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--canvas);color:var(--ink);font:400 13.5px/1.55 Inter,sans-serif;-webkit-font-smoothing:antialiased}
+.mono{font-family:'IBM Plex Mono',monospace}
+.wrap{max-width:1380px;margin:0 auto;padding:20px 24px 110px}
+header{display:flex;align-items:center;gap:18px;position:relative}
+.logo{display:flex;align-items:center;gap:11px}
+.logo .core{width:34px;height:34px;border-radius:10px;background:var(--green-dim);border:1px solid var(--green-glow);display:grid;place-items:center;color:var(--green);font:700 15px Outfit;box-shadow:0 0 22px rgba(62,207,142,.22);animation:pl 2s infinite}
+.logo h1{font:700 16px Outfit;letter-spacing:.02em}
+.logo .sub{font:500 9px 'IBM Plex Mono';letter-spacing:.22em;color:var(--ink-4)}
+nav{display:flex;gap:2px;position:absolute;left:50%;transform:translateX(-50%);padding:4px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
+.logo .core.offline{background:rgba(255,102,102,.12);border-color:rgba(255,102,102,.45);color:var(--red);box-shadow:0 0 22px rgba(255,102,102,.25);animation:none}
+nav a{padding:7px 15px;border-radius:9px;color:var(--ink-3);font:500 12.5px Inter;text-decoration:none}
+nav a:hover{color:var(--ink-2);background:var(--card-2)}
+nav a.on{color:#04120b;background:var(--green);font-weight:600;box-shadow:0 0 16px rgba(62,207,142,.35)}
+header .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+@keyframes pl{50%{opacity:.4}}
+.scope-wrap{position:relative}
+.scope{display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;border:1px solid var(--line-2);font:500 12px Inter;color:var(--ink-2);cursor:pointer;background:var(--card);user-select:none}
+.scope:hover{color:var(--ink);border-color:var(--ink-4)}
+.scope i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.scope .car{font-size:9px;color:var(--ink-4);transition:transform .15s}
+.scope-wrap.open .scope .car{transform:rotate(180deg)}
+.scope-menu{display:none;position:absolute;top:calc(100% + 7px);right:0;min-width:210px;background:var(--card);border:1px solid var(--line-2);border-radius:11px;padding:5px;box-shadow:0 14px 40px rgba(0,0,0,.55);z-index:50}
+.scope-wrap.open .scope-menu{display:block}
+.so{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;font:500 12px Inter;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.so:hover{background:var(--card-2);color:var(--ink)}
+.so i{width:7px;height:7px;border-radius:50%;background:var(--ink-4);flex-shrink:0}
+.so.on{color:var(--ink)}
+.so.on:after{content:"\2713";margin-left:auto;color:var(--green);font-size:11px}
+.so.all{border-top:1px solid var(--line);border-radius:0 0 8px 8px;margin-top:4px;padding-top:10px}
+.phead{display:flex;align-items:center;gap:14px;margin-top:24px}
+.phead h2{font:600 20px Outfit;letter-spacing:-.3px}
+.phead .sub{color:var(--ink-3);font-size:12.5px}
+.phead .acts{margin-left:auto;display:flex;gap:9px}
+.btn{display:flex;align-items:center;gap:7px;border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);border-radius:9px;padding:8px 14px;font:600 12.5px Outfit;cursor:pointer}
+.btn:hover{color:var(--ink);background:var(--card-2)}
+.btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8}
+.qtabs{display:inline-flex;gap:2px;margin-top:16px;padding:4px;border-radius:10px;background:var(--card);border:1px solid var(--line)}
+.qt{padding:6px 13px;border-radius:7px;color:var(--ink-3);font:500 12px Inter;cursor:pointer;white-space:nowrap}
+.qt:hover{color:var(--ink-2);background:var(--card-2)}
+.qt.on{color:var(--ink);background:var(--card-2);border:1px solid var(--line-2);padding:5px 12px}
+.tools{display:flex;gap:10px;margin-top:12px;align-items:center}
+.search{flex:1;display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 13px;color:var(--ink-4)}
+.search input{flex:1;background:none;border:none;outline:none;color:var(--ink);font:400 13px Inter}
+.search svg{width:14px;height:14px;stroke:var(--ink-4);fill:none;stroke-width:1.8}
+.search .k{font:500 10px 'IBM Plex Mono';border:1px solid var(--line-2);border-radius:5px;padding:1px 6px}
+.ddl{display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 13px;font:500 12.5px Inter;color:var(--ink-2);cursor:pointer}
+
+/* ===== split layout ===== */
+.split{display:grid;grid-template-columns:1.45fr 1fr;gap:14px;margin-top:12px;align-items:start}
+
+/* left: order list */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+th{font:600 10.5px Inter;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-4);text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--inset)}
+td{padding:11px 14px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--ink-2);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:var(--card-2)}
+tr.open td{background:rgba(62,207,142,.05)}
+tr.open td:first-child{box-shadow:inset 2px 0 0 var(--green)}
+.oid{font:500 12px 'IBM Plex Mono';color:var(--ink)}
+.metar{display:flex;align-items:center;gap:6px;margin-top:4px}
+.src{font:600 8.5px 'IBM Plex Mono';letter-spacing:.1em;padding:2px 7px;border-radius:4px;background:rgba(255,140,0,.12);color:var(--orange)}
+.age{font:500 9.5px 'IBM Plex Mono';color:var(--ink-4)}
+.buyer{font-size:12px;color:var(--ink-2)}
+.pill{display:inline-block;font:500 10.5px 'IBM Plex Mono';padding:2.5px 8px;border-radius:6px;background:var(--inset);border:1px solid var(--line);white-space:nowrap;margin:1.5px 0}
+.pill.ds{color:var(--blue)} .pill.wm{color:var(--peach)} .pill.fwm{color:var(--orange)} .pill.bad{color:var(--red);border-color:rgba(255,102,102,.3)}
+.sum{font:500 11.5px 'IBM Plex Mono';color:var(--ink-3);white-space:nowrap}
+.stchip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3.5px 10px;font:500 11px Inter;border:1px solid;white-space:nowrap}
+.stchip i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.stchip.print{color:var(--cyan);border-color:rgba(56,189,248,.3);background:rgba(56,189,248,.08)}
+.stchip.queue{color:var(--amber);border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.08)}
+.stchip.done{color:var(--green);border-color:rgba(62,207,142,.3);background:var(--green-dim)}
+.stchip.err{color:var(--red);border-color:rgba(255,102,102,.3);background:rgba(255,102,102,.08)}
+.stchip.mut{color:var(--ink-3);border-color:var(--line-2);background:var(--inset)}
+.tfoot{display:flex;align-items:center;padding:11px 14px;color:var(--ink-4);font:500 11.5px 'IBM Plex Mono';border-top:1px solid var(--line)}
+.pages{margin-left:auto;display:flex;gap:4px}
+.pg{min-width:26px;height:26px;display:grid;place-items:center;border-radius:7px;border:1px solid var(--line);color:var(--ink-3);font:500 11px 'IBM Plex Mono';cursor:pointer}
+.pg.on{background:var(--green);border-color:var(--green);color:#04120b;font-weight:600}
+
+/* ===== right: order detail panel ===== */
+.detail{background:var(--card);border:1px solid var(--line);border-radius:var(--r);position:sticky;top:16px;display:flex;flex-direction:column;max-height:calc(100vh - 118px)}
+.dhead{padding:16px 18px 13px;border-bottom:1px solid var(--line)}
+.dhead .row1{display:flex;align-items:center;gap:9px}
+.dhead h3{font:600 17px 'IBM Plex Mono';letter-spacing:.01em}
+.ico{margin-left:auto;display:flex;gap:6px}
+.ico button{width:28px;height:28px;display:grid;place-items:center;border-radius:7px;border:1px solid var(--line-2);background:var(--inset);color:var(--ink-3);cursor:pointer}
+.ico button:hover{color:var(--ink);border-color:var(--ink-4)}
+.ico button.del:hover{color:var(--red);border-color:rgba(255,102,102,.4)}
+.ico svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8}
+.dhead .meta{display:flex;align-items:center;gap:9px;margin-top:8px}
+.dhead .dt{font:500 11px 'IBM Plex Mono';color:var(--ink-3)}
+.dhead .by{font:500 11px 'IBM Plex Mono';color:var(--ink-4)}
+.dbody{overflow-y:auto;padding:4px 18px 14px;flex:1}
+.sect{display:flex;align-items:center;gap:7px;font:600 10px 'IBM Plex Mono';letter-spacing:.14em;color:var(--ink-4);margin:15px 0 9px}
+.sect svg{width:12px;height:12px;stroke:var(--ink-4);fill:none;stroke-width:1.8}
+/* item card */
+.item{border:1px solid var(--line);background:var(--inset);border-radius:10px;padding:12px 13px}
+.item .top{display:flex;align-items:center;gap:8px}
+.skub{font:600 10.5px 'IBM Plex Mono';padding:3px 9px;border-radius:6px;border:1px solid rgba(126,166,232,.4);background:rgba(126,166,232,.1);color:var(--blue)}
+.item .top .stchip{margin-left:auto}
+.item .nm{font:500 12.5px Inter;color:var(--ink);margin-top:9px}
+.item .nm b{color:var(--ink-2);font-weight:600}
+.item .disp{font:400 10.5px 'IBM Plex Mono';color:var(--ink-4);margin-top:3px}
+/* gcode rows */
+.gc{display:flex;align-items:center;gap:9px;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 10px;margin-top:8px}
+.gc .fx{color:var(--green);font:600 10px 'IBM Plex Mono'}
+.gc .f{font:500 11px 'IBM Plex Mono';color:var(--ink-2);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gc .stchip{padding:2px 8px;font-size:10px}
+.gc .rd{display:flex;align-items:center;gap:5px;border:1px solid var(--line-2);background:var(--inset);color:var(--ink-3);border-radius:6px;padding:4px 9px;font:600 10px Outfit;cursor:pointer;white-space:nowrap}
+.gc .rd:hover{color:var(--ink);border-color:var(--ink-4)}
+.gc .rd svg{width:10px;height:10px;stroke:currentColor;fill:none;stroke-width:2}
+.sticker{display:inline-flex;align-items:center;gap:6px;margin-top:10px;border:1px solid var(--line-2);background:var(--card);color:var(--ink-3);border-radius:7px;padding:5px 11px;font:600 10.5px Outfit;cursor:pointer}
+.sticker:hover{color:var(--ink)}
+.sticker svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:1.8}
+/* waybill */
+.wbrow{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--inset);border-radius:10px;padding:10px 12px}
+.wbrow .gap{flex:1}
+.wbtn{display:flex;align-items:center;gap:5px;border:1px solid var(--line-2);background:var(--card);color:var(--ink-4);border-radius:7px;padding:5px 11px;font:600 10.5px Outfit;cursor:not-allowed;opacity:.55}
+.wbtn svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:1.8}
+/* timeline */
+.tl{padding:2px 0 2px 2px}
+.tle{display:flex;gap:11px;position:relative;padding:7px 0}
+.tle:before{content:"";position:absolute;left:5px;top:24px;bottom:-6px;width:1px;background:var(--line)}
+.tle:last-child:before{display:none}
+.tle .dot{width:11px;height:11px;border-radius:50%;border:2px solid var(--line-2);background:var(--card);flex-shrink:0;margin-top:3px;z-index:1}
+.tle.ok .dot{border-color:var(--green);background:var(--green-dim)}
+.tle .m{font-size:12px;color:var(--ink-2);flex:1}
+.tle.pend .m{color:var(--ink-4)}
+.tle .t{font:400 10px 'IBM Plex Mono';color:var(--ink-4);white-space:nowrap;padding-top:2px}
+/* update status footer */
+.dfoot{border-top:1px solid var(--line);padding:13px 18px}
+.dfoot .l{font:600 9.5px 'IBM Plex Mono';letter-spacing:.14em;color:var(--ink-4);margin-bottom:9px}
+.dfoot .btns{display:flex;gap:8px}
+.sbtn{display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line-2);background:var(--inset);color:var(--ink-2);border-radius:9px;padding:9px 14px;font:600 12px Outfit;cursor:pointer}
+.sbtn:hover{color:var(--ink);border-color:var(--ink-4)}
+.sbtn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
+.sbtn.wide{flex:1;color:var(--green);border-color:rgba(62,207,142,.45);background:var(--green-dim);box-shadow:0 0 16px rgba(62,207,142,.12)}
+.sbtn.wide:hover{filter:brightness(1.1);color:var(--green)}
+/* dock */
+.dock{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);display:flex;gap:10px;padding:10px;border-radius:16px;background:rgba(10,13,17,.85);border:1px solid var(--line-2);backdrop-filter:blur(18px);box-shadow:0 12px 40px rgba(0,0,0,.5);z-index:10}
+.dock button{border:none;border-radius:10px;padding:10px 18px;font:600 12.5px Outfit;cursor:pointer;letter-spacing:.02em;display:flex;align-items:center;gap:7px}
+.dock button svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8}
+.dock .ghost{background:var(--card-2);color:var(--ink-2);border:1px solid var(--line-2)}
+.dock .ghost:hover{color:var(--ink)}
+.dock .pri{background:var(--green);color:#04120b;box-shadow:0 0 24px rgba(62,207,142,.4)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><div class="core">◆</div><div><h1>ORBOT</h1><div class="sub">PRINT OPS · MISSION CONTROL</div></div></div>
+    <nav>
+      <a href="redesign-4-combined.html">Overview</a><a class="on" href="redesign-4-orders.html">Orders</a><a href="redesign-4-products.html">Products</a><a href="redesign-4-printers.html">Printers</a><a href="redesign-4-launch.html">Launch</a><a href="redesign-4-logs.html">Logs</a><a href="redesign-4-settings.html">Settings</a>
+    </nav>
+    <div class="right">
+      <div class="scope-wrap" id="scopeWrap">
+        <div class="scope" onclick="document.getElementById('scopeWrap').classList.toggle('open')"><i id="scopeDot"></i><span id="scopeLbl">Blocked Off · Shopee</span><span class="car">▾</span></div>
+        <div class="scope-menu">
+          <div class="so on" data-c="var(--green)" onclick="setShop(this)"><i style="background:var(--green)"></i>Blocked Off · Shopee</div>
+          <div class="so" data-c="var(--cyan)" onclick="setShop(this)"><i style="background:var(--cyan)"></i>Blocked Off · TikTok</div>
+          <div class="so" data-c="var(--blue)" onclick="setShop(this)"><i style="background:var(--blue)"></i>Blocked Off · Lazada</div>
+          <div class="so all" data-c="var(--ink-3)" onclick="setShop(this)"><i style="background:var(--ink-3)"></i>All shops</div>
+        </div>
+      </div>
+      <script>
+      function setShop(el){
+        document.querySelectorAll('.so').forEach(o=>o.classList.remove('on'));
+        el.classList.add('on');
+        document.getElementById('scopeLbl').textContent = el.textContent.trim();
+        document.getElementById('scopeDot').style.background = el.dataset.c;
+        document.getElementById('scopeWrap').classList.remove('open');
+        event.stopPropagation();
+      }
+      document.addEventListener('click',e=>{
+        if(!e.target.closest('#scopeWrap')) document.getElementById('scopeWrap').classList.remove('open');
+      });
+      </script>
+    </div>
+  </header>
+
+  <div class="phead">
+    <h2>Orders</h2><span class="sub">47 open · sorted by ship-by deadline</span>
+    <div class="acts">
+      <button class="btn"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5l5 5M4 20h16"/></svg>Upload Waybills</button>
+      <button class="btn"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6"/></svg>Sync Shopee</button>
+    </div>
+  </div>
+
+  <div class="qtabs">
+    <div class="qt on">Active</div>
+    <div class="qt">All</div>
+    <div class="qt">Pending</div>
+    <div class="qt">Printing</div>
+    <div class="qt">Printed</div>
+    <div class="qt">Completed</div>
+    <div class="qt">Hold</div>
+  </div>
+
+  <div class="tools">
+    <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Search order ID, buyer, SKU…"><span class="k">/</span></div>
+    <div class="ddl">Ship-by: All dates ▾</div>
+    <div class="ddl">Product type: All ▾</div>
+  </div>
+
+  <div class="split">
+    <!-- LEFT: order list -->
+    <div class="card">
+      <table>
+        <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Subtotal</th><th>Status</th><th>Waybill</th></tr></thead>
+        <tbody>
+          <tr class="open"><td><div class="oid">260705UF5KE70H</div><div class="metar"><span class="src">SHOPEE</span><span class="age">1h</span></div></td><td class="buyer">ae2868</td><td><span class="pill ds">BLO-SC-SKD-F ×3</span></td><td class="sum">16.35 SGD</td><td><span class="stchip done"><i></i>Printed</span></td><td><span class="stchip queue"><i></i>Pending</span></td></tr>
+          <tr><td><div class="oid">260705UBVV94ME</div><div class="metar"><span class="src">SHOPEE</span><span class="age">2h</span></div></td><td class="buyer">derickfred</td><td><span class="pill wm">BLO-TCH-42107-WM</span><br><span class="pill fwm">BLO-TCH-42137-FWM</span><br><span class="pill fwm">BLO-TCH-42207-FWM ×2</span></td><td class="sum">935 PHP</td><td><span class="stchip print"><i></i>Printing</span></td><td><span class="stchip queue"><i></i>Pending</span></td></tr>
+          <tr><td><div class="oid">260705TU8U9H74</div><div class="metar"><span class="src">SHOPEE</span><span class="age">7h</span></div></td><td class="buyer">scommercetrading</td><td><span class="pill fwm">BLO-ICN-10318-FWM</span></td><td class="sum">23 MYR</td><td><span class="stchip done"><i></i>Printed</span></td><td><span class="stchip queue"><i></i>Pending</span></td></tr>
+          <tr><td><div class="oid">260705TH621TNM</div><div class="metar"><span class="src">SHOPEE</span><span class="age">10h</span></div></td><td class="buyer">alexsalihin</td><td><span class="pill ds">BLO-SW-75325-DS-NP</span></td><td class="sum">25.07 SGD</td><td><span class="stchip done"><i></i>Printed</span></td><td><span class="stchip queue"><i></i>Pending</span></td></tr>
+          <tr><td><div class="oid">260704SKHTY1HF</div><div class="metar"><span class="src">SHOPEE</span><span class="age">19h</span></div></td><td class="buyer">mohamadhusain02</td><td><span class="pill ds">BLO-ICN-10300-DS</span><br><span class="pill ds">BLO-SC-DS-76989</span></td><td class="sum">50 MYR</td><td><span class="stchip done"><i></i>Printed</span></td><td><span class="stchip queue"><i></i>Pending</span></td></tr>
+          <tr><td><div class="oid">260704SBN5Q8N7</div><div class="metar"><span class="src">SHOPEE</span><span class="age">21h</span></div></td><td class="buyer">blockedoff.my</td><td><span class="pill ds">BLO-SC-DS-F1-T2 ×2</span></td><td class="sum">54 MYR</td><td><span class="stchip done"><i></i>Printed</span></td><td><span class="stchip queue"><i></i>Pending</span></td></tr>
+          <tr><td><div class="oid">236844925281935</div><div class="metar"><span class="src">SHOPEE</span><span class="age">24h</span></div></td><td class="buyer">tracyslim</td><td><span class="pill ds">BLO-SC-VDS-F1-REDBULL</span></td><td class="sum">487 PHP</td><td><span class="stchip done"><i></i>Printed</span></td><td><span class="stchip queue"><i></i>Pending</span></td></tr>
+          <tr><td><div class="oid">260704S00RKSB8</div><div class="metar"><span class="src">SHOPEE</span><span class="age">1d</span></div></td><td class="buyer">chrisong019</td><td><span class="pill ds">BLO-SC-VDS-F1-MCLAREN</span><br><span class="pill ds">BLO-SC-VDS-F1-FERRARI</span></td><td class="sum">32.7 SGD</td><td><span class="stchip done"><i></i>Printed</span></td><td><span class="stchip queue"><i></i>Pending</span></td></tr>
+          <tr><td><div class="oid">260704R01D9FWB</div><div class="metar"><span class="src">SHOPEE</span><span class="age">1d</span></div></td><td class="buyer">wisakha1924</td><td><span class="pill ds">BLO-SW-75325-DS-1</span></td><td class="sum">328 THB</td><td><span class="stchip done"><i></i>Printed</span></td><td><span class="stchip queue"><i></i>Pending</span></td></tr>
+          <tr><td><div class="oid">260703PRBGA7CS</div><div class="metar"><span class="src">SHOPEE</span><span class="age">2d</span></div></td><td class="buyer">zahariman mokhtar</td><td><span class="pill bad">item does not exist</span></td><td class="sum">55 MYR</td><td><span class="stchip err"><i></i>Unmatched</span></td><td><span class="stchip queue"><i></i>Pending</span></td></tr>
+        </tbody>
+      </table>
+      <div class="tfoot">Showing 1–10 of 47 <div class="pages"><span class="pg on">1</span><span class="pg">2</span><span class="pg">3</span><span class="pg">→</span></div></div>
+    </div>
+
+    <!-- RIGHT: order detail -->
+    <div class="detail">
+      <div class="dhead">
+        <div class="row1">
+          <h3>260705UF5KE70H</h3>
+          <div class="ico">
+            <button title="Copy order ID"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></button>
+            <button class="del" title="Delete order"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15M10 11v6M14 11v6"/></svg></button>
+          </div>
+        </div>
+        <div class="meta"><span class="src">SHOPEE</span><span class="dt">05/07/2026, 17:47:17</span><span class="by">· ae2868</span></div>
+      </div>
+
+      <div class="dbody">
+        <div class="sect"><svg viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8"/></svg>ITEMS (1)</div>
+        <div class="item">
+          <div class="top"><span class="skub">BLO-SC-SKD-F</span><span class="stchip done"><i></i>Completed</span></div>
+          <div class="nm">SC - Skadis - Flush - <b>BASE (Skadis - Tilted)</b> · Qty 3</div>
+          <div class="disp">Dispatched: 05/07/2026, 17:47:37</div>
+          <div class="gc"><span class="fx">&lt;/&gt;</span><span class="f">SC-SKADIS-Fig - 6g-25m-a1m.gcode</span><span class="stchip done"><i></i>Completed</span><button class="rd"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6"/></svg>Re-dispatch</button></div>
+          <div class="gc"><span class="fx">&lt;/&gt;</span><span class="f">SC-SKADIS-Fig - 6g-25m-a1m.gcode</span><span class="stchip done"><i></i>Completed</span><button class="rd"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6"/></svg>Re-dispatch</button></div>
+          <div class="gc"><span class="fx">&lt;/&gt;</span><span class="f">SC-SKADIS-Fig - 6g-25m-a1m.gcode</span><span class="stchip done"><i></i>Completed</span><button class="rd"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6"/></svg>Re-dispatch</button></div>
+          <button class="sticker"><svg viewBox="0 0 24 24"><path d="M20 12V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2h6"/><path d="M20 12l-8 8M20 12h-5v5"/></svg>Sticker</button>
+        </div>
+
+        <div class="sect"><svg viewBox="0 0 24 24"><path d="M1 8h14v9H1zM15 11h4l4 3v3h-8M5.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM18.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/></svg>WAYBILL</div>
+        <div class="wbrow">
+          <span class="stchip queue"><i></i>Pending</span>
+          <span class="gap"></span>
+          <button class="wbtn"><svg viewBox="0 0 24 24"><path d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Raw PDF</button>
+          <button class="wbtn"><svg viewBox="0 0 24 24"><path d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Processed — n/a</button>
+        </div>
+
+        <div class="sect"><svg viewBox="0 0 24 24"><path d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>ORDER TIMELINE</div>
+        <div class="tl">
+          <div class="tle ok"><span class="dot"></span><span class="m">Order received via Shopee</span><span class="t">05/07/2026, 17:47:17</span></div>
+          <div class="tle ok"><span class="dot"></span><span class="m">Sent to print</span><span class="t">05/07/2026, 17:47:37</span></div>
+          <div class="tle pend"><span class="dot"></span><span class="m">Awaiting waybill compile</span><span class="t">—</span></div>
+        </div>
+      </div>
+
+      <div class="dfoot">
+        <div class="l">UPDATE STATUS</div>
+        <div class="btns">
+          <button class="sbtn"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Completed</button>
+          <button class="sbtn wide">Printed</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dock">
+  <button class="ghost"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6"/></svg>Sync Shopee</button>
+  <button class="ghost"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5l5 5M4 20h16"/></svg>Upload Waybills</button>
+  <button class="pri"><svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg>Dispatch Queue</button>
+</div>
+</body>
+</html>

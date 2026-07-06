@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbot — Overlays Draft</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#0c0f14; --card:#12161d; --card-2:#171c25; --inset:#0a0d11;
+  --line:#1f2530; --line-2:#2b3342;
+  --ink:#edf0f4; --ink-2:#b6bec9; --ink-3:#7d8794; --ink-4:#525c69;
+  --green:#3ecf8e; --green-dim:rgba(62,207,142,.12); --green-glow:rgba(62,207,142,.35);
+  --blue:#7ea6e8; --peach:#ffaa6b; --orange:#ff8c00;
+  --cyan:#38bdf8; --red:#f66; --amber:#fbbf24;
+  --shopee:#ee4d2d;
+  --r:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--canvas);color:var(--ink);font:400 13.5px/1.55 Inter,sans-serif;-webkit-font-smoothing:antialiased}
+.mono{font-family:'IBM Plex Mono',monospace}
+.wrap{max-width:1400px;margin:0 auto;padding:20px 24px 110px}
+
+/* ===== header ===== */
+header{display:flex;align-items:center;gap:18px;position:relative}
+.logo{display:flex;align-items:center;gap:11px}
+.logo .core{width:34px;height:34px;border-radius:10px;background:var(--green-dim);border:1px solid var(--green-glow);display:grid;place-items:center;color:var(--green);font:700 15px Outfit;box-shadow:0 0 22px rgba(62,207,142,.22);animation:pl 2s infinite}
+.logo h1{font:700 16px Outfit;letter-spacing:.02em}
+.logo .sub{font:500 9px 'IBM Plex Mono';letter-spacing:.22em;color:var(--ink-4)}
+nav{display:flex;gap:2px;position:absolute;left:50%;transform:translateX(-50%);padding:4px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
+nav a{padding:7px 15px;border-radius:9px;color:var(--ink-3);font:500 12.5px Inter;text-decoration:none}
+nav a:hover{color:var(--ink-2);background:var(--card-2)}
+nav a.on{color:#04120b;background:var(--green);font-weight:600;box-shadow:0 0 16px rgba(62,207,142,.35)}
+header .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+@keyframes pl{50%{opacity:.4}}
+.scope-wrap{position:relative}
+.scope{display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;border:1px solid var(--line-2);font:500 12px Inter;color:var(--ink-2);cursor:pointer;background:var(--card);user-select:none}
+.scope i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.scope .car{font-size:9px;color:var(--ink-4)}
+
+/* page head */
+.phead{margin-top:26px;display:flex;align-items:baseline;gap:14px}
+.phead h2{font:600 20px Outfit;letter-spacing:-.3px}
+.phead .sub{color:var(--ink-3);font-size:12.5px}
+
+/* ===== gallery scaffolding ===== */
+.slab{margin-top:34px}
+.slab-t{font:600 10.5px 'IBM Plex Mono';letter-spacing:.16em;color:var(--ink-4);text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:10px}
+.slab-t:after{content:"";flex:1;height:1px;background:var(--line)}
+.slab-t .note{font:400 10px 'IBM Plex Mono';letter-spacing:.02em;color:var(--ink-4);text-transform:none}
+.stage{background:rgba(0,0,0,.45);border:1px solid var(--line);border-radius:var(--r);padding:38px 30px;display:grid;place-items:center}
+.stage.left{place-items:start stretch;padding:22px}
+
+/* ===== modal shell ===== */
+.mdl{background:var(--card);border:1px solid var(--line-2);border-radius:14px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+.mdl.sm{max-width:420px} .mdl.md{max-width:540px} .mdl.lg{max-width:640px}
+.mhd{display:flex;align-items:center;gap:10px;padding:15px 20px;border-bottom:1px solid var(--line)}
+.mhd h3{font:700 12.5px Outfit;letter-spacing:.07em;text-transform:uppercase}
+.mhd .x{margin-left:auto;width:24px;height:24px;display:grid;place-items:center;border-radius:7px;color:var(--ink-4);cursor:pointer;font-size:13px;border:none;background:none}
+.mhd .x:hover{color:var(--ink);background:var(--card-2)}
+.mbody{padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.mft{display:flex;align-items:center;gap:9px;justify-content:flex-end;padding:14px 20px;border-top:1px solid var(--line)}
+.mbtn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink-2);border-radius:8px;padding:8px 16px;font:600 12px Outfit;cursor:pointer;letter-spacing:.02em}
+.mbtn:hover{color:var(--ink);border-color:var(--ink-4)}
+.mbtn.pri{background:var(--green);border-color:var(--green);color:#04120b;box-shadow:0 0 18px rgba(62,207,142,.3)}
+.mbtn.pri:hover{filter:brightness(1.07);color:#04120b}
+.mbtn.danger{background:rgba(255,102,102,.1);border-color:rgba(255,102,102,.3);color:var(--red)}
+.mbtn.danger:hover{background:rgba(255,102,102,.2);color:var(--red);border-color:rgba(255,102,102,.45)}
+.mft .spacer{margin-right:auto}
+
+/* ===== form primitives ===== */
+.fi{display:flex;flex-direction:column;gap:6px;min-width:0}
+.fi label{font:600 9.5px 'IBM Plex Mono';letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4)}
+.fi input,.fi select,.fi textarea{background:var(--inset);border:1px solid var(--line);border-radius:8px;color:var(--ink);font:500 12px 'IBM Plex Mono';padding:9px 12px;outline:none;width:100%}
+.fi input::placeholder,.fi textarea::placeholder{color:var(--ink-4)}
+.fi input:focus,.fi select:focus,.fi textarea:focus{border-color:var(--line-2)}
+.fi textarea{resize:vertical;min-height:74px;line-height:1.6}
+.fi select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' stroke='%237d8794' fill='none' stroke-width='1.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:30px}
+.fi .err-note{display:none;font:500 10.5px 'IBM Plex Mono';color:var(--red)}
+.fi.bad input{border-color:rgba(255,102,102,.5)}
+.fi.bad .err-note{display:block}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fgrid .full{grid-column:1/-1}
+.hint{font:400 10.5px 'IBM Plex Mono';color:var(--ink-4)}
+
+/* segmented mode toggle */
+.seg{display:inline-flex;gap:2px;padding:4px;border-radius:10px;background:var(--inset);border:1px solid var(--line);width:max-content}
+.seg span{padding:6px 14px;border-radius:7px;font:500 12px Inter;color:var(--ink-3);cursor:pointer}
+.seg span.on{color:var(--ink);background:var(--card-2);border:1px solid var(--line-2);padding:5px 13px}
+
+/* type chips */
+.tchips{display:flex;gap:7px}
+.tc{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--inset);border-radius:8px;padding:7px 13px;font:600 11px 'IBM Plex Mono';color:var(--ink-3);cursor:pointer}
+.tc i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tc.on{border-color:var(--line-2);color:var(--ink);background:var(--card-2)}
+.tc.ds.on{color:var(--blue);border-color:rgba(126,166,232,.4)}
+.tc.wm.on{color:var(--peach);border-color:rgba(255,170,107,.4)}
+.tc.fwm.on{color:var(--orange);border-color:rgba(255,140,0,.4)}
+.pill{font:500 10.5px 'IBM Plex Mono';padding:2.5px 8px;border-radius:6px;background:var(--inset);border:1px solid var(--line)}
+.pill.ds{color:var(--blue)} .pill.wm{color:var(--peach)} .pill.fwm{color:var(--orange)}
+
+/* variant block inside add/edit modals */
+.vblock{border:1px solid var(--line);background:var(--inset);border-radius:10px;padding:13px 14px;display:flex;flex-direction:column;gap:11px}
+.vblock .vtop{display:flex;align-items:center;gap:9px}
+.vblock .vtop .sku{font:600 11.5px 'IBM Plex Mono';color:var(--ink)}
+.vblock .vtop .rm{margin-left:auto;color:var(--ink-4);cursor:pointer;font-size:12px;border:none;background:none}
+.vblock .vtop .rm:hover{color:var(--red)}
+.vrow2{display:grid;grid-template-columns:1fr 130px;gap:10px}
+.dashed{border:1px dashed var(--line-2);background:none;border-radius:10px;padding:11px;font:600 11.5px Outfit;color:var(--ink-3);cursor:pointer;text-align:center}
+.dashed:hover{color:var(--green);border-color:rgba(62,207,142,.4)}
+
+/* stepper */
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:8px;background:var(--card);overflow:hidden}
+.stepper button{width:26px;height:28px;border:none;background:none;color:var(--ink-3);font-size:13px;cursor:pointer}
+.stepper button:hover{color:var(--ink);background:var(--card-2)}
+.stepper .n{min-width:34px;text-align:center;font:600 12px 'IBM Plex Mono';color:var(--ink)}
+
+/* read-only detail grid */
+.kv{display:grid;grid-template-columns:130px 1fr;gap:7px 14px;font-size:12.5px}
+.kv b{color:var(--ink-4);font:600 9.5px 'IBM Plex Mono';letter-spacing:.12em;text-transform:uppercase;padding-top:2px}
+.kv span{color:var(--ink-2)} .kv .mono2{font:500 12px 'IBM Plex Mono';color:var(--ink)}
+.subrows{display:flex;flex-direction:column;gap:6px}
+.srow{display:flex;align-items:center;gap:10px;background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+.srow .f{font:500 11.5px 'IBM Plex Mono';color:var(--ink-2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow .meta{font:400 10.5px 'IBM Plex Mono';color:var(--ink-4);white-space:nowrap}
+.sect-t{font:600 9.5px 'IBM Plex Mono';letter-spacing:.14em;color:var(--ink-4);text-transform:uppercase}
+
+/* platform ID inputs */
+.pidrow{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:8px;background:var(--inset);overflow:hidden}
+.pidrow .pfx{display:flex;align-items:center;gap:6px;padding:8px 11px;font:600 9.5px 'IBM Plex Mono';letter-spacing:.08em;border-right:1px solid var(--line);white-space:nowrap;min-width:74px}
+.pidrow .pfx i{width:6px;height:6px;border-radius:50%}
+.pidrow.shopee .pfx{color:var(--shopee)} .pidrow.shopee .pfx i{background:var(--shopee)}
+.pidrow.lazada .pfx{color:var(--blue)} .pidrow.lazada .pfx i{background:var(--blue)}
+.pidrow input{flex:1;border:none;background:none;color:var(--ink);font:500 12px 'IBM Plex Mono';padding:8px 12px;outline:none;min-width:0}
+.pidrow input::placeholder{color:var(--ink-4)}
+.pids{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+
+/* toggle */
+.tglrow{display:flex;align-items:center;gap:11px}
+.tglrow .tl{font:500 12.5px Inter;color:var(--ink-2)}
+.tgl{width:36px;height:20px;border-radius:999px;background:var(--card-2);border:1px solid var(--line-2);position:relative;cursor:pointer;flex-shrink:0}
+.tgl:after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--ink-3);transition:all .15s}
+.tgl.on{background:var(--green-dim);border-color:rgba(62,207,142,.5)}
+.tgl.on:after{left:18px;background:var(--green)}
+
+/* match-source badge */
+.msrc{font:600 9px 'IBM Plex Mono';letter-spacing:.1em;text-transform:uppercase;padding:2.5px 8px;border-radius:5px;border:1px solid}
+.msrc.catalog{color:var(--green);border-color:rgba(62,207,142,.3);background:var(--green-dim)}
+.msrc.heal{color:var(--amber);border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.08)}
+.msrc.manual{color:var(--cyan);border-color:rgba(56,189,248,.3);background:rgba(56,189,248,.08)}
+
+/* product picker (add listing) */
+.picker{border:1px solid var(--line);border-radius:10px;background:var(--inset);overflow:hidden}
+.picker .psearch{display:flex;align-items:center;gap:9px;padding:9px 13px;border-bottom:1px solid var(--line)}
+.picker .psearch svg{width:13px;height:13px;stroke:var(--ink-4);fill:none;stroke-width:1.8}
+.picker .psearch input{flex:1;border:none;background:none;color:var(--ink);font:500 12px 'IBM Plex Mono';outline:none}
+.picker .plist{max-height:172px;overflow:auto}
+.picker .pr{display:flex;align-items:center;gap:10px;padding:9px 13px;cursor:pointer;border-bottom:1px solid var(--line)}
+.picker .pr:last-child{border-bottom:none}
+.picker .pr:hover{background:var(--card-2)}
+.picker .pr.on{background:var(--card-2);box-shadow:inset 2px 0 0 var(--green)}
+.picker .pr .sku{font:600 11px 'IBM Plex Mono';color:var(--ink);min-width:86px}
+.picker .pr .nm{font-size:12px;color:var(--ink-2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picker .pr .ck{color:var(--green);font-size:11px;visibility:hidden}
+.picker .pr.on .ck{visibility:visible}
+
+/* ===== command palette ===== */
+.cp{width:100%;max-width:580px;border-radius:16px;background:rgba(10,13,17,.85);border:1px solid var(--line-2);backdrop-filter:blur(18px);box-shadow:0 24px 80px rgba(0,0,0,.65);overflow:hidden}
+.cp .cin{display:flex;align-items:center;gap:11px;padding:14px 17px;border-bottom:1px solid var(--line)}
+.cp .cin svg{width:15px;height:15px;stroke:var(--ink-4);fill:none;stroke-width:1.8}
+.cp .cin input{flex:1;border:none;background:none;color:var(--ink);font:500 13px Inter;outline:none}
+.cp .cin input::placeholder{color:var(--ink-4)}
+.cp .kbd{font:500 10px 'IBM Plex Mono';color:var(--ink-4);border:1px solid var(--line-2);border-radius:5px;padding:2px 6px}
+.cp .csec{padding:9px 10px 4px}
+.cp .cst{font:600 9px 'IBM Plex Mono';letter-spacing:.16em;color:var(--ink-4);text-transform:uppercase;padding:4px 8px}
+.cp .cr{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:9px;cursor:pointer}
+.cp .cr:hover,.cp .cr.sel{background:var(--card-2)}
+.cp .cr.sel{box-shadow:inset 2px 0 0 var(--green)}
+.cp .cr .ic{width:26px;height:26px;border-radius:7px;background:var(--inset);border:1px solid var(--line);display:grid;place-items:center;flex-shrink:0}
+.cp .cr .ic svg{width:12px;height:12px;stroke:var(--ink-3);fill:none;stroke-width:1.7}
+.cp .cr .m{flex:1;min-width:0}
+.cp .cr .m .a{font-size:12.5px;color:var(--ink)}
+.cp .cr .m .a .mono3{font:500 12px 'IBM Plex Mono'}
+.cp .cr .m .b{font:400 10.5px 'IBM Plex Mono';color:var(--ink-4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp .cr .tag{font:600 8.5px 'IBM Plex Mono';letter-spacing:.1em;color:var(--ink-4);border:1px solid var(--line);border-radius:4px;padding:2px 6px;text-transform:uppercase}
+.cp .cr .tag.act{color:var(--green);border-color:rgba(62,207,142,.3)}
+.cp .cr .tag.ord{color:var(--cyan);border-color:rgba(56,189,248,.3)}
+.cp .cr .tag.prd{color:var(--peach);border-color:rgba(255,170,107,.3)}
+.cp .cft{display:flex;gap:16px;padding:10px 17px;border-top:1px solid var(--line);font:500 10px 'IBM Plex Mono';color:var(--ink-4)}
+.cp .cft b{color:var(--ink-3);font-weight:500}
+
+/* ===== toasts ===== */
+.tstack{display:flex;flex-direction:column;gap:9px;width:100%;max-width:360px;margin-left:auto}
+.toast{display:flex;align-items:flex-start;gap:10px;background:var(--card);border:1px solid var(--line-2);border-left-width:3px;border-radius:10px;padding:11px 13px;box-shadow:0 10px 34px rgba(0,0,0,.45)}
+.toast .tm{flex:1;font:500 11.5px 'IBM Plex Mono';color:var(--ink-2);line-height:1.5}
+.toast .tm b{color:var(--ink);font-weight:600}
+.toast .x{color:var(--ink-4);cursor:pointer;font-size:12px;border:none;background:none;padding:0}
+.toast .x:hover{color:var(--ink)}
+.toast .dot{width:7px;height:7px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.toast.info{border-left-color:var(--cyan);background:linear-gradient(90deg,rgba(56,189,248,.07),var(--card) 40%)} .toast.info .dot{background:var(--cyan)}
+.toast.success{border-left-color:var(--green);background:linear-gradient(90deg,rgba(62,207,142,.08),var(--card) 40%)} .toast.success .dot{background:var(--green)}
+.toast.warning{border-left-color:var(--amber);background:linear-gradient(90deg,rgba(251,191,36,.07),var(--card) 40%)} .toast.warning .dot{background:var(--amber)}
+.toast.error{border-left-color:var(--red);background:linear-gradient(90deg,rgba(255,102,102,.07),var(--card) 40%)} .toast.error .dot{background:var(--red)}
+
+/* ===== waybill tools drawer ===== */
+.wcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;width:100%}
+.wcard .whd{display:flex;align-items:center;gap:11px;padding:14px 18px;cursor:pointer}
+.wcard .whd h2{font:600 14px Outfit}
+.wcard .whd .cnt{font:500 11px 'IBM Plex Mono';color:var(--ink-4);background:var(--inset);border:1px solid var(--line);padding:1px 8px;border-radius:999px}
+.wcard .whd .chev{margin-left:auto;color:var(--green);font-size:10px;transform:rotate(180deg)}
+.wbody{border-top:1px solid var(--line);padding:16px 18px;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px}
+.wcol{display:flex;flex-direction:column;gap:12px;min-width:0}
+.drop{border:1.5px dashed rgba(56,189,248,.4);background:rgba(56,189,248,.04);border-radius:10px;padding:26px 18px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;cursor:pointer}
+.drop:hover{border-color:rgba(56,189,248,.7);background:rgba(56,189,248,.07)}
+.drop svg{width:22px;height:22px;stroke:var(--cyan);fill:none;stroke-width:1.6}
+.drop .a{font:600 13px Outfit;color:var(--ink)}
+.drop .b{font:400 11px 'IBM Plex Mono';color:var(--ink-4)}
+.drop .browse{margin-top:4px;border:1px solid rgba(56,189,248,.4);background:rgba(56,189,248,.08);color:var(--cyan);border-radius:8px;padding:6px 14px;font:600 11.5px Outfit;cursor:pointer}
+.console{background:var(--inset);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font:400 11px/1.75 'IBM Plex Mono';color:var(--ink-3);min-height:150px}
+.console .ln b{color:var(--ink-2);font-weight:500}
+.console .ln.ok b{color:var(--green)}
+.console .ln.wr b{color:var(--amber)}
+.console .ln.er b{color:var(--red)}
+.console .cur{display:inline-block;width:7px;height:12px;background:var(--green);vertical-align:-2px;animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+.chd2{display:flex;align-items:center;gap:9px}
+.chd2 .clr{margin-left:auto;font:500 10.5px 'IBM Plex Mono';color:var(--ink-4);cursor:pointer;border:none;background:none}
+.chd2 .clr:hover{color:var(--red)}
+.mpdf{display:flex;align-items:center;gap:11px;background:var(--inset);border:1px solid var(--line);border-radius:9px;padding:9px 13px}
+.mpdf .fx{color:var(--red);font:700 8.5px 'IBM Plex Mono';border:1px solid rgba(255,102,102,.35);border-radius:4px;padding:2px 5px}
+.mpdf .f{flex:1;min-width:0}
+.mpdf .f .n{font:500 11.5px 'IBM Plex Mono';color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpdf .f .m{font:400 10px 'IBM Plex Mono';color:var(--ink-4);margin-top:1px}
+.mpdf .dl{border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);border-radius:7px;padding:4px 10px;font:600 10px 'IBM Plex Mono';letter-spacing:.06em;cursor:pointer}
+.mpdf .dl:hover{color:var(--ink);border-color:var(--ink-4)}
+.mpdf .dl.p{color:var(--green);border-color:rgba(62,207,142,.4)}
+.wtrig{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.wtrig button{display:flex;flex-direction:column;align-items:center;gap:6px;border:1px solid var(--line-2);background:var(--inset);color:var(--ink-2);border-radius:10px;padding:12px 8px;font:600 11.5px Outfit;cursor:pointer}
+.wtrig button:hover{color:var(--ink);background:var(--card-2);border-color:var(--ink-4)}
+.wtrig button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7}
+.wtrig button small{font:400 9px 'IBM Plex Mono';color:var(--ink-4);letter-spacing:.06em}
+.wtrig .go{color:var(--green);border-color:rgba(62,207,142,.4);background:var(--green-dim)}
+.wtrig .go:hover{color:var(--green);filter:brightness(1.1)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><div class="core">◆</div><div><h1>ORBOT</h1><div class="sub">PRINT OPS · MISSION CONTROL</div></div></div>
+    <nav>
+      <a href="redesign-4-combined.html">Overview</a><a href="redesign-4-orders.html">Orders</a><a href="redesign-4-products.html">Products</a><a href="redesign-4-printers.html">Printers</a><a href="redesign-4-launch.html">Launch</a><a href="redesign-4-logs.html">Logs</a><a href="redesign-4-settings.html">Settings</a>
+    </nav>
+    <div class="right">
+      <div class="scope-wrap"><div class="scope"><i></i><span>Blocked Off · Shopee</span><span class="car">▾</span></div></div>
+    </div>
+  </header>
+
+  <div class="phead"><h2>Overlays &amp; Modals</h2><div class="sub">Draft 4 · every dialog, toast and drawer in the system, statically opened for review</div></div>
+
+  <!-- ═══════════ 01 CONFIRM ═══════════ -->
+  <div class="slab">
+    <div class="slab-t">01 · Confirm modal <span class="note">#confirm-modal — used for every destructive action</span></div>
+    <div class="stage">
+      <div class="mdl sm">
+        <div class="mhd"><h3>Delete variant</h3><button class="x">✕</button></div>
+        <div class="mbody">
+          <div style="font-size:13px;color:var(--ink-2);line-height:1.6">This will permanently remove <span class="mono" style="color:var(--ink);font-weight:600">DS-75389</span> and its 2 linked print files. Orders already placed are not affected.<br>This action cannot be undone.</div>
+        </div>
+        <div class="mft"><button class="mbtn">Cancel</button><button class="mbtn danger">Delete variant</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 02 COMMAND PALETTE ═══════════ -->
+  <div class="slab">
+    <div class="slab-t">02 · Command palette <span class="note">⌘K — the one floating element besides the dock (blur allowed)</span></div>
+    <div class="stage">
+      <div class="cp">
+        <div class="cin">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input placeholder="Search orders, products, actions…" value="753">
+          <span class="kbd">esc</span>
+        </div>
+        <div class="csec">
+          <div class="cst">Actions</div>
+          <div class="cr sel">
+            <div class="ic"><svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z"/></svg></div>
+            <div class="m"><div class="a">Run Foreman — dispatch pending items</div></div>
+            <span class="tag act">Action</span>
+          </div>
+        </div>
+        <div class="csec">
+          <div class="cst">Orders</div>
+          <div class="cr">
+            <div class="ic"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg></div>
+            <div class="m"><div class="a"><span class="mono3">2506SPX7K41</span> · Lim Wei Sheng</div><div class="b">2 items · printing · ship by Jul 8</div></div>
+            <span class="tag ord">Order</span>
+          </div>
+        </div>
+        <div class="csec" style="padding-bottom:10px">
+          <div class="cst">Products</div>
+          <div class="cr">
+            <div class="ic"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4a2 2 0 001-1.73z"/></svg></div>
+            <div class="m"><div class="a"><span class="mono3">75389</span> · Dark Falcon</div><div class="b">2 variants · listed on 4/5 platforms</div></div>
+            <span class="tag prd">Product</span>
+          </div>
+          <div class="cr">
+            <div class="ic"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4a2 2 0 001-1.73z"/></svg></div>
+            <div class="m"><div class="a"><span class="mono3">75367</span> · Venator-Class Star Destroyer</div><div class="b">3 variants · listed on 5/5 platforms</div></div>
+            <span class="tag prd">Product</span>
+          </div>
+        </div>
+        <div class="cft"><span><b>↑↓</b> navigate</span><span><b>↵</b> open</span><span><b>esc</b> close</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 03 ADD PRODUCT / VARIANT ═══════════ -->
+  <div class="slab">
+    <div class="slab-t">03 · Add product / variant <span class="note">#add-catalog-modal — mode toggle switches between new product and adding a variant to an existing one</span></div>
+    <div class="stage">
+      <div class="mdl md">
+        <div class="mhd"><h3>Add to catalog</h3><button class="x">✕</button></div>
+        <div class="mbody">
+          <div class="seg"><span class="on">New product</span><span>Variant of existing</span></div>
+          <div class="fgrid">
+            <div class="fi"><label>Brand</label><select><option>LEGO</option></select></div>
+            <div class="fi"><label>Category</label><select><option>Star Wars</option></select></div>
+            <div class="fi"><label>Set number</label><input value="75389"></div>
+            <div class="fi"><label>Set name</label><input value="Dark Falcon"></div>
+          </div>
+          <div class="vblock">
+            <div class="vtop"><span class="pill ds">DS</span><span class="sku">DS-75389</span><span class="hint">auto-generated</span><button class="rm">✕</button></div>
+            <div class="fi"><label>Variant type</label>
+              <div class="tchips">
+                <span class="tc ds on"><i></i>DS</span><span class="tc ds"><i></i>DS-NP</span><span class="tc wm"><i></i>WM</span><span class="tc fwm"><i></i>FWM</span>
+              </div>
+            </div>
+            <div class="vrow2">
+              <div class="fi"><label>Sticker URL</label><input placeholder="https://drive.google.com/…"></div>
+              <div class="fi"><label>Stock</label><div class="stepper"><button>−</button><span class="n">5</span><button>+</button></div></div>
+            </div>
+          </div>
+          <button class="dashed">+ Add another variant</button>
+        </div>
+        <div class="mft"><button class="mbtn">Cancel</button><button class="mbtn pri">Add product</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 04 CATALOG DETAIL (READ-ONLY) ═══════════ -->
+  <div class="slab">
+    <div class="slab-t">04 · Catalog detail <span class="note">#catalog-detail-modal — read-only spec sheet</span></div>
+    <div class="stage">
+      <div class="mdl md">
+        <div class="mhd"><h3>Product details</h3><button class="x">✕</button></div>
+        <div class="mbody">
+          <div class="kv">
+            <b>SKU</b><span class="mono2">75389</span>
+            <b>Name</b><span>Dark Falcon</span>
+            <b>Brand</b><span>LEGO</span>
+            <b>Category</b><span>Star Wars</span>
+            <b>Created</b><span class="mono2">2026-05-14 09:12</span>
+          </div>
+          <div class="sect-t">Variants · 2</div>
+          <div class="subrows">
+            <div class="srow"><span class="pill ds">DS</span><span class="f">DS-75389</span><span class="meta">stock 5</span></div>
+            <div class="srow"><span class="pill wm">WM</span><span class="f">WM-75389</span><span class="meta">stock 12</span></div>
+          </div>
+          <div class="sect-t">Print files · 3</div>
+          <div class="subrows">
+            <div class="srow"><span class="f">DS-75389_plaque.gcode</span><span class="meta">42 g · 1h 12m</span></div>
+            <div class="srow"><span class="f">DS-75389_stand.gcode</span><span class="meta">61 g · 2h 05m</span></div>
+            <div class="srow"><span class="f">WM-75389_mount.gcode</span><span class="meta">28 g · 0h 48m</span></div>
+          </div>
+        </div>
+        <div class="mft"><button class="mbtn">Close</button><button class="mbtn pri">Edit</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 05 CATALOG EDIT ═══════════ -->
+  <div class="slab">
+    <div class="slab-t">05 · Catalog edit <span class="note">#catalog-edit-modal — includes inline SKU validation error state</span></div>
+    <div class="stage">
+      <div class="mdl md">
+        <div class="mhd"><h3>Edit product</h3><button class="x">✕</button></div>
+        <div class="mbody">
+          <div class="fgrid">
+            <div class="fi"><label>Set number</label><input value="75389"></div>
+            <div class="fi"><label>Set name</label><input value="Dark Falcon"></div>
+            <div class="fi"><label>Brand</label><select><option>LEGO</option></select></div>
+            <div class="fi"><label>Category</label><select><option>Star Wars</option></select></div>
+          </div>
+          <div class="sect-t">Variants</div>
+          <div class="vblock">
+            <div class="vtop"><span class="pill ds">DS</span><span class="sku">DS-75389</span><button class="rm">✕</button></div>
+            <div class="vrow2">
+              <div class="fi"><label>Sticker URL</label><input value="https://drive.google.com/file/d/1xK…"></div>
+              <div class="fi"><label>Stock</label><div class="stepper"><button>−</button><span class="n">5</span><button>+</button></div></div>
+            </div>
+          </div>
+          <div class="vblock">
+            <div class="vtop"><span class="pill wm">WM</span><span class="sku">WM-75389</span><button class="rm">✕</button></div>
+            <div class="vrow2">
+              <div class="fi bad"><label>SKU</label><input value="WM-75367"><span class="err-note">SKU already exists on Venator-Class Star Destroyer</span></div>
+              <div class="fi"><label>Stock</label><div class="stepper"><button>−</button><span class="n">12</span><button>+</button></div></div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+            <button class="dashed">+ Add variant</button>
+            <button class="dashed">+ Add print file</button>
+          </div>
+        </div>
+        <div class="mft"><button class="mbtn danger spacer">Delete product</button><button class="mbtn">Cancel</button><button class="mbtn pri">Save changes</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 06 EDIT LISTING ═══════════ -->
+  <div class="slab">
+    <div class="slab-t">06 · Edit listing <span class="note">#edit-listing-modal — platform IDs: shopee_my / sg / ph / th + lazada_my</span></div>
+    <div class="stage">
+      <div class="mdl lg">
+        <div class="mhd"><h3>Edit listing</h3><span class="pill" style="color:var(--ink-3)">75389 · Dark Falcon</span><button class="x">✕</button></div>
+        <div class="mbody">
+          <div class="fi"><label>Listing name</label><input value="Display Stand &amp; Wall Mount for LEGO Star Wars Dark Falcon (75389)"></div>
+          <div class="fi"><label>Description</label><textarea>Custom 3D-printed display solutions for your Dark Falcon. Choose Display Stand (DS) with engraved plaque or Wall Mount (WM). PETG, matte black.</textarea></div>
+          <div class="fgrid">
+            <div class="fi"><label>Price · MYR</label><input value="49.90"></div>
+            <div class="fi"><label>Price · SGD</label><input value="19.90"></div>
+          </div>
+          <div class="sect-t">Platform listing IDs</div>
+          <div class="pids">
+            <div class="pidrow shopee"><span class="pfx"><i></i>S · MY</span><input value="28374651920"></div>
+            <div class="pidrow shopee"><span class="pfx"><i></i>S · SG</span><input value="19283746510"></div>
+            <div class="pidrow shopee"><span class="pfx"><i></i>S · PH</span><input placeholder="not listed"></div>
+            <div class="pidrow shopee"><span class="pfx"><i></i>S · TH</span><input placeholder="not listed"></div>
+            <div class="pidrow lazada"><span class="pfx"><i></i>L · MY</span><input value="3847561029"></div>
+          </div>
+          <div class="tglrow"><div class="tgl on"></div><span class="tl">Listing active</span></div>
+        </div>
+        <div class="mft"><button class="mbtn danger spacer">Delete listing</button><button class="mbtn">Cancel</button><button class="mbtn pri">Save listing</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 07 EDIT VARIATION ═══════════ -->
+  <div class="slab">
+    <div class="slab-t">07 · Edit variation mapping <span class="note">#edit-variation-modal — links a platform variation to a variant SKU</span></div>
+    <div class="stage">
+      <div class="mdl sm">
+        <div class="mhd"><h3>Edit variation</h3><span class="msrc heal">self_heal</span><button class="x">✕</button></div>
+        <div class="mbody">
+          <div class="kv">
+            <b>Platform</b><span>Shopee · MY</span>
+            <b>Variation</b><span class="mono2">Wall Mount (Batman)</span>
+          </div>
+          <div class="fi"><label>Linked variant</label>
+            <select><option>WM-8089 · Wall Mount</option><option>DS-8089 · Display Stand</option><option>— unlinked —</option></select>
+          </div>
+          <div class="hint">Matched by Gemini self-heal at 87% confidence · 2026-07-05 14:32</div>
+        </div>
+        <div class="mft"><button class="mbtn danger spacer">Delete mapping</button><button class="mbtn">Cancel</button><button class="mbtn pri">Save</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 08 ADD LISTING ═══════════ -->
+  <div class="slab">
+    <div class="slab-t">08 · Add listing <span class="note">#add-listing-modal — searchable product picker + platform IDs</span></div>
+    <div class="stage">
+      <div class="mdl md">
+        <div class="mhd"><h3>New listing</h3><button class="x">✕</button></div>
+        <div class="mbody">
+          <div class="fi"><label>Product</label>
+            <div class="picker">
+              <div class="psearch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input placeholder="Search SKU or name…" value="star"></div>
+              <div class="plist">
+                <div class="pr on"><span class="sku">75367</span><span class="nm">Venator-Class Star Destroyer</span><span class="ck">✓</span></div>
+                <div class="pr"><span class="sku">75394</span><span class="nm">Imperial Star Destroyer</span><span class="ck">✓</span></div>
+                <div class="pr"><span class="sku">10497</span><span class="nm">Galaxy Explorer</span><span class="ck">✓</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="fi"><label>Listing name</label><input value="Display Stand for LEGO Venator-Class Star Destroyer (75367)"></div>
+          <div class="fgrid">
+            <div class="fi"><label>Price · MYR</label><input placeholder="0.00"></div>
+            <div class="fi"><label>Price · SGD</label><input placeholder="0.00"></div>
+          </div>
+          <div class="sect-t">Platform listing IDs <span class="hint" style="text-transform:none;letter-spacing:0">— optional, add as you publish</span></div>
+          <div class="pids">
+            <div class="pidrow shopee"><span class="pfx"><i></i>S · MY</span><input placeholder="item id"></div>
+            <div class="pidrow lazada"><span class="pfx"><i></i>L · MY</span><input placeholder="item id"></div>
+          </div>
+        </div>
+        <div class="mft"><button class="mbtn">Cancel</button><button class="mbtn pri">Create listing</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 09 TOASTS ═══════════ -->
+  <div class="slab">
+    <div class="slab-t">09 · Toast stack <span class="note">fixed bottom-right · info/success 3s · warning 4s · error 5s</span></div>
+    <div class="stage left">
+      <div class="tstack">
+        <div class="toast info"><span class="dot"></span><div class="tm">Scout scan started — checking Gmail for new orders</div><button class="x">✕</button></div>
+        <div class="toast success"><span class="dot"></span><div class="tm"><b>2506SPX7K41</b> dispatched to Ender KE #2</div><button class="x">✕</button></div>
+        <div class="toast warning"><span class="dot"></span><div class="tm">Waybill for <b>2506LZK2M88</b> missing — compile skipped it</div><button class="x">✕</button></div>
+        <div class="toast error"><span class="dot"></span><div class="tm">Match failed on <b>2506SPX7F03</b> — variation "Wall Mount (Batman)" has no linked SKU</div><button class="x">✕</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 10 WAYBILL TOOLS DRAWER ═══════════ -->
+  <div class="slab">
+    <div class="slab-t">10 · Waybill tools drawer <span class="note">collapsible card on the Orders page — shown expanded</span></div>
+    <div class="stage left">
+      <div class="wcard">
+        <div class="whd"><h2>Waybill Tools</h2><span class="cnt">3 pending</span><span class="chev">▾</span></div>
+        <div class="wbody">
+          <div class="wcol">
+            <div class="drop">
+              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+              <div class="a">Drop waybill PDFs here</div>
+              <div class="b">Shopee &amp; Lazada shipping labels · multi-file OK</div>
+              <button class="browse">Browse files</button>
+            </div>
+            <div class="chd2"><span class="sect-t">Daemon console</span><button class="clr">CLEAR</button></div>
+            <div class="console">
+              <div class="ln ok"><b>14:32:08</b> waybill_agent · matched <b>2506SPX7K41</b> → page 3 of upload.pdf</div>
+              <div class="ln ok"><b>14:32:09</b> waybill_agent · cropped + deskewed, saved to Drive</div>
+              <div class="ln wr"><b>14:32:11</b> waybill_agent · <b>2506LZK2M88</b> no matching page found, queued for retry</div>
+              <div class="ln er"><b>14:32:14</b> waybill_agent · OCR failed on page 7 — skipped</div>
+              <div class="ln"><b>14:32:15</b> idle, watching for uploads <span class="cur"></span></div>
+            </div>
+          </div>
+          <div class="wcol">
+            <div class="sect-t">Compiled master PDFs</div>
+            <div class="mpdf"><span class="fx">PDF</span><div class="f"><div class="n">master_2026-07-06_batch2.pdf</div><div class="m">14 pages · 14:02 today</div></div><button class="dl">RAW</button><button class="dl p">PROCESSED</button></div>
+            <div class="mpdf"><span class="fx">PDF</span><div class="f"><div class="n">master_2026-07-06_batch1.pdf</div><div class="m">22 pages · 09:41 today</div></div><button class="dl">RAW</button><button class="dl p">PROCESSED</button></div>
+            <div class="mpdf"><span class="fx">PDF</span><div class="f"><div class="n">master_2026-07-05_batch3.pdf</div><div class="m">18 pages · yesterday</div></div><button class="dl">RAW</button><button class="dl p">PROCESSED</button></div>
+            <div class="sect-t" style="margin-top:6px">Agents</div>
+            <div class="wtrig">
+              <button><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>Run Scout<small>SCAN GMAIL</small></button>
+              <button class="go"><svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z"/></svg>Run Foreman<small>DISPATCH</small></button>
+              <button><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>Compile<small>MASTER PDF</small></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -17,24 +17,35 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--canvas);color:var(--ink);font:400 13.5px/1.55 Inter,sans-serif;-webkit-font-smoothing:antialiased}
 .mono{font-family:'IBM Plex Mono',monospace}
-.wrap{max-width:1280px;margin:0 auto;padding:20px 24px 110px}
+.wrap{max-width:1400px;margin:0 auto;padding:20px 24px 110px}
 
 /* ===== header (Prism structure, Signal Deck palette) ===== */
-header{display:flex;align-items:center;gap:18px}
+header{display:flex;align-items:center;gap:18px;position:relative}
 .logo{display:flex;align-items:center;gap:11px}
-.logo .core{width:34px;height:34px;border-radius:10px;background:var(--green-dim);border:1px solid var(--green-glow);display:grid;place-items:center;color:var(--green);font:700 15px Outfit;box-shadow:0 0 22px rgba(62,207,142,.22)}
+.logo .core{width:34px;height:34px;border-radius:10px;background:var(--green-dim);border:1px solid var(--green-glow);display:grid;place-items:center;color:var(--green);font:700 15px Outfit;box-shadow:0 0 22px rgba(62,207,142,.22);animation:pl 2s infinite}
 .logo h1{font:700 16px Outfit;letter-spacing:.02em}
 .logo .sub{font:500 9px 'IBM Plex Mono';letter-spacing:.22em;color:var(--ink-4)}
-nav{display:flex;gap:2px;margin-left:24px;padding:4px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
+nav{display:flex;gap:2px;position:absolute;left:50%;transform:translateX(-50%);padding:4px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
+.logo .core.offline{background:rgba(255,102,102,.12);border-color:rgba(255,102,102,.45);color:var(--red);box-shadow:0 0 22px rgba(255,102,102,.25);animation:none}
 nav a{padding:7px 15px;border-radius:9px;color:var(--ink-3);font:500 12.5px Inter;text-decoration:none}
 nav a:hover{color:var(--ink-2);background:var(--card-2)}
 nav a.on{color:#04120b;background:var(--green);font-weight:600;box-shadow:0 0 16px rgba(62,207,142,.35)}
 header .right{margin-left:auto;display:flex;align-items:center;gap:12px}
-.telemetry{display:flex;align-items:center;gap:8px;font:500 10px 'IBM Plex Mono';letter-spacing:.14em;color:var(--green);padding:7px 13px;border-radius:999px;border:1px solid rgba(62,207,142,.3);background:var(--green-dim)}
-.telemetry i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pl 2s infinite}
 @keyframes pl{50%{opacity:.4}}
-.scope{display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;border:1px solid var(--line-2);font:500 12px Inter;color:var(--ink-2);cursor:pointer;background:var(--card)}
+.scope-wrap{position:relative}
+.scope{display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;border:1px solid var(--line-2);font:500 12px Inter;color:var(--ink-2);cursor:pointer;background:var(--card);user-select:none}
+.scope:hover{color:var(--ink);border-color:var(--ink-4)}
 .scope i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.scope .car{font-size:9px;color:var(--ink-4);transition:transform .15s}
+.scope-wrap.open .scope .car{transform:rotate(180deg)}
+.scope-menu{display:none;position:absolute;top:calc(100% + 7px);right:0;min-width:210px;background:var(--card);border:1px solid var(--line-2);border-radius:11px;padding:5px;box-shadow:0 14px 40px rgba(0,0,0,.55);z-index:50}
+.scope-wrap.open .scope-menu{display:block}
+.so{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;font:500 12px Inter;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.so:hover{background:var(--card-2);color:var(--ink)}
+.so i{width:7px;height:7px;border-radius:50%;background:var(--ink-4);flex-shrink:0}
+.so.on{color:var(--ink)}
+.so.on:after{content:"\2713";margin-left:auto;color:var(--green);font-size:11px}
+.so.all{border-top:1px solid var(--line);border-radius:0 0 8px 8px;margin-top:4px;padding-top:10px}
 
 /* greeting */
 .greet{margin-top:24px}
@@ -43,10 +54,16 @@ header .right{margin-left:auto;display:flex;align-items:center;gap:12px}
 .greet .sub b{color:var(--green);font-weight:600}
 
 /* ===== KPI cards (Signal Deck) ===== */
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:18px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;position:relative;overflow:hidden}
-.kpi .l{display:flex;align-items:center;gap:7px;font:500 12px Inter;color:var(--ink-3)}
+.kpi .l{display:flex;align-items:center;gap:7px;font:600 10.5px Inter;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
 .kpi .l svg{width:14px;height:14px;stroke:var(--ink-4);fill:none;stroke-width:1.7}
+.kpi.err{border-color:rgba(255,102,102,.35);background:linear-gradient(180deg,rgba(255,102,102,.06),var(--card))}
+.kpi.err .l{color:var(--red)}
+.kpi.err .l svg{stroke:rgba(255,102,102,.7)}
+.kpi .reset{margin-left:auto;width:24px;height:24px;display:grid;place-items:center;border-radius:7px;border:1px solid rgba(255,102,102,.4);background:rgba(255,102,102,.08);color:var(--red);cursor:pointer}
+.kpi .reset:hover{background:rgba(255,102,102,.18)}
+.kpi .reset svg{width:12px;height:12px;stroke:var(--red);fill:none;stroke-width:1.9}
 .kpi .v{font:600 30px/1.15 Outfit;letter-spacing:-.8px;margin-top:8px}
 .kpi .v small{font:500 13px Inter;color:var(--ink-4);letter-spacing:0}
 .kpi .foot{margin-top:8px;font:500 11.5px 'IBM Plex Mono';color:var(--ink-4)}
@@ -56,24 +73,75 @@ header .right{margin-left:auto;display:flex;align-items:center;gap:12px}
 .chip.r{background:rgba(255,102,102,.12);color:var(--red)}
 .spark{position:absolute;right:14px;bottom:14px;opacity:.9}
 
+/* ===== quick operations panel ===== */
+.ops{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:10px;display:flex;flex-direction:column;gap:8px}
+.ops .tier{display:grid;gap:8px}
+.ops .tier.big{grid-template-columns:repeat(3,1fr)}
+.ops .tier.small{grid-template-columns:repeat(3,1fr)}
+.opbtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;width:100%;border:1px solid var(--line-2);background:var(--inset);color:var(--ink-2);border-radius:10px;cursor:pointer;font:600 12.5px Outfit;padding:0}
+.opbtn:hover{color:var(--ink);background:var(--card-2);border-color:var(--ink-4)}
+.opbtn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.7}
+.tier.big .opbtn{min-height:74px}
+.tier.small .opbtn{min-height:44px;flex-direction:row;font-size:11.5px;gap:6px}
+.tier.small .opbtn svg{width:13px;height:13px}
+.opbtn.go{color:var(--green);border-color:rgba(62,207,142,.4);background:var(--green-dim)}
+.opbtn.go:hover{filter:brightness(1.1);color:var(--green)}
+.opbtn .ext{font:500 9px 'IBM Plex Mono';color:var(--ink-4);letter-spacing:.08em}
+
 /* ===== main grid / cards (Signal Deck theme) ===== */
-.grid{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-top:14px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:14px;margin-top:14px}
+.card{overflow:hidden}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
 .card .hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
 .card .hd h2{font:600 14px Outfit}
 .card .hd .cnt{font:500 11px 'IBM Plex Mono';color:var(--ink-4);background:var(--inset);border:1px solid var(--line);padding:1px 8px;border-radius:999px}
 .card .hd .more{margin-left:auto;color:var(--ink-3);font:500 12px Inter;text-decoration:none}
 .card .hd .more:hover{color:var(--green)}
-.orders{padding:10px}
-.o{display:grid;grid-template-columns:170px 1fr auto auto;gap:14px;align-items:center;padding:11px 12px;border-radius:9px}
-.o:hover{background:var(--card-2)}
-.o + .o{margin-top:2px}
-.o .id{font:500 12px 'IBM Plex Mono'}
-.o .buyer{font:400 11.5px Inter;color:var(--ink-4);margin-top:1px}
-.pill{font:500 11px 'IBM Plex Mono';padding:3px 8px;border-radius:6px;background:var(--inset);border:1px solid var(--line)}
+.otbl{width:100%;border-collapse:collapse}
+.otbl th{font:600 10px Inter;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-4);text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);background:var(--inset);white-space:nowrap}
+.otbl th .sort{color:var(--ink-3);font-size:8px;margin-left:3px}
+.otbl td{padding:11px 10px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--ink-2);vertical-align:middle;white-space:nowrap}
+.otbl .buyer{max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.otbl tr:last-child td{border-bottom:none}
+.otbl tbody tr{cursor:pointer}
+.otbl tbody tr:hover td{background:var(--card-2)}
+.otbl .id{font:500 11.5px 'IBM Plex Mono';color:var(--ink)}
+.otbl .brand{font:500 11.5px Inter;color:var(--ink-2)}
+.otbl .plat{font:600 8.5px 'IBM Plex Mono';letter-spacing:.1em;padding:2px 7px;border-radius:4px;background:rgba(255,140,0,.12);color:var(--orange)}
+.otbl .dt{font:500 11px 'IBM Plex Mono';color:var(--ink-3)}
+.otbl .dt.hot{color:var(--red)}
+.otbl .buyer{font-size:11.5px;color:var(--ink-2)}
+.otbl .sum{font:500 11px 'IBM Plex Mono';color:var(--ink-3)}
+.otbl input[type=checkbox]{accent-color:var(--green);width:13px;height:13px;cursor:pointer;display:block}
+.otbl th:first-child,.otbl td:first-child{width:34px;padding-right:2px}
+.otbl .stchip{min-width:104px;justify-content:center}
+/* expandable rows */
+.otbl .chev{display:inline-block;color:var(--ink-4);font-size:9px;transition:transform .15s}
+tr.orow.open .chev{transform:rotate(180deg);color:var(--green)}
+tr.orow.open td{background:var(--card-2)}
+.xrow{display:none}
+.xrow.show{display:table-row}
+.xrow>td{background:var(--inset);padding:14px 18px 16px 44px;white-space:normal;box-shadow:inset 0 1px 0 var(--line)}
+.xin{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) auto;gap:26px;align-items:start}
+.xt{font:600 9.5px 'IBM Plex Mono';letter-spacing:.14em;color:var(--ink-4);margin-bottom:8px}
+.xgc{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 11px;margin-bottom:6px}
+.xgc .fx{color:var(--green);font:600 9.5px 'IBM Plex Mono'}
+.xgc .f{font:500 11px 'IBM Plex Mono';color:var(--ink-2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xgc .stchip{min-width:auto;padding:2px 9px;font-size:10px}
+.xgc .note{font:400 10.5px 'IBM Plex Mono';color:var(--ink-4);white-space:nowrap}
+.xerr{display:flex;align-items:center;gap:9px;background:rgba(255,102,102,.06);border:1px solid rgba(255,102,102,.3);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--ink-2)}
+.xerr b{color:var(--red);font-weight:600}
+.xkv{display:flex;gap:10px;font-size:12px;padding:3px 0}
+.xkv b{color:var(--ink-4);font-weight:500;min-width:82px;font-size:11.5px}
+.xkv span{color:var(--ink-2)}
+.xkv .mono2{font:500 11.5px 'IBM Plex Mono';color:var(--ink-2)}
+.xacts{display:flex;flex-direction:column;gap:7px;min-width:150px}
+.xbtn{display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);border-radius:8px;padding:7px 13px;font:600 11.5px Outfit;cursor:pointer;white-space:nowrap}
+.xbtn:hover{color:var(--ink);border-color:var(--ink-4)}
+.xbtn.pri{color:var(--green);border-color:rgba(62,207,142,.45);background:var(--green-dim)}
+.xbtn.warn{color:var(--red);border-color:rgba(255,102,102,.4);background:rgba(255,102,102,.07)}
+.pill{font:500 10.5px 'IBM Plex Mono';padding:2.5px 8px;border-radius:6px;background:var(--inset);border:1px solid var(--line)}
 .pill.ds{color:var(--blue)} .pill.wm{color:var(--peach)} .pill.fwm{color:var(--orange)}
-.o .due{font:500 11px 'IBM Plex Mono';color:var(--ink-4);text-align:right}
-.o .due.hot{color:var(--red)}
 .stchip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 11px;font:500 11.5px Inter;border:1px solid}
 .stchip i{width:6px;height:6px;border-radius:50%;background:currentColor}
 .stchip.print{color:var(--cyan);border-color:rgba(56,189,248,.3);background:rgba(56,189,248,.08)}
@@ -119,11 +187,36 @@ header .right{margin-left:auto;display:flex;align-items:center;gap:12px}
   <header>
     <div class="logo"><div class="core">◆</div><div><h1>ORBOT</h1><div class="sub">PRINT OPS · MISSION CONTROL</div></div></div>
     <nav>
-      <a class="on" href="#">Overview</a><a href="#">Orders</a><a href="#">Products</a><a href="#">Printers</a><a href="#">Logs</a>
+      <a class="on" href="redesign-4-combined.html">Overview</a><a href="redesign-4-orders.html">Orders</a><a href="redesign-4-products.html">Products</a><a href="redesign-4-printers.html">Printers</a><a href="redesign-4-launch.html">Launch</a><a href="redesign-4-logs.html">Logs</a><a href="redesign-4-settings.html">Settings</a>
     </nav>
     <div class="right">
-      <div class="scope"><i></i>Blocked Off · Shopee</div>
-      <div class="telemetry"><i></i>LINK ACTIVE · SCOUT 2M AGO</div>
+      <div class="scope-wrap" id="scopeWrap">
+        <div class="scope" onclick="document.getElementById('scopeWrap').classList.toggle('open')"><i id="scopeDot"></i><span id="scopeLbl">Blocked Off · Shopee</span><span class="car">▾</span></div>
+        <div class="scope-menu">
+          <div class="so on" data-c="var(--green)" onclick="setShop(this)"><i style="background:var(--green)"></i>Blocked Off · Shopee</div>
+          <div class="so" data-c="var(--cyan)" onclick="setShop(this)"><i style="background:var(--cyan)"></i>Blocked Off · TikTok</div>
+          <div class="so" data-c="var(--blue)" onclick="setShop(this)"><i style="background:var(--blue)"></i>Blocked Off · Lazada</div>
+          <div class="so all" data-c="var(--ink-3)" onclick="setShop(this)"><i style="background:var(--ink-3)"></i>All shops</div>
+        </div>
+      </div>
+      <script>
+      function setShop(el){
+        document.querySelectorAll('.so').forEach(o=>o.classList.remove('on'));
+        el.classList.add('on');
+        document.getElementById('scopeLbl').textContent = el.textContent.trim();
+        document.getElementById('scopeDot').style.background = el.dataset.c;
+        document.getElementById('scopeWrap').classList.remove('open');
+        event.stopPropagation();
+      }
+      document.addEventListener('click',e=>{
+        if(!e.target.closest('#scopeWrap')) document.getElementById('scopeWrap').classList.remove('open');
+      });
+      function xp(tr){
+        if(event.target.closest('.xbtn')) return;
+        tr.classList.toggle('open');
+        tr.nextElementSibling.classList.toggle('show');
+      }
+      </script>
     </div>
   </header>
 
@@ -134,42 +227,141 @@ header .right{margin-left:auto;display:flex;align-items:center;gap:12px}
 
   <div class="kpis">
     <div class="kpi">
-      <div class="l"><svg viewBox="0 0 24 24"><path d="M6 2l1 4h10l1-4M4 6h16l-1.5 14h-13z"/></svg>Open orders</div>
-      <div class="v">47</div>
-      <div class="foot"><span class="chip g">▲ 12 today</span></div>
+      <div class="l"><svg viewBox="0 0 24 24"><path d="M6 2l1 4h10l1-4M4 6h16l-1.5 14h-13z"/></svg>Orders Today</div>
+      <div class="v">12</div>
+      <div class="foot"><span class="chip g">▲ 4 vs yesterday</span></div>
       <svg class="spark" width="72" height="26" viewBox="0 0 72 26"><polyline points="0,20 12,17 24,18 36,12 48,14 60,7 72,4" fill="none" stroke="#3ecf8e" stroke-width="1.5"/></svg>
     </div>
     <div class="kpi">
-      <div class="l"><svg viewBox="0 0 24 24"><path d="M12 2v6m-4 14h8M12 18v4M6 8h12v6a6 6 0 01-12 0z"/></svg>Bays printing</div>
-      <div class="v">9 <small>/ 12</small></div>
-      <div class="foot"><span class="chip a">1 fault · 2 idle</span></div>
+      <div class="l"><svg viewBox="0 0 24 24"><path d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Pending Orders</div>
+      <div class="v">47</div>
+      <div class="foot">oldest <span style="color:var(--ink-2)">2d ago</span></div>
     </div>
     <div class="kpi">
-      <div class="l"><svg viewBox="0 0 24 24"><path d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Queue depth</div>
+      <div class="l"><svg viewBox="0 0 24 24"><path d="M10 9v6m4-6v6M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Orders on Hold</div>
+      <div class="v">3</div>
+      <div class="foot"><span class="chip a">1 awaiting buyer</span></div>
+    </div>
+    <div class="kpi">
+      <div class="l"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Queue Depth</div>
       <div class="v">23 <small>jobs</small></div>
       <div class="foot">est. clear <span style="color:var(--ink-2)">14h 20m</span></div>
     </div>
-    <div class="kpi">
-      <div class="l"><svg viewBox="0 0 24 24"><path d="M5 8h14l1 13H4zM8 8a4 4 0 118 0"/></svg>Ship-by today</div>
-      <div class="v">6</div>
-      <div class="foot"><span class="chip r">2 at risk</span></div>
+    <div class="kpi err">
+      <div class="l"><svg viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>System Errors<button class="reset" title="Reset error counter" onclick="this.closest('.kpi').querySelector('.v').textContent='0'"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6"/></svg></button></div>
+      <div class="v">2</div>
+      <div class="foot"><span class="chip r">1 fault · 1 match</span></div>
     </div>
   </div>
 
   <div class="grid">
     <div class="card">
-      <div class="hd"><h2>Orders needing attention</h2><span class="cnt">47 open</span><a class="more" href="#">All orders →</a></div>
-      <div class="orders">
-        <div class="o"><div><div class="id">2506SPX7K41</div><div class="buyer">farhan_kl</div></div><div><span class="pill ds">DS-75357 ×2</span></div><span class="stchip print"><i></i>Printing · P1</span><div class="due hot">today 18:00</div></div>
-        <div class="o"><div><div class="id">2506SPX7J92</div><div class="buyer">mei.lego.my</div></div><div><span class="pill wm">WM-76924</span></div><span class="stchip done"><i></i>Printed</span><div class="due hot">today 18:00</div></div>
-        <div class="o"><div><div class="id">2506SPX7F03</div><div class="buyer">tzeyang_j</div></div><div><span class="pill wm">WM-8089 ×2</span></div><span class="stchip err"><i></i>Match failed</span><div class="due">Jul 07</div></div>
-        <div class="o"><div><div class="id">2506SPX7H15</div><div class="buyer">brickfan88</div></div><div><span class="pill fwm">FWM-10307 ×3</span></div><span class="stchip queue"><i></i>Queued #4</span><div class="due">tomorrow</div></div>
-        <div class="o"><div><div class="id">2506SPX7G88</div><div class="buyer">aina.builds</div></div><div><span class="pill ds">DS-31160</span></div><span class="stchip done"><i></i>Waybill ready</span><div class="due">tomorrow</div></div>
-        <div class="o"><div><div class="id">2506SPX7E77</div><div class="buyer">legomamamy</div></div><div><span class="pill ds">DS-9492</span></div><span class="stchip queue"><i></i>Queued #9</span><div class="due">Jul 07</div></div>
-      </div>
+      <div class="hd"><h2>Pending orders</h2><span class="cnt">47 open</span><a class="more" href="#">All orders →</a></div>
+      <table class="otbl">
+        <thead><tr>
+          <th><input type="checkbox"></th><th>Order ID</th><th>Brand</th><th>Platform</th><th>Date of Order <span class="sort">▼</span></th><th>Customer Name</th><th>Items</th><th>Subtotal</th><th>Waybill Status</th><th>Status</th><th style="width:26px"></th>
+        </tr></thead>
+        <tbody>
+          <tr class="orow" onclick="xp(this)"><td><input type="checkbox" onclick="event.stopPropagation()"></td><td class="id">2506SPX7K41</td><td class="brand">Blocked Off</td><td><span class="plat">SHOPEE</span></td><td class="dt hot">today 18:00</td><td class="buyer">farhan_kl</td><td><span class="pill ds">DS-75357 ×2</span></td><td class="sum">54 MYR</td><td><span class="stchip queue"><i></i>Pending</span></td><td><span class="stchip print"><i></i>Printing</span></td><td><span class="chev">▼</span></td></tr>
+          <tr class="xrow"><td colspan="11"><div class="xin">
+            <div><div class="xt">PRINT JOBS (2)</div>
+              <div class="xgc"><span class="fx">&lt;/&gt;</span><span class="f">DS-75357_v3 - 42g-2h10m.gcode</span><span class="note">Ender KE #1 · 72%</span><span class="stchip print"><i></i>Printing</span></div>
+              <div class="xgc"><span class="fx">&lt;/&gt;</span><span class="f">DS-75357_v3 - 42g-2h10m.gcode</span><span class="note">queue #2</span><span class="stchip queue"><i></i>Queued</span></div>
+            </div>
+            <div><div class="xt">SHIPPING</div>
+              <div class="xkv"><b>Ship-by</b><span style="color:var(--red)">today 18:00</span></div>
+              <div class="xkv"><b>Buyer</b><span>farhan_kl · Kuala Lumpur, MY</span></div>
+              <div class="xkv"><b>Waybill</b><span class="mono2">pending compile</span></div>
+              <div class="xkv"><b>Tracking</b><span class="mono2">—</span></div>
+            </div>
+            <div class="xacts"><div class="xt">ACTIONS</div><button class="xbtn pri">Mark printed</button><button class="xbtn">Re-dispatch</button><button class="xbtn">Print sticker</button></div>
+          </div></td></tr>
+
+          <tr class="orow" onclick="xp(this)"><td><input type="checkbox" onclick="event.stopPropagation()"></td><td class="id">2506SPX7J92</td><td class="brand">Blocked Off</td><td><span class="plat">SHOPEE</span></td><td class="dt hot">today 18:00</td><td class="buyer">mei.lego.my</td><td><span class="pill wm">WM-76924</span></td><td class="sum">23 MYR</td><td><span class="stchip queue"><i></i>Pending</span></td><td><span class="stchip done"><i></i>Printed</span></td><td><span class="chev">▼</span></td></tr>
+          <tr class="xrow"><td colspan="11"><div class="xin">
+            <div><div class="xt">PRINT JOBS (1)</div>
+              <div class="xgc"><span class="fx">&lt;/&gt;</span><span class="f">WM-76924_v2 - 38g-1h50m.gcode</span><span class="note">done 12:41</span><span class="stchip done"><i></i>Completed</span></div>
+            </div>
+            <div><div class="xt">SHIPPING</div>
+              <div class="xkv"><b>Ship-by</b><span style="color:var(--red)">today 18:00</span></div>
+              <div class="xkv"><b>Buyer</b><span>mei.lego.my · Penang, MY</span></div>
+              <div class="xkv"><b>Waybill</b><span class="mono2">pending compile</span></div>
+              <div class="xkv"><b>Tracking</b><span class="mono2">—</span></div>
+            </div>
+            <div class="xacts"><div class="xt">ACTIONS</div><button class="xbtn pri">Compile waybill</button><button class="xbtn">Re-dispatch</button><button class="xbtn">Print sticker</button></div>
+          </div></td></tr>
+
+          <tr class="orow" onclick="xp(this)"><td><input type="checkbox" onclick="event.stopPropagation()"></td><td class="id">2506SPX7F03</td><td class="brand">Blocked Off</td><td><span class="plat">SHOPEE</span></td><td class="dt">Jul 07</td><td class="buyer">tzeyang_j</td><td><span class="pill wm">WM-8089 ×2</span></td><td class="sum">46 MYR</td><td><span class="stchip queue"><i></i>Pending</span></td><td><span class="stchip err"><i></i>Match failed</span></td><td><span class="chev">▼</span></td></tr>
+          <tr class="xrow"><td colspan="11"><div class="xin">
+            <div><div class="xt">MATCH ERROR</div>
+              <div class="xerr">⚠ <span><b>No SKU matched</b> for listing variation “wall mount v2 gray” — Gemini suggestion: <span class="mono2">WM-8089</span> (87%)</span></div>
+            </div>
+            <div><div class="xt">SHIPPING</div>
+              <div class="xkv"><b>Ship-by</b><span>Jul 07</span></div>
+              <div class="xkv"><b>Buyer</b><span>tzeyang_j · Johor Bahru, MY</span></div>
+              <div class="xkv"><b>Waybill</b><span class="mono2">blocked by match</span></div>
+            </div>
+            <div class="xacts"><div class="xt">ACTIONS</div><button class="xbtn pri">Accept WM-8089</button><button class="xbtn">Pick SKU manually</button><button class="xbtn warn">Put on hold</button></div>
+          </div></td></tr>
+
+          <tr class="orow" onclick="xp(this)"><td><input type="checkbox" onclick="event.stopPropagation()"></td><td class="id">2506SPX7H15</td><td class="brand">Blocked Off</td><td><span class="plat">SHOPEE</span></td><td class="dt">tomorrow</td><td class="buyer">brickfan88</td><td><span class="pill fwm">FWM-10307 ×3</span></td><td class="sum">32.7 SGD</td><td><span class="stchip queue"><i></i>Pending</span></td><td><span class="stchip queue"><i></i>Queued #4</span></td><td><span class="chev">▼</span></td></tr>
+          <tr class="xrow"><td colspan="11"><div class="xin">
+            <div><div class="xt">PRINT JOBS (3)</div>
+              <div class="xgc"><span class="fx">&lt;/&gt;</span><span class="f">FWM-10307_v1 - 61g-3h05m.gcode</span><span class="note">queue #4</span><span class="stchip queue"><i></i>Queued</span></div>
+              <div class="xgc"><span class="fx">&lt;/&gt;</span><span class="f">FWM-10307_v1 - 61g-3h05m.gcode</span><span class="note">queue #5</span><span class="stchip queue"><i></i>Queued</span></div>
+              <div class="xgc"><span class="fx">&lt;/&gt;</span><span class="f">FWM-10307_v1 - 61g-3h05m.gcode</span><span class="note">queue #6</span><span class="stchip queue"><i></i>Queued</span></div>
+            </div>
+            <div><div class="xt">SHIPPING</div>
+              <div class="xkv"><b>Ship-by</b><span>tomorrow</span></div>
+              <div class="xkv"><b>Buyer</b><span>brickfan88 · Singapore, SG</span></div>
+              <div class="xkv"><b>Waybill</b><span class="mono2">pending compile</span></div>
+            </div>
+            <div class="xacts"><div class="xt">ACTIONS</div><button class="xbtn pri">Bump priority</button><button class="xbtn">Re-dispatch</button><button class="xbtn">Print sticker</button></div>
+          </div></td></tr>
+
+          <tr class="orow" onclick="xp(this)"><td><input type="checkbox" onclick="event.stopPropagation()"></td><td class="id">2506SPX7G88</td><td class="brand">Blocked Off</td><td><span class="plat">SHOPEE</span></td><td class="dt">tomorrow</td><td class="buyer">aina.builds</td><td><span class="pill ds">DS-31160</span></td><td class="sum">25 MYR</td><td><span class="stchip done"><i></i>Ready</span></td><td><span class="stchip done"><i></i>Printed</span></td><td><span class="chev">▼</span></td></tr>
+          <tr class="xrow"><td colspan="11"><div class="xin">
+            <div><div class="xt">PRINT JOBS (1)</div>
+              <div class="xgc"><span class="fx">&lt;/&gt;</span><span class="f">DS-31160_v1 - 47g-2h20m.gcode</span><span class="note">done 09:12</span><span class="stchip done"><i></i>Completed</span></div>
+            </div>
+            <div><div class="xt">SHIPPING</div>
+              <div class="xkv"><b>Ship-by</b><span>tomorrow</span></div>
+              <div class="xkv"><b>Buyer</b><span>aina.builds · Shah Alam, MY</span></div>
+              <div class="xkv"><b>Waybill</b><span class="mono2" style="color:var(--green)">ready · WB-260705-114.pdf</span></div>
+              <div class="xkv"><b>Tracking</b><span class="mono2">SPXMY0482217731</span></div>
+            </div>
+            <div class="xacts"><div class="xt">ACTIONS</div><button class="xbtn pri">Download waybill</button><button class="xbtn">Print sticker</button><button class="xbtn">Mark shipped</button></div>
+          </div></td></tr>
+
+          <tr class="orow" onclick="xp(this)"><td><input type="checkbox" onclick="event.stopPropagation()"></td><td class="id">2506SPX7E77</td><td class="brand">Blocked Off</td><td><span class="plat">SHOPEE</span></td><td class="dt">Jul 07</td><td class="buyer">legomamamy</td><td><span class="pill ds">DS-9492</span></td><td class="sum">328 THB</td><td><span class="stchip queue"><i></i>Pending</span></td><td><span class="stchip queue"><i></i>Queued #9</span></td><td><span class="chev">▼</span></td></tr>
+          <tr class="xrow"><td colspan="11"><div class="xin">
+            <div><div class="xt">PRINT JOBS (1)</div>
+              <div class="xgc"><span class="fx">&lt;/&gt;</span><span class="f">DS-9492_v2 - 35g-1h40m.gcode</span><span class="note">queue #9</span><span class="stchip queue"><i></i>Queued</span></div>
+            </div>
+            <div><div class="xt">SHIPPING</div>
+              <div class="xkv"><b>Ship-by</b><span>Jul 07</span></div>
+              <div class="xkv"><b>Buyer</b><span>legomamamy · Bangkok, TH</span></div>
+              <div class="xkv"><b>Waybill</b><span class="mono2">pending compile</span></div>
+            </div>
+            <div class="xacts"><div class="xt">ACTIONS</div><button class="xbtn pri">Bump priority</button><button class="xbtn">Re-dispatch</button><button class="xbtn">Print sticker</button></div>
+          </div></td></tr>
+        </tbody>
+      </table>
     </div>
 
     <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="ops">
+        <div class="tier big">
+          <button class="opbtn"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5l5 5M4 20h16"/></svg>Upload Waybills</button>
+          <button class="opbtn"><svg viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18h12v4H6zM4 14h16v4H4z"/></svg>Compile Waybills</button>
+          <button class="opbtn"><svg viewBox="0 0 24 24"><path d="M12 2v6m-4 14h8M12 18v4M6 8h12v6a6 6 0 01-12 0z"/></svg>SimplyPrint<span class="ext">OPEN ↗</span></button>
+        </div>
+        <div class="tier small">
+          <button class="opbtn"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>Supabase</button>
+          <button class="opbtn"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg>Railway</button>
+          <button class="opbtn go"><svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg>Dispatch</button>
+        </div>
+      </div>
       <div class="card">
         <div class="hd"><h2>Fleet</h2><span class="cnt">9 / 12 up</span><a class="more" href="#">Manage →</a></div>
         <div class="bays">
