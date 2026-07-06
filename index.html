@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.15.1">
+  <link rel="stylesheet" href="index.css?v=1.15.2">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -630,135 +630,105 @@
       </section>
 
       <!-- 1. Orders & Print Jobs Pane -->
-      <section class="tab-content hidden w-full max-w-[1440px] mx-auto space-y-5" id="pane-orders">
-        <div class="glass-panel rounded-xl p-5 flex flex-col gap-5">
-          <div class="flex justify-between items-center border-b border-outline-variant/10 pb-4 flex-wrap gap-3">
-            <div>
-              <h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2.5">Orders <span class="fresh-stamp" data-fresh="orders"></span></h2>
-              <p class="text-[11px] font-data-mono text-outline mt-0.5">Order fulfillment &amp; waybill pipeline, unified</p>
-            </div>
-            <div class="flex items-center gap-2 flex-wrap">
-              <button class="px-3 py-2 bg-[#22d3ee]/10 hover:bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] rounded-lg text-xs font-label-caps font-bold flex items-center gap-1.5 transition-all active:scale-95" id="waybill-ctrl-trigger-scout">
-                <span class="material-symbols-outlined text-sm pointer-events-none">mail</span> Scan Gmail
-              </button>
-              <button class="px-3 py-2 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg text-xs font-label-caps font-bold flex items-center gap-1.5 transition-all active:scale-95" id="waybill-ctrl-trigger-foreman">
-                <span class="material-symbols-outlined text-sm pointer-events-none">print</span> Dispatch
-              </button>
-              <button class="px-3 py-2 bg-[#ffaa6b]/15 hover:bg-[#ffaa6b]/25 border border-[#ffaa6b]/40 text-[#ffaa6b] rounded-lg text-xs font-label-caps font-bold flex items-center gap-1.5 transition-all active:scale-95" id="waybill-ctrl-trigger-compile">
-                <span class="material-symbols-outlined text-sm pointer-events-none">picture_as_pdf</span> Compile Batch
-              </button>
-              <button class="px-3 py-2 bg-[#7ea6e8]/10 hover:bg-[#7ea6e8]/20 border border-[#7ea6e8]/30 text-[#7ea6e8] rounded-lg text-xs font-label-caps font-bold flex items-center gap-1.5 transition-all active:scale-95" id="orders-upload-waybills-btn">
-                <span class="material-symbols-outlined text-sm pointer-events-none">cloud_upload</span> Upload Waybills
-              </button>
-              <!-- Batch ready notification (hidden until compile completes) -->
-              <div class="hidden items-center gap-2 bg-[#ffaa6b]/10 border border-[#ffaa6b]/30 rounded-lg px-3 py-1.5" id="batch-output-box">
-                <span class="material-symbols-outlined text-[#ffaa6b] text-base">picture_as_pdf</span>
-                <a href="#" target="_blank" class="px-2 py-0.5 bg-[#ffaa6b]/20 hover:bg-[#ffaa6b]/30 border border-[#ffaa6b]/40 text-[#ffaa6b] rounded text-xs font-bold flex items-center gap-1 no-underline transition-all" id="batch-download-link">
-                  <span class="material-symbols-outlined text-sm">download</span> Master PDF
-                </a>
-              </div>
-              <span class="w-px h-6 bg-outline-variant/20 mx-1"></span>
-              <button class="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg flex items-center gap-1.5 font-label-caps transition-all text-xs font-bold text-emerald-400" id="orders-btn-complete-all">
-                <span class="material-symbols-outlined text-sm">done_all</span> Complete All
-              </button>
-              <button class="px-3 py-2 bg-surface-container-highest border border-outline-variant/50 hover:bg-surface-container-highest/80 rounded-lg flex items-center gap-1.5 font-label-caps transition-all text-xs" id="refresh-orders-btn">
-                <span class="material-symbols-outlined text-sm">refresh</span> Refresh
-              </button>
-            </div>
+      <section class="tab-content hidden d4-pane" id="pane-orders">
+        <!-- Page head -->
+        <div class="d4-phead">
+          <div>
+            <h2>Orders <span class="fresh-stamp" data-fresh="orders"></span></h2>
+            <div class="sub">Order fulfillment &amp; waybill pipeline, unified</div>
           </div>
+          <div class="acts">
+            <button class="d4-btn" id="waybill-ctrl-trigger-scout"><span class="material-symbols-outlined">mail</span> Scan Gmail</button>
+            <button class="d4-btn" id="waybill-ctrl-trigger-compile"><span class="material-symbols-outlined">picture_as_pdf</span> Compile Batch</button>
+            <button class="d4-btn" id="orders-upload-waybills-btn"><span class="material-symbols-outlined">cloud_upload</span> Upload Waybills</button>
+            <button class="d4-btn pri" id="waybill-ctrl-trigger-foreman"><span class="material-symbols-outlined">print</span> Dispatch</button>
+            <!-- Batch ready notification (hidden until compile completes) -->
+            <div class="hidden d4-batchbox" id="batch-output-box">
+              <a href="#" target="_blank" class="d4-btn" id="batch-download-link"><span class="material-symbols-outlined">download</span> Master PDF</a>
+            </div>
+            <span class="d4-vsep"></span>
+            <button class="d4-btn" id="orders-btn-complete-all"><span class="material-symbols-outlined">done_all</span> Complete All</button>
+            <button class="d4-btn" id="refresh-orders-btn" title="Refresh"><span class="material-symbols-outlined">refresh</span></button>
+          </div>
+        </div>
 
-          <!-- Search & Filter Controls -->
-          <div class="flex flex-col md:flex-row justify-between items-center gap-4 bg-surface-container-low/20 p-3 rounded-lg border border-outline-variant/10">
-            <!-- Search bar -->
-            <div class="relative w-full md:max-w-xs flex items-center">
-              <span class="material-symbols-outlined absolute left-3 text-on-surface-variant/50 text-sm select-none">search</span>
-              <input type="text" id="orders-search-input" placeholder="Search Order ID, Customer, SKU..." class="w-full pl-9 pr-8 py-1.5 bg-surface-container-lowest border border-outline-variant/30 rounded-lg text-xs text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-primary/50 transition-all font-data-mono">
-              <button type="button" class="search-clear-btn hidden absolute right-2 p-0.5 rounded-full hover:bg-white/10 text-on-surface-variant/50 hover:text-on-surface transition-all" data-clear-target="orders-search-input" aria-label="Clear search"><span class="material-symbols-outlined text-sm">close</span></button>
-            </div>
+        <!-- Toolbar: search · date range · status seg -->
+        <div class="d4-tools">
+          <div class="d4-searchbar">
+            <span class="material-symbols-outlined">search</span>
+            <input type="text" class="d4-in" id="orders-search-input" placeholder="Search Order ID, Customer, SKU…">
+            <button type="button" class="search-clear-btn hidden" data-clear-target="orders-search-input" aria-label="Clear search"><span class="material-symbols-outlined">close</span></button>
+          </div>
+          <div class="d4-dates">
+            <span class="material-symbols-outlined">calendar_month</span>
+            <input type="date" id="orders-date-start" class="d4-date">
+            <span class="to">to</span>
+            <input type="date" id="orders-date-end" class="d4-date">
+            <button id="orders-clear-date-btn" class="hidden" title="Clear dates"><span class="material-symbols-outlined">close</span></button>
+            <button id="orders-sort-date-btn" title="Sort Date (Newest First)"><span class="material-symbols-outlined" id="orders-sort-date-icon">arrow_downward</span></button>
+          </div>
+          <div class="d4-seg" id="orders-status-filters">
+            <button class="filter-btn active" data-status="active">Active</button>
+            <button class="filter-btn" data-status="all">All</button>
+            <button class="filter-btn" data-status="pending">Pending</button>
+            <button class="filter-btn" data-status="printing">Printing</button>
+            <button class="filter-btn" data-status="printed">Printed</button>
+            <button class="filter-btn" data-status="completed">Completed</button>
+            <button class="filter-btn" data-status="hold">Hold</button>
+          </div>
+        </div>
 
-            <!-- Date range filters -->
-            <div class="flex items-center gap-2 bg-surface-container-low p-1.5 rounded-lg border border-outline-variant/20 self-stretch md:self-auto">
-              <span class="material-symbols-outlined text-on-surface-variant/50 text-sm pl-1 select-none">calendar_month</span>
-              <input type="date" id="orders-date-start" class="bg-surface-container-lowest text-on-surface text-xs rounded border border-outline-variant/30 px-2 py-1 outline-none focus:border-primary/50 transition-all font-data-mono">
-              <span class="text-on-surface-variant/50 text-[10px] uppercase font-bold tracking-wider">to</span>
-              <input type="date" id="orders-date-end" class="bg-surface-container-lowest text-on-surface text-xs rounded border border-outline-variant/30 px-2 py-1 outline-none focus:border-primary/50 transition-all font-data-mono">
-              <button id="orders-clear-date-btn" class="text-on-surface-variant hover:text-error text-xs p-0.5 transition-all rounded hover:bg-surface-container-high hidden flex items-center justify-center">
-                <span class="material-symbols-outlined text-sm">close</span>
-              </button>
-              <button id="orders-sort-date-btn" class="text-on-surface-variant hover:text-primary text-xs p-0.5 transition-all rounded hover:bg-surface-container-high flex items-center justify-center" title="Sort Date (Newest First)">
-                <span class="material-symbols-outlined text-sm" id="orders-sort-date-icon">arrow_downward</span>
-              </button>
-            </div>
-            
-            <!-- Filters -->
-            <div class="flex gap-1.5 p-1 bg-surface-container-low rounded-lg border border-outline-variant/20 self-stretch md:self-auto overflow-x-auto" id="orders-status-filters">
-              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all bg-primary/10 text-primary active" data-status="active">Active</button>
-              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="all">All</button>
-              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="pending">Pending</button>
-              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="printing">Printing</button>
-              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="printed">Printed</button>
-              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="completed">Completed</button>
-              <button class="filter-btn px-3 py-1.5 rounded-md text-xs font-label-caps transition-all text-on-surface-variant hover:bg-surface-container-high" data-status="hold">Hold</button>
-            </div>
-          </div>
-          
-          <!-- Contextual bulk-action bar (appears when rows are checked) -->
-          <div id="orders-bulk-bar" class="hidden items-center gap-3 px-4 py-2.5 rounded-xl bg-primary/[0.08] border border-primary/30 flex-wrap">
-            <span class="text-xs font-bold text-primary font-data-mono" id="orders-bulk-count">0 selected</span>
-            <button class="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-400 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95" id="orders-bulk-complete">
-              <span class="material-symbols-outlined text-sm">done_all</span> Complete
-            </button>
-            <select id="orders-bulk-waybill-status" class="bg-black/20 text-on-surface text-xs rounded-lg border border-outline-variant/20 px-2 py-1.5 outline-none focus:border-primary/50 transition-all cursor-pointer">
-              <option value="" disabled selected>Set waybill status…</option>
-              <option value="pending">Pending</option>
-              <option value="ready">Ready</option>
-              <option value="on hold">On Hold</option>
-              <option value="failed">Failed</option>
-              <option value="printed">Printed</option>
-            </select>
-            <span class="flex-1"></span>
-            <button class="text-xs text-primary/80 hover:text-primary font-label-caps uppercase tracking-wider transition-colors" id="orders-bulk-select-all">Select all</button>
-            <button class="text-xs text-outline hover:text-on-surface font-label-caps uppercase tracking-wider transition-colors" id="orders-bulk-clear">Clear</button>
-          </div>
+        <!-- Contextual bulk-action bar (appears when rows are checked) -->
+        <div id="orders-bulk-bar" class="hidden d4-bulkbar">
+          <span class="cnt" id="orders-bulk-count">0 selected</span>
+          <button class="d4-btn pri sm" id="orders-bulk-complete"><span class="material-symbols-outlined">done_all</span> Complete</button>
+          <select id="orders-bulk-waybill-status" class="d4-select">
+            <option value="" disabled selected>Set waybill status…</option>
+            <option value="pending">Pending</option>
+            <option value="ready">Ready</option>
+            <option value="on hold">On Hold</option>
+            <option value="failed">Failed</option>
+            <option value="printed">Printed</option>
+          </select>
+          <span style="flex:1"></span>
+          <button class="lnk" id="orders-bulk-select-all">Select all</button>
+          <button class="lnk mut" id="orders-bulk-clear">Clear</button>
+        </div>
 
-          <!-- On-Hold Orders Warning Alert Panel -->
-          <div id="on-hold-panel" class="hidden glass-panel border-l-4 border-error p-4 rounded-r-lg flex flex-col gap-3 flex-shrink-0">
-            <div class="flex items-center gap-3 text-error font-bold font-headline-sm">
-              <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">warning</span>
-              <span>Action Required: <span id="on-hold-count">0</span> Orders on Hold Due to Discrepancies</span>
-            </div>
-            <div id="on-hold-list" class="flex flex-col gap-2 max-h-48 overflow-y-auto pr-2">
-              <!-- Dynamically populated -->
+        <!-- On-Hold Orders Warning Alert Panel -->
+        <div id="on-hold-panel" class="hidden d4-holdpanel">
+          <div class="ttl">
+            <span class="material-symbols-outlined">error</span>
+            <span>Action Required: <span id="on-hold-count">0</span> Orders on Hold Due to Discrepancies</span>
+          </div>
+          <div id="on-hold-list" class="lst"></div>
+        </div>
+
+        <!-- Orders Master-Detail: compact list (left) + persistent detail panel (right) -->
+        <div class="omd-split">
+          <div class="omd-list-panel">
+            <div class="omd-list-head" id="orders-list-head"></div>
+            <div class="omd-list-rows" id="orders-list">
+              <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
             </div>
           </div>
-          
-          <!-- Orders Master-Detail: compact list (left) + persistent detail panel (right) -->
-          <div class="omd-split">
-            <div class="omd-list-panel">
-              <div class="omd-list-head" id="orders-list-head"></div>
-              <div class="omd-list-rows" id="orders-list">
-                <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
-              </div>
-            </div>
-            <div class="omd-detail-panel" id="order-detail-panel">
-              <div class="omd-empty-state">
-                <span class="material-symbols-outlined">touch_app</span>
-                <p>Select an order to view details</p>
-              </div>
+          <div class="omd-detail-panel" id="order-detail-panel">
+            <div class="omd-empty-state">
+              <span class="material-symbols-outlined">touch_app</span>
+              <p>Select an order to view details</p>
             </div>
           </div>
         </div>
 
         <!-- Waybill Tools drawer (collapsed by default): upload + daemon console +
-             compiled master PDFs. The old duplicate per-order waybill table is gone —
-             per-order PDF links live in the order detail panel, and bulk waybill
-             status changes live in the bulk-action bar. -->
-        <div class="glass-panel rounded-xl p-5 flex flex-col gap-4">
-          <button id="waybill-tools-toggle" type="button" class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2.5 cursor-pointer hover:text-primary transition-colors bg-transparent border-0 p-0 self-start">
-            <span class="material-symbols-outlined text-[#7ea6e8]">description</span>
-            Waybill Tools
-            <span class="font-data-mono text-xs text-outline">upload · console · compiled PDFs</span>
-            <span class="material-symbols-outlined text-on-surface-variant transition-transform" id="waybill-tools-chevron">expand_more</span>
+             compiled master PDFs. Inner body markup is unchanged (migrates fully in
+             the overlays commit); only the outer card chrome is Draft 4. -->
+        <div class="d4-card" style="padding:16px 18px">
+          <button id="waybill-tools-toggle" type="button" class="d4-drawer-toggle">
+            <span class="material-symbols-outlined" style="color:var(--blue)">description</span>
+            <span class="t">Waybill Tools</span>
+            <span class="sub">upload · console · compiled PDFs</span>
+            <span class="material-symbols-outlined" id="waybill-tools-chevron">expand_more</span>
           </button>
 
           <div class="waybill-tools-body hidden grid grid-cols-12 gap-4 items-start">
@@ -821,8 +791,7 @@
                 <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div></div>
               </div>
             </div>
-          </div>
-        </div>
+          </div></div>
 
       </section>
 
@@ -2109,6 +2078,6 @@
     </button>
   </div>
 
-  <script src="app.js?v=1.15.1"></script>
+  <script src="app.js?v=1.15.2"></script>
 </body>
 </html>

@@ -1263,6 +1263,12 @@ function updateBulkBar() {
 }
 const updateBulkCompleteButton = updateBulkBar; // legacy call sites
 
+// Map legacy badge status classes (pending/printing/printed/completed/hold)
+// onto Draft 4 stchip variants.
+function d4StatusChipCls(legacy) {
+  return { pending: "queue", printing: "print", printed: "printed", completed: "done", hold: "err" }[legacy] || "mut";
+}
+
 function renderOrdersMasterDetail(filtered) {
   const headEl = document.getElementById("orders-list-head");
   const rowsEl = document.getElementById("orders-list");
@@ -1308,10 +1314,7 @@ function renderOrdersMasterDetail(filtered) {
     if (!itemsHtml) itemsHtml = `<span class="omd-item-chip" style="opacity:.5;">No items</span>`;
 
     const platformLower = (order.sales_platform || "").toLowerCase();
-    let platformBadgeClass = "bg-surface-container text-on-surface-variant/80";
-    if (platformLower.includes("shopee")) platformBadgeClass = "bg-orange-500/15 text-orange-400";
-    else if (platformLower.includes("lazada")) platformBadgeClass = "bg-blue-600/15 text-blue-400";
-    else if (platformLower.includes("shopify")) platformBadgeClass = "bg-green-600/15 text-green-400";
+    const platformBadgeClass = platformLower.includes("shopee") ? "shopee" : platformLower.includes("lazada") ? "lazada" : platformLower.includes("shopify") ? "shopify" : "";
 
     // Order age: surfaces stale actionable orders at a glance
     const ageMs = Date.now() - new Date(order.order_timestamp || order.created_at).getTime();
@@ -1329,11 +1332,11 @@ function renderOrdersMasterDetail(filtered) {
           <div class="omd-oid-num truncate" title="${escapeHtml(order.platform_order_id)}">${escapeHtml(order.platform_order_id)}</div>
           <span class="omd-plat ${platformBadgeClass}">${escapeHtml(order.sales_platform || "")}</span><span class="omd-age${ageClass}" title="Order age">${ageLabel}</span>
         </div>
-        <div class="text-xs font-medium text-on-surface truncate">${escapeHtml(order.customer_name) || "N/A"}</div>
+        <div class="omd-cust truncate">${escapeHtml(order.customer_name) || "N/A"}</div>
         <div class="omd-items-cell">${itemsHtml}</div>
         <div class="omd-subtotal-cell">${escapeHtml(order.order_subtotal)} ${escapeHtml(order.order_currency)}</div>
-        <div><span class="badge ${statusClass}" style="font-size:9.5px; padding:3px 9px;">${escapeHtml(order.overall_order_status || "pending")}</span></div>
-        <div><span class="badge ${waybillStatusClass}" style="font-size:9.5px; padding:3px 9px;">${escapeHtml(waybillStatusDisplay)}</span></div>
+        <div><span class="d4-stchip sm ${d4StatusChipCls(statusClass)}"><i></i>${escapeHtml(order.overall_order_status || "pending")}</span></div>
+        <div><span class="d4-stchip sm ${d4StatusChipCls(waybillStatusClass)}"><i></i>${escapeHtml(waybillStatusDisplay)}</span></div>
       </div>
     `;
   }).join("");
@@ -1388,15 +1391,12 @@ function buildOrderDetailPanel(order) {
   const dateStr = orderDateVal ? new Date(orderDateVal).toLocaleString() : "N/A";
 
   const platformLower = (order.sales_platform || "").toLowerCase();
-  let platformBadgeClass = "bg-surface-container text-on-surface-variant/80";
-  if (platformLower.includes("shopee")) platformBadgeClass = "bg-orange-500/15 text-orange-400";
-  else if (platformLower.includes("lazada")) platformBadgeClass = "bg-blue-600/15 text-blue-400";
-  else if (platformLower.includes("shopify")) platformBadgeClass = "bg-green-600/15 text-green-400";
+  const platformBadgeClass = platformLower.includes("shopee") ? "shopee" : platformLower.includes("lazada") ? "lazada" : platformLower.includes("shopify") ? "shopify" : "";
 
   const itemsList = order.order_items || [];
   let itemsHtml;
   if (itemsList.length === 0) {
-    itemsHtml = `<div class="font-data-mono text-xs text-outline py-2 text-center">No items found in this order.</div>`;
+    itemsHtml = `<div class="d4-mono10" style="text-align:center;padding:8px 0;">No items found in this order.</div>`;
   } else {
     itemsHtml = itemsList.map(item => {
       const dispatchedStr = item.sent_to_print_timestamp ? new Date(item.sent_to_print_timestamp).toLocaleString() : "Not dispatched";
@@ -1425,14 +1425,14 @@ function buildOrderDetailPanel(order) {
         return `
           <div class="omd-job-card">
             <div class="omd-row-between">
-              <span class="font-data-mono text-[10px] text-on-surface-variant/80 truncate" title="${escapeHtml(j.print_file_name || "")}">
+              <span class="d4-mono11 truncate" title="${escapeHtml(j.print_file_name || "")}">
                 <span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px;color:var(--accent-blue);">code</span> ${escapeHtml(j.print_file_name || "")}
               </span>
-              <span class="badge ${badgeClass}" style="font-size:9px; padding:2px 8px; flex-shrink:0;">${j.job_execution_status}</span>
+              <span class="d4-stchip sm ${d4StatusChipCls(badgeClass)}" style="flex-shrink:0;"><i></i>${j.job_execution_status}</span>
             </div>
             ${progressHtml}
             <div class="omd-row-between" style="margin-top:6px;">
-              <span class="font-data-mono text-[9.5px] text-outline">${j.printer_name || (etaText ? `ETA ${etaText}` : "")}</span>
+              <span class="d4-mono10">${j.printer_name || (etaText ? `ETA ${etaText}` : "")}</span>
               ${redispatchBtn}
             </div>
           </div>
@@ -1443,10 +1443,10 @@ function buildOrderDetailPanel(order) {
         <div class="omd-item-card">
           <div class="omd-row-between">
             <span class="omd-isku">${escapeHtml(item.variant_sku || "UNKNOWN")}</span>
-            <span class="badge ${item.item_print_status?.toLowerCase() === "printing" ? "printing" : (item.item_print_status?.toLowerCase() === "pending" ? "pending" : "completed")}" style="font-size:9px; padding:2px 8px;">${item.item_print_status}</span>
+            <span class="d4-stchip sm ${d4StatusChipCls(item.item_print_status?.toLowerCase() === "printing" ? "printing" : (item.item_print_status?.toLowerCase() === "pending" ? "pending" : "completed"))}"><i></i>${item.item_print_status}</span>
           </div>
-          <div class="text-xs font-medium text-on-surface">${escapeHtml(item.variant_name || "Generic Item")} · Qty ${item.purchased_quantity}</div>
-          <div class="text-[10px] text-outline font-data-mono">Dispatched: ${dispatchedStr}</div>
+          <div class="d4-body12">${escapeHtml(item.variant_name || "Generic Item")} · Qty ${item.purchased_quantity}</div>
+          <div class="d4-mono10">Dispatched: ${dispatchedStr}</div>
           ${jobsHtml}
           <div style="display:flex; gap:6px; margin-top:2px;">${stickerBtn}</div>
         </div>
@@ -1509,17 +1509,17 @@ function buildOrderDetailPanel(order) {
       <div>
         <div class="omd-oid">${escapeHtml(order.platform_order_id)}</div>
         <div class="omd-meta">
-          <span class="px-2 py-0.5 rounded text-[9px] uppercase font-bold tracking-wide ${platformBadgeClass}">${escapeHtml(order.sales_platform || "")}</span>
+          <span class="omd-plat ${platformBadgeClass}">${escapeHtml(order.sales_platform || "")}</span>
           <span class="sep">·</span><span>${dateStr}</span>
           <span class="sep">·</span><span>${escapeHtml(order.customer_name) || "N/A"}</span>
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-        <button class="copy-order-id-btn p-1.5 rounded hover:bg-primary/10 border border-transparent hover:border-primary/30 text-on-surface-variant hover:text-primary transition-all flex items-center justify-center cursor-pointer" data-copy="${escapeHtml(order.platform_order_id)}" title="Copy Order ID">
-          <span class="material-symbols-outlined text-[16px]">content_copy</span>
+        <button class="d4-iconbtn copy-order-id-btn" data-copy="${escapeHtml(order.platform_order_id)}" title="Copy Order ID">
+          <span class="material-symbols-outlined">content_copy</span>
         </button>
-        <button class="delete-order-btn p-1.5 rounded hover:bg-error/20 border border-transparent hover:border-error/30 text-error transition-transform flex items-center justify-center cursor-pointer" data-order-id="${order.id}" data-platform-order-id="${escapeHtml(order.platform_order_id)}" title="Delete Order">
-          <span class="material-symbols-outlined text-[16px]">delete</span>
+        <button class="d4-iconbtn danger delete-order-btn" data-order-id="${order.id}" data-platform-order-id="${escapeHtml(order.platform_order_id)}" title="Delete Order">
+          <span class="material-symbols-outlined">delete</span>
         </button>
       </div>
     </div>
@@ -1532,7 +1532,7 @@ function buildOrderDetailPanel(order) {
     <div>
       <div class="omd-section-title"><span class="material-symbols-outlined">local_shipping</span>Waybill</div>
       <div class="omd-item-card" style="flex-direction:row; align-items:center; justify-content:space-between; margin-bottom:0;">
-        <span class="badge ${waybillStatusClass}" style="font-size:9.5px; padding:3px 9px;">${escapeHtml(waybillStatusDisplay)}</span>
+        <span class="d4-stchip sm ${d4StatusChipCls(waybillStatusClass)}"><i></i>${escapeHtml(waybillStatusDisplay)}</span>
         <div style="display:flex; gap:6px;">${rawPdfBtn}${processedPdfBtn}</div>
       </div>
     </div>
@@ -1552,7 +1552,7 @@ function buildOrderDetailPanel(order) {
           ? `<button class="status-advance-btn" data-next="${next}" title="Advance to ${next}"><span class="material-symbols-outlined text-sm">skip_next</span>${next.charAt(0).toUpperCase() + next.slice(1)}</button>`
           : "";
       })()}
-      <select class="badge ${statusSelectClass} overall-status-select" data-order-id="${order.id}" style="flex:1; text-align:center; text-transform:capitalize; padding:8px;">
+      <select class="d4-stsel ${statusSelectClass} overall-status-select" data-order-id="${order.id}" style="flex:1;">
         <option value="pending" ${statusLower === "pending" ? "selected" : ""}>Pending</option>
         <option value="printing" ${statusLower === "printing" ? "selected" : ""}>Printing</option>
         <option value="printed" ${statusLower === "printed" ? "selected" : ""}>Printed</option>
@@ -1684,7 +1684,7 @@ function renderHoldPanel(allOrdersList) {
   if (!holdPanel || !holdList || !holdCount) return;
 
   if (holdOrders.length > 0) {
-    holdPanel.style.display = "block";
+    holdPanel.style.display = "flex";
     holdCount.innerText = holdOrders.length;
     
     let holdHtml = "";
@@ -1696,11 +1696,11 @@ function renderHoldPanel(allOrdersList) {
             <div style="font-size: 0.8rem; color: var(--text-secondary);" id="discrepancy-${order.id}">Loading discrepancy details...</div>
           </div>
           <div style="display: flex; gap: 0.5rem;">
-            <button class="btn-secondary rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-xs btn-reset-hold" data-order-id="${order.id}" data-platform-id="${escapeHtml(order.platform_order_id)}">
-              <span class="material-symbols-outlined text-xs select-none">rotate_left</span> Reset to Pending
+            <button class="d4-btn sm btn-reset-hold" data-order-id="${order.id}" data-platform-id="${escapeHtml(order.platform_order_id)}">
+              <span class="material-symbols-outlined">rotate_left</span> Reset to Pending
             </button>
-            <button class="btn-primary rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-xs btn-force-approve" data-order-id="${order.id}" data-platform-id="${escapeHtml(order.platform_order_id)}">
-              <span class="material-symbols-outlined text-xs select-none">check</span> Force Release
+            <button class="d4-btn pri sm btn-force-approve" data-order-id="${order.id}" data-platform-id="${escapeHtml(order.platform_order_id)}">
+              <span class="material-symbols-outlined">check</span> Force Release
             </button>
           </div>
         </div>
