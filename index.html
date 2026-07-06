@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.16.0">
+  <link rel="stylesheet" href="index.css?v=1.16.3">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -538,31 +538,23 @@
             <!-- Quick operations -->
             <div class="d4-ops">
               <div class="tier big">
-                <button class="d4-opbtn" id="overview-ctrl-trigger-scout" title="Poll Gmail for new orders now">
-                  <span class="material-symbols-outlined">mail</span>Scan Gmail
+                <button class="d4-opbtn acc-peach" id="overview-waybill-browse-btn" title="Upload raw waybill PDFs">
+                  <span class="material-symbols-outlined">upload</span>Upload Waybills
                 </button>
-                <button class="d4-opbtn" id="overview-ctrl-trigger-compile" title="Build master waybill PDF">
-                  <span class="material-symbols-outlined">picture_as_pdf</span>Compile Batch
+                <button class="d4-opbtn acc-orange" id="overview-ctrl-trigger-compile" title="Build master waybill PDF">
+                  <span class="material-symbols-outlined">print</span>Compile Waybills
                 </button>
+                <a href="https://simplyprint.io/panel" target="_blank" class="d4-opbtn acc-blue" title="Open SimplyPrint panel">
+                  <span class="material-symbols-outlined">precision_manufacturing</span>SimplyPrint
+                  <span class="sub">OPEN ↗</span>
+                </a>
+              </div>
+              <div class="tier small">
+                <a href="https://supabase.com/dashboard/project/velgortxgdouxbkonirr" target="_blank" class="d4-opbtn acc-cyan" title="Open Supabase dashboard"><span class="material-symbols-outlined">database</span>Supabase</a>
+                <a href="https://railway.app/dashboard" target="_blank" class="d4-opbtn acc-amber" title="Open Railway dashboard"><span class="material-symbols-outlined">terminal</span>Railway</a>
                 <button class="d4-opbtn go" id="overview-ctrl-trigger-foreman" title="Send pending items to printers">
-                  <span class="material-symbols-outlined">print</span>Dispatch
+                  <span class="material-symbols-outlined">play_arrow</span>Dispatch
                 </button>
-              </div>
-              <div class="tier small">
-                <button class="d4-opbtn" id="overview-qo-batch-pdfs" title="Open compiled waybill batches">
-                  <span class="material-symbols-outlined">folder_open</span>Batch PDFs
-                </button>
-                <button class="d4-opbtn" id="overview-ctrl-trigger-sync-simplyprint" title="Refresh printer telemetry">
-                  <span class="material-symbols-outlined">refresh</span>Sync SP
-                </button>
-                <button class="d4-opbtn" id="overview-waybill-browse-btn" title="Upload raw waybill PDFs">
-                  <span class="material-symbols-outlined">cloud_upload</span>Waybills
-                </button>
-              </div>
-              <div class="tier small">
-                <a href="https://simplyprint.io/panel" target="_blank" class="d4-opbtn"><span class="material-symbols-outlined">print</span>SimplyPrint<span class="ext">↗</span></a>
-                <a href="https://supabase.com/dashboard/project/velgortxgdouxbkonirr" target="_blank" class="d4-opbtn"><span class="material-symbols-outlined">database</span>Supabase<span class="ext">↗</span></a>
-                <a href="https://railway.app/dashboard" target="_blank" class="d4-opbtn"><span class="material-symbols-outlined">dns</span>Railway<span class="ext">↗</span></a>
               </div>
 
               <!-- Hidden upload-zone stub: bindUploadEvents needs the zone + file

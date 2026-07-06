@@ -2840,14 +2840,26 @@ tr.d4-orow.open td { background: var(--card-2); }
 /* ── quick operations ───────────────────────────────────────── */
 .d4-ops { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .d4-ops .tier { display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr); }
-.d4-opbtn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; width: 100%; border: 1px solid var(--line-2); background: var(--inset); color: var(--ink-2); border-radius: 10px; cursor: pointer; font: 600 12.5px var(--font-title); padding: 0; }
+.d4-opbtn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 1px solid var(--line-2); background: var(--inset); color: var(--ink); border-radius: 10px; cursor: pointer; font: 600 13.5px var(--font-title); padding: 0; text-decoration: none; transition: background 0.15s, border-color 0.15s; }
 .d4-opbtn:hover { color: var(--ink); background: var(--card-2); border-color: var(--ink-4); }
-.d4-opbtn .material-symbols-outlined, .d4-opbtn svg { font-size: 17px; width: 17px; height: 17px; }
-.d4-ops .tier.big .d4-opbtn { min-height: 74px; }
-.d4-ops .tier.small .d4-opbtn { min-height: 44px; flex-direction: row; font-size: 11.5px; gap: 6px; }
-.d4-ops .tier.small .d4-opbtn .material-symbols-outlined, .d4-ops .tier.small .d4-opbtn svg { font-size: 13px; width: 13px; height: 13px; }
+.d4-opbtn .material-symbols-outlined, .d4-opbtn svg { font-size: 19px; width: 19px; height: 19px; }
+.d4-opbtn .sub { font: 500 9px var(--font-mono); letter-spacing: 0.14em; color: var(--ink-4); margin-top: -2px; }
+.d4-ops .tier.big .d4-opbtn { min-height: 92px; }
+.d4-ops .tier.small .d4-opbtn { min-height: 52px; flex-direction: row; font-size: 12.5px; gap: 7px; }
+.d4-ops .tier.small .d4-opbtn .material-symbols-outlined, .d4-ops .tier.small .d4-opbtn svg { font-size: 15px; width: 15px; height: 15px; }
 .d4-opbtn.go { color: var(--green); border-color: rgba(62, 207, 142, 0.4); background: var(--green-dim); }
 .d4-opbtn.go:hover { filter: brightness(1.1); color: var(--green); }
+/* per-action accent colors: icon tinted always, border/bg tint on hover */
+.d4-opbtn.acc-peach .material-symbols-outlined { color: var(--peach); }
+.d4-opbtn.acc-peach:hover { border-color: rgba(255, 170, 107, 0.45); background: rgba(255, 170, 107, 0.08); }
+.d4-opbtn.acc-orange .material-symbols-outlined { color: var(--orange); }
+.d4-opbtn.acc-orange:hover { border-color: rgba(255, 140, 0, 0.45); background: rgba(255, 140, 0, 0.08); }
+.d4-opbtn.acc-blue .material-symbols-outlined { color: var(--blue); }
+.d4-opbtn.acc-blue:hover { border-color: rgba(126, 166, 232, 0.45); background: rgba(126, 166, 232, 0.08); }
+.d4-opbtn.acc-cyan .material-symbols-outlined { color: var(--cyan); }
+.d4-opbtn.acc-cyan:hover { border-color: rgba(56, 189, 248, 0.45); background: rgba(56, 189, 248, 0.08); }
+.d4-opbtn.acc-amber .material-symbols-outlined { color: var(--amber); }
+.d4-opbtn.acc-amber:hover { border-color: rgba(251, 191, 36, 0.45); background: rgba(251, 191, 36, 0.08); }
 .d4-opbtn .ext { font: 500 9px var(--font-mono); color: var(--ink-4); letter-spacing: 0.08em; }
 
 /* ── floating command dock ──────────────────────────────────── */
