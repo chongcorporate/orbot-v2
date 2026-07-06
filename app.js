@@ -955,7 +955,7 @@ function d4WaybillChip(order) {
   else if (w === "printed") { cls = "print"; label = "printed"; }
   else if (w === "pending") { cls = "queue"; label = "pending"; }
   else if (w === "hold" || w === "on hold" || w === "failed") { cls = "err"; label = w; }
-  return `<span class="d4-stchip ${cls}"><i></i>${escapeHtml(label)}</span>`;
+  return `<span class="d4-wbdot ${cls}" title="Waybill: ${escapeHtml(label)}"></span>`;
 }
 
 function d4SkuPill(sku, qty) {
@@ -981,7 +981,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
   }
 
   const showBrand = currentShop === "all";
-  const colCount = 9 + (showBrand ? 1 : 0);
+  const colCount = 8 + (showBrand ? 1 : 0);
 
   let html = `
     <table class="d4-otbl" id="${prefix}orders-table">
@@ -993,7 +993,6 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
           <th id="${prefix}sort-date-col" style="cursor:pointer" title="Toggle date sort">Date <span class="sort">${ordersDateSortDirection === "asc" ? "▲" : "▼"}</span></th>
           <th>Customer</th>
           <th>Items</th>
-          <th>Subtotal</th>
           <th>Waybill</th>
           <th>Status</th>
           <th style="width:26px"></th>
@@ -1099,8 +1098,7 @@ function renderOrdersTableToContainer(container, prefix, filtered) {
         <td class="dt${isHot ? " hot" : ""}">${dateStr}</td>
         <td class="buyer" title="${escapeHtml(order.customer_name || "")}">${escapeHtml(order.customer_name) || "N/A"}</td>
         <td class="items">${itemsHtml}</td>
-        <td class="sum">${escapeHtml(order.order_subtotal)} ${escapeHtml(order.order_currency)}</td>
-        <td>${d4WaybillChip(order)}</td>
+        <td class="wb">${d4WaybillChip(order)}</td>
         <td>${selectHtml}</td>
         <td><span class="chev">▼</span></td>
       </tr>
@@ -3630,25 +3628,29 @@ async function fetchAgentHeartbeats() {
     // --- orbot_service (legacy + header elements) ---
     const svcHb = hbMap["orbot_service"];
     const svcOnline = isOnline(svcHb?.last_heartbeat, 120000);
-    const prefixes = ["", "waybill-", "overview-", "header-", "ops-strip-"];
+    const prefixes = ["", "waybill-", "overview-", "ops-strip-"];
     prefixes.forEach(prefix => {
       const dotEl = document.getElementById(`${prefix}hb-orbot_service-dot`);
       const textEl = document.getElementById(`${prefix}hb-orbot_service-text`);
       if (dotEl && textEl) {
         if (svcOnline) {
-          dotEl.className = (prefix === "waybill-") ? "w-1.5 h-1.5 rounded-full bg-success" : (prefix === "header-") ? "d4-dot on" : "status-light-online";
+          dotEl.className = (prefix === "waybill-") ? "w-1.5 h-1.5 rounded-full bg-success" : "status-light-online";
           textEl.innerText = "Online";
           textEl.style.color = "#3ecf8e";
         } else {
-          dotEl.className = (prefix === "waybill-") ? "w-1.5 h-1.5 rounded-full bg-error" : (prefix === "header-") ? "d4-dot off" : "status-light-offline";
+          dotEl.className = (prefix === "waybill-") ? "w-1.5 h-1.5 rounded-full bg-error" : "status-light-offline";
           textEl.innerText = "Offline";
           textEl.style.color = "#ff6666";
         }
       }
     });
 
-    // Logo core doubles as the service indicator: red ◆ when orbot_service is down.
-    document.querySelector(".d4-logo .core")?.classList.toggle("offline", !svcOnline);
+    // Logo core is the header service indicator: blinking green ◆ online, blinking red ◆ offline.
+    const logoCore = document.querySelector(".d4-logo .core");
+    if (logoCore) {
+      logoCore.classList.toggle("offline", !svcOnline);
+      logoCore.title = `Orbot Service: ${svcOnline ? "Online" : "Offline"}`;
+    }
 
     // Logs pane agent-health rail — same heartbeat data, list form. Only the
     // 3 real heartbeat rows are shown (foreman/SP-sync live inside the service).
@@ -6977,23 +6979,79 @@ function renderLaunchTypes() {
   if (!list) return;
   const checked = new Set([...list.querySelectorAll('input[data-ptype]:checked')].map(cb => cb.dataset.ptype));
   const plaqueVal = document.getElementById('launch-plaque-count')?.value || '1';
+  const famOf = c => c.startsWith('DS') ? 'ds' : c === 'WM' ? 'wm' : c === 'FWM' ? 'fwm' : '';
   list.innerHTML = getAllLaunchTypes().map(t => `
-    <div class="flex items-center justify-between">
-      <label class="flex items-center gap-3 cursor-pointer select-none">
-        <input type="checkbox" data-ptype="${escapeHtml(t.code)}" ${checked.has(t.code) ? 'checked' : ''} style="accent-color:#3ecf8e" />
-        <span class="text-sm text-white font-medium">${escapeHtml(t.code)}</span>
-        <span class="text-xs text-[#6b7280]">${escapeHtml(t.label)}</span>
-      </label>
-      ${t.code === 'DS' ? `
-        <div id="launch-plaque-row" class="${checked.has('DS') ? 'flex' : 'hidden'} items-center gap-2">
-          <span class="text-xs text-[#9ca3af]">Plaques:</span>
-          <input id="launch-plaque-count" type="text" value="${escapeHtml(plaqueVal)}" class="w-14 text-center" style="padding:0.375rem 0.5rem !important" />
-        </div>` : ''}
-      ${t.custom ? `
-        <button data-remove-type="${escapeHtml(t.code)}" class="text-xs text-[#6b7280] hover:text-red-400 transition-colors" title="Remove custom type">
-          <span class="material-symbols-outlined" style="font-size:14px">close</span>
-        </button>` : ''}
-    </div>`).join('');
+    <label class="d4-type ${famOf(t.code)}">
+      <input type="checkbox" data-ptype="${escapeHtml(t.code)}" ${checked.has(t.code) ? 'checked' : ''} />
+      <span class="code">${escapeHtml(t.code)}</span>
+      <span class="lbl">${escapeHtml(t.label)}</span>
+      <span class="tick"><span class="material-symbols-outlined">check</span></span>
+      ${t.custom ? `<button type="button" class="x" data-remove-type="${escapeHtml(t.code)}" title="Remove custom type">✕</button>` : ''}
+    </label>`).join('') + `
+    <div id="launch-plaque-row" class="d4-plaq${checked.has('DS') ? '' : ' hidden'}">
+      <span class="l">DS PLAQUES</span>
+      <span class="hint">0 = single no-plaque variant</span>
+      <div class="d4-stepper">
+        <button type="button" data-plq="-1">−</button>
+        <input id="launch-plaque-count" class="d4-stepval" type="text" value="${escapeHtml(plaqueVal)}" />
+        <button type="button" data-plq="1">+</button>
+      </div>
+    </div>`;
+  updateLaunchSkuPreview();
+}
+
+// SKU preview badge in the Product details card header — cosmetic mirror of the
+// backend's BLO-{theme}-{set}-{type} scheme, live-updated as fields change.
+function updateLaunchSkuPreview() {
+  const el = document.getElementById('launch-sku-preview');
+  if (!el) return;
+  const brand = (document.getElementById('launch-brand-name')?.value.trim() || 'Blocked Off')
+    .replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase() || 'BLO';
+  const theme = document.getElementById('launch-theme')?.value || '';
+  const num = document.getElementById('launch-set-number')?.value.trim() || '';
+  const type = document.querySelector('#launch-types-list input[data-ptype]:checked')?.dataset.ptype || '';
+  if (!theme && !num && !type) { el.textContent = '—'; el.className = 'd4-skub mut'; return; }
+  el.textContent = [brand, theme || '···', num || '·····', type].filter(Boolean).join('-');
+  const fam = type === 'FWM' ? ' fwm' : type === 'WM' ? ' wm' : '';
+  el.className = (theme && num && type) ? `d4-skub${fam}` : 'd4-skub mut';
+}
+
+function updateLaunchCharCounts() {
+  [['launch-listing-title', 'launch-title-charc', 120],
+   ['launch-description', 'launch-desc-charc', 3000]].forEach(([inId, ccId, max]) => {
+    const inEl = document.getElementById(inId), cc = document.getElementById(ccId);
+    if (!inEl || !cc) return;
+    const len = inEl.value.length;
+    cc.textContent = `${len.toLocaleString()} / ${max.toLocaleString()}`;
+    cc.classList.toggle('ok', len > 0 && len <= max);
+    cc.classList.toggle('over', len > max);
+  });
+}
+
+function resetLaunchForm() {
+  ['launch-scrape-url', 'launch-set-name', 'launch-set-number', 'launch-price', 'launch-price-sgd',
+   'launch-listing-title', 'launch-description', 'launch-new-type-code', 'launch-new-type-label',
+   'launch-shopee-my', 'launch-shopee-sg', 'launch-shopee-ph', 'launch-shopee-th', 'launch-lazada-my']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const brand = document.getElementById('launch-brand-name'); if (brand) brand.value = 'Blocked Off';
+  const theme = document.getElementById('launch-theme'); if (theme) theme.value = '';
+  const plq = document.getElementById('launch-plaque-count'); if (plq) plq.value = '1';
+  document.querySelectorAll('#launch-types-list input[data-ptype]:checked').forEach(cb => { cb.checked = false; });
+  ['launch-plat-shopee', 'launch-plat-lazada'].forEach(id => { const cb = document.getElementById(id); if (cb) cb.checked = true; });
+  _launchImages = [];
+  _launchVariants = [];
+  _launchAiTitle = null;
+  _launchAiDescription = null;
+  _launchSourceUrl = null;
+  _launchScrapedDescription = null;
+  renderLaunchTypes();
+  renderLaunchImageGrid();
+  const vbody = document.getElementById('launch-variants-body'); if (vbody) vbody.innerHTML = '';
+  document.getElementById('launch-preview-section')?.classList.add('hidden');
+  document.getElementById('launch-status')?.classList.add('hidden');
+  clearFieldHighlights();
+  setLaunchStep(1);
+  updateLaunchCharCounts();
 }
 
 function addCustomLaunchType() {
@@ -7027,6 +7085,7 @@ function initLaunchTab() {
 
   renderLaunchImageGrid();
   renderLaunchTypes();
+  updateLaunchCharCounts();
 
   // Delegated: single-select enforcement; DS checkbox toggles plaque count row; X removes a custom type
   const typesList = document.getElementById('launch-types-list');
@@ -7038,16 +7097,61 @@ function initLaunchTab() {
       });
     }
     const ds = typesList.querySelector('input[data-ptype="DS"]');
-    const row = document.getElementById('launch-plaque-row');
-    row?.classList.toggle('hidden', !ds?.checked);
-    row?.classList.toggle('flex', !!ds?.checked);
+    document.getElementById('launch-plaque-row')?.classList.toggle('hidden', !ds?.checked);
+    updateLaunchSkuPreview();
   });
   typesList?.addEventListener('click', (e) => {
+    const plq = e.target.closest('[data-plq]');
+    if (plq) {
+      e.preventDefault();
+      const input = document.getElementById('launch-plaque-count');
+      if (input) {
+        const cur = parseInt(input.value, 10);
+        input.value = Math.max(0, (isNaN(cur) ? 1 : cur) + Number(plq.dataset.plq));
+      }
+      return;
+    }
     const btn = e.target.closest('[data-remove-type]');
     if (!btn) return;
+    e.preventDefault(); // don't let the label toggle the checkbox while removing
     const custom = getCustomLaunchTypes().filter(t => t.code !== btn.dataset.removeType);
     localStorage.setItem('orbot_custom_product_types', JSON.stringify(custom));
     renderLaunchTypes();
+  });
+
+  // SKU preview badge follows the fields that shape it
+  ['launch-brand-name', 'launch-set-number'].forEach(id =>
+    document.getElementById(id)?.addEventListener('input', updateLaunchSkuPreview));
+  document.getElementById('launch-theme')?.addEventListener('change', updateLaunchSkuPreview);
+
+  // Character counters on generated copy
+  ['launch-listing-title', 'launch-description'].forEach(id =>
+    document.getElementById(id)?.addEventListener('input', updateLaunchCharCounts));
+
+  document.getElementById('launch-reset-btn')?.addEventListener('click', resetLaunchForm);
+
+  // Variants table: link chips expand the per-variant URL editor row; URL inputs light up their chip
+  const vtbody = document.getElementById('launch-variants-body');
+  vtbody?.addEventListener('click', (e) => {
+    const chip = e.target.closest('.d4-lk');
+    if (!chip) return;
+    const xrow = vtbody.querySelector(`tr[data-vx="${chip.dataset.vi}"]`);
+    const opening = xrow?.classList.contains('hidden');
+    xrow?.classList.toggle('hidden');
+    if (opening) document.getElementById(`lv-${chip.dataset.vi}-${chip.dataset.lk}`)?.focus();
+  });
+  vtbody?.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.dataset.vname !== undefined && _launchVariants[+t.dataset.vname]) {
+      _launchVariants[+t.dataset.vname].platform_variation_name = t.value;
+    }
+    if (t.dataset.vprice !== undefined && _launchVariants[+t.dataset.vprice]) {
+      _launchVariants[+t.dataset.vprice].price_myr = parseFloat(t.value) || null;
+    }
+    if (t.dataset.lk && t.closest('.d4-lxgrid')) {
+      vtbody.querySelector(`.d4-lk[data-vi="${t.dataset.vi}"][data-lk="${t.dataset.lk}"]`)
+        ?.classList.toggle('set', !!t.value.trim());
+    }
   });
   document.getElementById('launch-add-type-btn')?.addEventListener('click', addCustomLaunchType);
   document.getElementById('launch-new-type-label')?.addEventListener('keydown', (e) => {
@@ -7078,7 +7182,8 @@ function initLaunchTab() {
   document.getElementById('launch-regen-ai-btn')?.addEventListener('click', (e) => {
     document.getElementById('launch-listing-title').value = _launchAiTitle || '';
     document.getElementById('launch-description').value = _launchAiDescription || '';
-    document.getElementById('launch-copy-source').textContent = '— AI-generated, edit as needed before downloading';
+    document.getElementById('launch-copy-source').textContent = 'AI-generated — edit as needed before downloading';
+    updateLaunchCharCounts();
   });
 
   document.getElementById('launch-scrape-btn')?.addEventListener('click', doLaunchScrape);
@@ -7101,19 +7206,16 @@ function renderLaunchImageGrid() {
   _launchImages.forEach((file, i) => {
     const url = URL.createObjectURL(file);
     const slot = document.createElement('div');
-    slot.className = 'relative aspect-square rounded-lg overflow-hidden border border-white/10 group cursor-pointer';
+    slot.className = `d4-slot filled${i === 0 ? ' cover' : ''}`;
     slot.innerHTML = `
-      <img src="${url}" class="w-full h-full object-cover" />
-      <button class="launch-img-rm absolute top-1 right-1 bg-black/70 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" data-idx="${i}">
-        <span class="material-symbols-outlined text-white" style="font-size:13px">close</span>
-      </button>
-      <span class="absolute bottom-1 left-1 text-[10px] text-white/50 font-mono bg-black/40 px-1 rounded">${i + 1}</span>
-      ${file._cleaning ? `<div class="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1">
-        <span class="material-symbols-outlined text-[#3ecf8e]" style="font-size:18px;animation:spin 1s linear infinite">sync</span>
-        <span class="text-[9px] text-white/60">removing logos</span>
-      </div>` : ''}
-      ${file._cleaned ? `<span class="absolute top-1 left-1 bg-black/60 rounded-full p-0.5" title="Logos removed">
-        <span class="material-symbols-outlined text-emerald-400" style="font-size:12px">auto_fix_high</span>
+      <img class="ph" src="${url}" alt="" />
+      <span class="tag">${i === 0 ? 'COVER' : i + 1}</span>
+      <button type="button" class="rm launch-img-rm" data-idx="${i}" title="Remove">✕</button>
+      ${file._cleaning ? `<span class="clean">
+        <span class="material-symbols-outlined" style="animation:spin 1s linear infinite">sync</span>removing logos
+      </span>` : ''}
+      ${file._cleaned ? `<span class="cleaned" title="Logos removed">
+        <span class="material-symbols-outlined">auto_fix_high</span>
       </span>` : ''}`;
     slot.querySelector('.launch-img-rm').addEventListener('click', (e) => {
       e.stopPropagation();
@@ -7124,11 +7226,13 @@ function renderLaunchImageGrid() {
   });
   for (let i = _launchImages.length; i < MAX; i++) {
     const slot = document.createElement('div');
-    slot.className = 'aspect-square rounded-lg border border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#3ecf8e]/60 transition-colors';
+    slot.className = 'd4-slot';
     slot.setAttribute('data-empty', '');
-    slot.innerHTML = `<span class="material-symbols-outlined text-[#4b5563]" style="font-size:20px">add_photo_alternate</span>`;
+    slot.innerHTML = `<span class="material-symbols-outlined">add_photo_alternate</span>`;
     grid.appendChild(slot);
   }
+  const count = document.getElementById('launch-img-count');
+  if (count) count.textContent = `${_launchImages.length} / ${MAX} · 1:1 CROP · SHOPEE + LAZADA SPEC`;
 }
 
 function addLaunchImages(files) {
@@ -7204,7 +7308,7 @@ async function doLaunchScrape() {
     setLaunchStatus('error', `Fetch failed: ${e.message}`);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<span class="material-symbols-outlined text-base">travel_explore</span> Fetch from Link';
+    btn.innerHTML = '<span class="material-symbols-outlined text-base">travel_explore</span> Auto-fill';
   }
 }
 
@@ -7315,7 +7419,7 @@ function getLaunchFormData() {
 function setLaunchStatus(type, msg) {
   const el = document.getElementById('launch-status');
   if (!el) return;
-  el.className = `glass-panel px-5 py-3 text-sm ${type === 'error' ? 'text-red-400 border border-red-500/20' : 'text-[#3ecf8e]'}`;
+  el.className = `d4-lstatus${type === 'error' ? ' err' : ''}`;
   el.textContent = msg;
   el.classList.remove('hidden');
 }
@@ -7404,24 +7508,52 @@ async function doLaunchPreview() {
 
     _launchVariants = data.variants;
 
+    // One row per SKU: editable name/price/stock plus link chips that expand a
+    // per-variant URL editor row (lv-{i}-* ids feed doLaunchDownload unchanged).
+    const linkChip = (i, key, label) => `
+      <button type="button" class="d4-lk" data-vi="${i}" data-lk="${key}">
+        <span class="ic-add material-symbols-outlined">add</span>
+        <span class="ic-ok material-symbols-outlined">check</span>${label}
+      </button>`;
+    const urlField = (i, key, label, ph) => `
+      <div class="d4-f"><label class="d4-lb">${label}</label>
+        <input id="lv-${i}-${key}" class="d4-fin mono" type="text" placeholder="${ph}" data-vi="${i}" data-lk="${key}" />
+      </div>`;
     const tbody = document.getElementById('launch-variants-body');
-    tbody.innerHTML = data.variants.map(v => `
+    tbody.innerHTML = data.variants.map((v, i) => {
+      const fam = v.sku.includes('-FWM') ? ' fwm' : v.sku.includes('-WM') ? ' wm' : '';
+      return `
       <tr>
-        <td class="py-2 pr-6 text-[#3ecf8e]">${v.sku}</td>
-        <td class="py-2 pr-6 text-[#9ca3af]">${v.platform_variation_name}</td>
-        <td class="py-2 text-right text-white">${v.price_myr ? 'MYR ' + Number(v.price_myr).toFixed(2) : '—'}</td>
-      </tr>`).join('');
+        <td><span class="d4-skub${fam}">${escapeHtml(v.sku)}</span></td>
+        <td><input id="lv-${i}-name" class="d4-vin" type="text" value="${escapeHtml(v.platform_variation_name || '')}" data-vname="${i}" /></td>
+        <td class="r"><input id="lv-${i}-price" class="d4-vin num" type="text" value="${v.price_myr ? Number(v.price_myr).toFixed(2) : ''}" data-vprice="${i}" /></td>
+        <td class="c"><input id="lv-${i}-stock" class="d4-vin stk" type="number" value="0" min="0" /></td>
+        <td><div class="d4-links">
+          ${linkChip(i, 'seal', 'Sticker')}
+          ${linkChip(i, 'files', 'Print files')}
+          ${linkChip(i, 'pics', 'Pictures')}
+          ${linkChip(i, 'adobe', 'Adobe')}
+        </div></td>
+      </tr>
+      <tr class="d4-lxrow hidden" data-vx="${i}">
+        <td colspan="5"><div class="d4-lxgrid">
+          ${urlField(i, 'seal', 'Seal sticker GDrive', 'https://drive.google.com/…')}
+          ${urlField(i, 'files', 'Print files GDrive', 'https://drive.google.com/…')}
+          ${urlField(i, 'pics', 'Pictures GDrive', 'https://drive.google.com/…')}
+          ${urlField(i, 'adobe', 'Adobe Express URL', 'https://express.adobe.com/…')}
+        </div></td>
+      </tr>`;
+    }).join('');
 
-    const detailsTbody = document.getElementById('launch-variant-details-body');
-    detailsTbody.innerHTML = data.variants.map((v, i) => `
-      <tr>
-        <td class="py-2 pr-4 text-[#3ecf8e] font-mono text-xs">${v.sku}</td>
-        <td class="py-2 pr-3"><input id="lv-${i}-stock" type="number" value="0" min="0" class="w-16 text-center" style="padding:0.25rem 0.375rem !important" /></td>
-        <td class="py-2 pr-3"><input id="lv-${i}-seal" type="text" placeholder="https://drive.google.com/…" class="w-full" style="padding:0.25rem 0.5rem !important; font-size:0.7rem" /></td>
-        <td class="py-2 pr-3"><input id="lv-${i}-files" type="text" placeholder="https://drive.google.com/…" class="w-full" style="padding:0.25rem 0.5rem !important; font-size:0.7rem" /></td>
-        <td class="py-2 pr-3"><input id="lv-${i}-pics" type="text" placeholder="https://drive.google.com/…" class="w-full" style="padding:0.25rem 0.5rem !important; font-size:0.7rem" /></td>
-        <td class="py-2"><input id="lv-${i}-adobe" type="text" placeholder="https://express.adobe.com/…" class="w-full" style="padding:0.25rem 0.5rem !important; font-size:0.7rem" /></td>
-      </tr>`).join('');
+    const note = document.getElementById('launch-variants-note');
+    if (note) note.textContent = `${data.variants.length} generated — names, price, stock & files in one place`;
+    const foot = document.getElementById('launch-foot-status');
+    if (foot) foot.innerHTML = `<b>Ready to package</b> — ${data.variants.length} variant${data.variants.length === 1 ? '' : 's'}` +
+      ` · ${_launchImages.length} image${_launchImages.length === 1 ? '' : 's'}` +
+      ` · ${platforms.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' + ')}`;
+    const ft = document.getElementById('launch-foot-time');
+    if (ft) ft.textContent = `generated ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+    updateLaunchCharCounts();
 
     document.getElementById('launch-preview-section')?.classList.remove('hidden');
     document.getElementById('launch-preview-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -7430,7 +7562,7 @@ async function doLaunchPreview() {
     setLaunchStatus('error', `Preview failed: ${e.message}`);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<span class="material-symbols-outlined text-base">auto_awesome</span> Generate';
+    btn.innerHTML = '<span class="material-symbols-outlined text-base">auto_awesome</span> Generate Listing';
   }
 }
 
