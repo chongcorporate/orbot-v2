@@ -1500,6 +1500,22 @@ function buildOrderDetailPanel(order) {
   const statusLower = (order.overall_order_status || "").toLowerCase();
   const statusSelectClass = statusLower === "on hold" ? "hold" : (statusLower || "pending");
 
+  // Hold banner — why ingestion held this order, plus the review tools
+  // (source email side-by-side check, re-parse from the stored raw email).
+  const isHold = statusLower === "hold" || statusLower === "on hold";
+  const emailBtn = order.source_email_id
+    ? `<button class="omd-tag-btn btn-view-source-email" data-order-id="${order.id}"><span class="material-symbols-outlined">mail</span>Source Email</button>`
+    : "";
+  const reparseBtn = order.source_email_id
+    ? `<button class="omd-tag-btn btn-reparse-email" data-order-id="${order.id}" data-platform-order-id="${escapeHtml(order.platform_order_id)}"><span class="material-symbols-outlined">restart_alt</span>Re-parse</button>`
+    : "";
+  const holdBannerHtml = isHold ? `
+    <div class="d4-hold-banner">
+      <div class="d4-hold-banner-head"><span class="material-symbols-outlined">report</span>ORDER ON HOLD — DO NOT PACK</div>
+      <div class="d4-hold-banner-reason">${escapeHtml(order.hold_reason || "Held for manual review — check items against the source email/platform order.")}</div>
+      ${(emailBtn || reparseBtn) ? `<div style="display:flex; gap:6px; margin-top:8px;">${emailBtn}${reparseBtn}</div>` : ""}
+    </div>` : "";
+
   return `
     <div class="omd-dp-head">
       <div>
@@ -1511,6 +1527,9 @@ function buildOrderDetailPanel(order) {
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+        ${order.source_email_id ? `<button class="d4-iconbtn btn-view-source-email" data-order-id="${order.id}" title="View Source Email">
+          <span class="material-symbols-outlined">mail</span>
+        </button>` : ""}
         <button class="d4-iconbtn copy-order-id-btn" data-copy="${escapeHtml(order.platform_order_id)}" title="Copy Order ID">
           <span class="material-symbols-outlined">content_copy</span>
         </button>
@@ -1519,6 +1538,8 @@ function buildOrderDetailPanel(order) {
         </button>
       </div>
     </div>
+
+    ${holdBannerHtml}
 
     <div>
       <div class="omd-section-title"><span class="material-symbols-outlined">inventory_2</span>Items (${itemsList.length})</div>
@@ -1585,6 +1606,13 @@ function bindOrderDetailPanelEvents() {
       const jobId = btn.getAttribute("data-job-id");
       redispatchPrintFile(spFileId, fileName, jobId, btn);
     });
+  });
+
+  panel.querySelectorAll(".btn-view-source-email").forEach(btn => {
+    btn.addEventListener("click", () => openSourceEmailModal(btn.getAttribute("data-order-id")));
+  });
+  panel.querySelectorAll(".btn-reparse-email").forEach(btn => {
+    btn.addEventListener("click", () => reparseOrderEmail(btn.getAttribute("data-platform-order-id"), btn));
   });
 
   // One-click advance: sets the select to the next pipeline status and fires
@@ -6060,6 +6088,78 @@ async function fetchAndRenderPrintJobs() {
 // the first resolves as cancelled and its listeners are detached — otherwise one
 // button click would resolve both pending confirmations at once.
 let activeConfirmCancel = null;
+// ---- Source email review (lossless ingestion) ----
+// Every order ingested after schema v12 links to its stored raw email in
+// ingested_emails. The modal shows the email verbatim for a side-by-side check
+// against the extracted items; Re-parse re-runs Scout from the stored copy.
+
+async function openSourceEmailModal(orderId) {
+  const modal = document.getElementById("source-email-modal");
+  if (!modal || !supabaseClient) return;
+  if (!modal.dataset.bound) {
+    modal.dataset.bound = "1";
+    document.getElementById("source-email-close-btn")?.addEventListener("click", () => modal.classList.remove("active"));
+    modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.remove("active"); });
+  }
+  const metaEl = document.getElementById("source-email-meta");
+  const bodyEl = document.getElementById("source-email-body");
+  metaEl.innerHTML = `<span class="d4-mono10">Loading stored email…</span>`;
+  bodyEl.textContent = "";
+  modal.classList.add("active");
+  try {
+    const { data, error } = await supabaseClient
+      .from("ingested_emails")
+      .select("subject, sender, received_at, parse_status, raw_body")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    if (!data || !data.length) {
+      metaEl.innerHTML = `<span class="d4-mono10">No stored email found for this order (ingested before v12).</span>`;
+      return;
+    }
+    const em = data[0];
+    const received = em.received_at ? new Date(em.received_at).toLocaleString() : "—";
+    metaEl.innerHTML = `
+      <div class="d4-email-meta-row"><span class="k">Subject</span><span class="v">${escapeHtml(em.subject || "—")}</span></div>
+      <div class="d4-email-meta-row"><span class="k">From</span><span class="v">${escapeHtml(em.sender || "—")}</span></div>
+      <div class="d4-email-meta-row"><span class="k">Received</span><span class="v">${escapeHtml(received)}</span></div>
+      <div class="d4-email-meta-row"><span class="k">Parse</span><span class="v">${escapeHtml(em.parse_status || "—")}</span></div>`;
+    bodyEl.textContent = em.raw_body || "(empty body)";
+  } catch (e) {
+    metaEl.innerHTML = `<span class="d4-mono10" style="color:var(--red);">Failed to load stored email: ${escapeHtml(e.message || String(e))}</span>`;
+  }
+}
+
+async function reparseOrderEmail(platformOrderId, btn) {
+  const confirmed = await showConfirmModal(
+    "Re-parse Source Email",
+    `Re-run Scout extraction + verification from the stored email for order #${platformOrderId}? An existing order row is left unchanged (delete it first to fully re-ingest).`,
+    "Re-parse"
+  );
+  if (!confirmed) return;
+  if (btn) btn.disabled = true;
+  try {
+    const res = await backendFetch("/scout/reparse-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform_order_id: platformOrderId }),
+    });
+    const raw = await res.text();
+    let payload = {};
+    try { payload = JSON.parse(raw); } catch (_) { payload = { detail: raw.slice(0, 200) }; }
+    if (!res.ok) throw new Error(payload.detail || `HTTP ${res.status}`);
+    showToast(`Re-parse: ${payload.status} (${payload.items_extracted} item(s) extracted).`,
+              String(payload.status).startsWith("held") ? "warning" : "success");
+    logAction("Re-parsed source email", "info", { platform_order_id: platformOrderId, result: payload });
+    if (typeof fetchAndRenderOrders === "function") fetchAndRenderOrders();
+  } catch (e) {
+    showToast(`Re-parse failed: ${e.message || e}`, "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 function showConfirmModal(title, message, confirmBtnText = "Delete") {
   return new Promise((resolve) => {
     const modal = document.getElementById("confirm-modal");

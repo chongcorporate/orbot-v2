@@ -3320,3 +3320,26 @@ input.d4-vin.stk::-webkit-outer-spin-button, input.d4-vin.stk::-webkit-inner-spi
 /* launch status card (setLaunchStatus hooks) */
 .d4-lstatus { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 16px; font-size: 13px; color: var(--green); }
 .d4-lstatus.err { color: var(--red); border-color: rgba(255, 102, 102, 0.3); }
+/* page-head action groups (Orders pipeline clusters) */
+.d4-actgrp { display: inline-flex; align-items: center; gap: 2px; padding: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.d4-actgrp .glabel { font: 600 9px var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-4); padding: 0 9px 0 11px; user-select: none; }
+.d4-actgrp .gchev { font-size: 13px; width: 13px; color: var(--ink-4); margin: 0 -2px; flex: none; }
+.d4-actgrp .d4-btn.flat { background: none; border-color: transparent; border-radius: 8px; padding: 7px 12px; }
+.d4-actgrp .d4-btn.flat:hover { background: var(--card-2); border-color: transparent; color: var(--ink); }
+.d4-actgrp .d4-btn.icononly { padding: 7px 8px; }
+.d4-actgrp .d4-btn.pri { border-radius: 8px; margin-left: 2px; }
+.d4-btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
+
+/* ---- source email modal + ingestion hold banner (schema v12) ---- */
+.d4-hold-banner { background: rgba(255, 102, 102, 0.08); border: 1px solid rgba(255, 102, 102, 0.35); border-radius: var(--r); padding: 12px 14px; }
+.d4-hold-banner-head { display: flex; align-items: center; gap: 7px; font: 700 11px var(--font-mono); letter-spacing: 0.1em; color: var(--red); }
+.d4-hold-banner-head .material-symbols-outlined { font-size: 16px; }
+.d4-hold-banner-reason { margin-top: 7px; font: 500 11.5px var(--font-mono); line-height: 1.55; color: var(--ink-2); white-space: pre-wrap; }
+.d4-email-modal { width: 100%; max-width: 720px; max-height: 85vh; display: flex; flex-direction: column; gap: 12px; background: var(--card); border: 1px solid var(--line-2); border-radius: 16px; padding: 18px 20px; }
+.d4-email-modal-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.d4-email-modal-title { display: flex; align-items: center; gap: 8px; font: 700 13px var(--font-title); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink); }
+.d4-email-modal-title .material-symbols-outlined { font-size: 17px; color: var(--cyan); }
+.d4-email-meta-row { display: flex; gap: 10px; padding: 2px 0; }
+.d4-email-meta-row .k { flex: none; width: 70px; font: 600 10px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-4); padding-top: 1px; }
+.d4-email-meta-row .v { font: 500 11.5px var(--font-mono); color: var(--ink-2); word-break: break-word; }
+.d4-email-pre { flex: 1; overflow: auto; background: var(--inset); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font: 400 11px var(--font-mono); line-height: 1.6; color: var(--ink-2); white-space: pre-wrap; word-break: break-word; margin: 0; }

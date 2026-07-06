@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.16.7">
+  <link rel="stylesheet" href="index.css?v=1.16.8">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -618,17 +618,25 @@
             <div class="sub">Order fulfillment &amp; waybill pipeline, unified</div>
           </div>
           <div class="acts">
-            <button class="d4-btn" id="waybill-ctrl-trigger-scout"><span class="material-symbols-outlined">mail</span> Scan Gmail</button>
-            <button class="d4-btn" id="waybill-ctrl-trigger-compile"><span class="material-symbols-outlined">picture_as_pdf</span> Compile Batch</button>
-            <button class="d4-btn" id="orders-upload-waybills-btn"><span class="material-symbols-outlined">cloud_upload</span> Upload Waybills</button>
-            <button class="d4-btn pri" id="waybill-ctrl-trigger-foreman"><span class="material-symbols-outlined">print</span> Dispatch</button>
+            <div class="d4-actgrp" role="group" aria-label="Waybill pipeline">
+              <span class="glabel">Pipeline</span>
+              <button class="d4-btn flat" id="waybill-ctrl-trigger-scout"><span class="material-symbols-outlined">mail</span> Scan Gmail</button>
+              <span class="gchev material-symbols-outlined">chevron_right</span>
+              <button class="d4-btn flat" id="waybill-ctrl-trigger-compile"><span class="material-symbols-outlined">picture_as_pdf</span> Compile Batch</button>
+              <span class="gchev material-symbols-outlined">chevron_right</span>
+              <button class="d4-btn flat" id="orders-upload-waybills-btn"><span class="material-symbols-outlined">cloud_upload</span> Upload Waybills</button>
+              <span class="gchev material-symbols-outlined">chevron_right</span>
+              <button class="d4-btn pri" id="waybill-ctrl-trigger-foreman"><span class="material-symbols-outlined">print</span> Dispatch</button>
+            </div>
             <!-- Batch ready notification (hidden until compile completes) -->
             <div class="hidden d4-batchbox" id="batch-output-box">
               <a href="#" target="_blank" class="d4-btn" id="batch-download-link"><span class="material-symbols-outlined">download</span> Master PDF</a>
             </div>
-            <span class="d4-vsep"></span>
-            <button class="d4-btn" id="orders-btn-complete-all"><span class="material-symbols-outlined">done_all</span> Complete All</button>
-            <button class="d4-btn" id="refresh-orders-btn" title="Refresh"><span class="material-symbols-outlined">refresh</span></button>
+            <div class="d4-actgrp" role="group" aria-label="Order actions">
+              <span class="glabel">Orders</span>
+              <button class="d4-btn flat" id="orders-btn-complete-all"><span class="material-symbols-outlined">done_all</span> Complete All</button>
+              <button class="d4-btn flat icononly" id="refresh-orders-btn" title="Refresh"><span class="material-symbols-outlined">refresh</span></button>
+            </div>
           </div>
         </div>
 
@@ -1573,6 +1581,18 @@
     </div>
   </div>
 
+  <!-- Source Email Modal (lossless ingestion audit copy) -->
+  <div class="modal-overlay" id="source-email-modal">
+    <div class="modal d4-email-modal">
+      <div class="d4-email-modal-head">
+        <div class="d4-email-modal-title"><span class="material-symbols-outlined">mail</span>Source Email</div>
+        <button class="d4-iconbtn" id="source-email-close-btn" title="Close"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <div id="source-email-meta"></div>
+      <pre id="source-email-body" class="d4-email-pre"></pre>
+    </div>
+  </div>
+
   <!-- Catalog Detail Modal -->
   <div class="modal-overlay" id="catalog-detail-modal">
     <div class="modal glass-panel w-full max-w-2xl rounded-2xl p-6 flex flex-col gap-4 relative max-h-[85vh] overflow-y-auto">
@@ -1878,6 +1898,6 @@
     </button>
   </div>
 
-  <script src="app.js?v=1.16.7"></script>
+  <script src="app.js?v=1.17.0"></script>
 </body>
 </html>
