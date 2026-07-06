@@ -79,6 +79,141 @@ function sanitizeUrl(url) {
   return raw;
 }
 
+// ---------------- Icon system (Signal Deck: inline SVG, not Material Symbols) ----------------
+// Existing code (here and in index.html) still writes
+// `<span class="material-symbols-outlined ...">icon_name</span>` exactly as before — that
+// markup is untouched. This layer swaps each such span for an inline SVG matching the new
+// hand-drawn icon style, driven by name lookup, then a MutationObserver keeps doing that for
+// every future dynamically-rendered span (order rows, printer cards, etc.) with no per-call-site
+// changes required anywhere else in the codebase.
+const ICON_PATHS = {
+  add: '<path d="M12 5v14M5 12h14"/>',
+  add_box: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/>',
+  add_circle: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+  add_photo_alternate: '<rect x="3" y="5" width="14" height="14" rx="2"/><circle cx="8" cy="10" r="1.5"/><path d="M5 17l4-4 3 3 3-3 3 3"/><path d="M18 3v6M15 6h6"/>',
+  analytics: '<path d="M4 20V10M10 20V6M16 20v-8"/><path d="M2 20h20"/>',
+  arrow_downward: '<path d="M12 4v16M6 14l6 6 6-6"/>',
+  arrow_drop_down: '<path d="M7 10l5 5 5-5"/>',
+  arrow_forward: '<path d="M4 12h16M14 6l6 6-6 6"/>',
+  auto_awesome: '<path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
+  auto_fix_high: '<path d="M4 20l9-9M14 8l2 2"/><path d="M17 3l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/><path d="M5 3l.6 1.4L7 5l-1.4.6L5 7l-.6-1.4L3 5l1.4-.6z"/>',
+  autorenew: '<path d="M4 12a8 8 0 0114-5.3M20 5v5h-5"/><path d="M20 12a8 8 0 01-14 5.3M4 19v-5h5"/>',
+  bar_chart: '<path d="M5 20V11M12 20V4M19 20v-7"/><path d="M3 20h18"/>',
+  block: '<circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/>',
+  bolt: '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>',
+  calendar_month: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  check: '<path d="M4 12l5 5L20 6"/>',
+  check_circle: '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>',
+  clear_all: '<path d="M3 6h12M3 12h18M3 18h12"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  cloud_upload: '<path d="M7 18a4 4 0 01-1-7.9A5 5 0 0116 8a4.5 4.5 0 011 8.9"/><path d="M12 11v7M9 14l3-3 3 3"/>',
+  code: '<path d="M8 6L2 12l6 6M16 6l6 6-6 6"/>',
+  content_copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/>',
+  dashboard: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>',
+  database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  delete: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  delete_sweep: '<path d="M4 6h9M8 6V4h4v2M6 6l.6 9.6M14 6l-.3 4.5M18 10l-1 9H8"/>',
+  description: '<path d="M6 3h9l5 5v13H6z"/><path d="M15 3v5h5"/><path d="M9 13h6M9 17h6"/>',
+  dns: '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1"/><circle cx="7" cy="17" r="1"/>',
+  done: '<path d="M4 12l5 5L20 6"/>',
+  done_all: '<path d="M2 12l4 4L14 8"/><path d="M9 12l4 4L22 8"/>',
+  donut_small: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v5M21 12h-5"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/>',
+  dynamic_feed: '<rect x="4" y="9" width="16" height="4" rx="1"/><rect x="4" y="15" width="16" height="4" rx="1"/><path d="M7 5h10"/>',
+  edit: '<path d="M4 20h4L18.5 9.5a2.1 2.1 0 000-3L18 6a2.1 2.1 0 00-3 0L4.5 16.5z"/>',
+  emergency: '<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>',
+  emergency_home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M12 12v4M12 18h.01"/>',
+  error: '<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>',
+  error_outline: '<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>',
+  expand_more: '<path d="M6 9l6 6 6-6"/>',
+  filter_alt: '<path d="M4 5h16l-6 8v6l-4 2v-8z"/>',
+  folder_open: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v1H6z"/><path d="M3 8l1.5 10a2 2 0 002 2h11a2 2 0 002-2L21 8"/>',
+  history: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2"/><path d="M3 8V4M3 8h4"/>',
+  hub: '<circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v6M12 13l-6 4M12 13l6 4"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  inventory: '<rect x="3" y="7" width="18" height="14" rx="1.5"/><path d="M3 7l2-4h14l2 4"/><path d="M9 11h6"/>',
+  inventory_2: '<rect x="3" y="8" width="18" height="12" rx="1.5"/><path d="M3 8l2-5h14l2 5"/><path d="M10 12h4"/>',
+  label: '<path d="M3 10l7-7h8a2 2 0 012 2v8l-7 7a2 2 0 01-3 0l-7-7a2 2 0 010-3z"/><circle cx="15" cy="9" r="1.2"/>',
+  label_off: '<path d="M3 10l7-7h8a2 2 0 012 2v8l-7 7a2 2 0 01-3 0l-7-7a2 2 0 010-3z"/><circle cx="15" cy="9" r="1.2"/><path d="M4 4l16 16"/>',
+  layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+  link: '<path d="M9 15l6-6"/><path d="M13 6l1.5-1.5a4 4 0 015.7 5.7L18.5 12"/><path d="M11 18l-1.5 1.5a4 4 0 01-5.7-5.7L5.5 12"/>',
+  link_off: '<path d="M9 15l2-2"/><path d="M13 6l1.5-1.5a4 4 0 015.7 5.7L18.5 12"/><path d="M11 18l-1.5 1.5a4 4 0 01-5.7-5.7L5.5 12"/><path d="M4 4l16 16"/>',
+  list_alt: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M7 9h10M7 13h10M7 17h6"/>',
+  local_shipping: '<path d="M3 7h11v9H3z"/><path d="M14 11h4l3 3v2h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 6l9 7 9-7"/>',
+  monitor_heart: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M5 12h3l2 4 3-8 2 4h4"/>',
+  nest_heat_link_gen_3: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+  note_add: '<path d="M6 3h9l5 5v13H6z"/><path d="M15 3v5h5"/><path d="M12 11v6M9 14h6"/>',
+  open_in_new: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h5"/>',
+  photo_library: '<rect x="3" y="6" width="14" height="13" rx="2"/><circle cx="8" cy="11" r="1.3"/><path d="M5 17l3-3.5 2.5 2.5L15 12l3 5"/>',
+  picture_as_pdf: '<path d="M6 3h9l5 5v13H6z"/><path d="M15 3v5h5"/><path d="M9 13v4M9 13h1.5a1.5 1.5 0 010 3H9M13 17v-4h2M13 15h1.5"/>',
+  print: '<path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><path d="M6 17v4h12v-4"/>',
+  progress_activity: '<path d="M12 3a9 9 0 106.4 2.6"/>',
+  receipt_long: '<path d="M6 2h12v20l-2-1.5L14 22l-2-1.5L10 22l-2-1.5L6 22z"/><path d="M9 7h6M9 11h6M9 15h4"/>',
+  refresh: '<path d="M4 12a8 8 0 0114-5.3M20 5v5h-5"/><path d="M20 12a8 8 0 01-14 5.3M4 19v-5h5"/>',
+  restart_alt: '<path d="M4 12a8 8 0 118 8"/><path d="M4 21v-5h5"/>',
+  robot: '<rect x="5" y="8" width="14" height="10" rx="2"/><circle cx="9" cy="13" r="1.3"/><circle cx="15" cy="13" r="1.3"/><path d="M12 4v4M9 21h6"/>',
+  rocket_launch: '<path d="M12 2c3 2 5 6 5 10 0 2-1 4-2 5l-3 2-3-2c-1-1-2-3-2-5 0-4 2-8 5-10z"/><path d="M9 15l-3 3 1 3 3-1M15 15l3 3-1 3-3-1"/>',
+  rotate_left: '<path d="M9 3L5 7l4 4"/><path d="M5 7h8a7 7 0 11-6.3 10"/>',
+  save: '<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/>',
+  schedule: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a7.9 7.9 0 000-6l2-1.7-2-3.4-2.3 1a8 8 0 00-3.1-1.8L13.5 1h-3l-.5 2.1A8 8 0 006.9 4.9l-2.3-1-2 3.4L4.6 9a7.9 7.9 0 000 6l-2 1.7 2 3.4 2.3-1a8 8 0 003.1 1.8l.5 2.1h3l.5-2.1a8 8 0 003.1-1.8l2.3 1 2-3.4z"/>',
+  settings_applications: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a7.9 7.9 0 000-6l2-1.7-2-3.4-2.3 1a8 8 0 00-3.1-1.8L13.5 1h-3l-.5 2.1A8 8 0 006.9 4.9l-2.3-1-2 3.4L4.6 9a7.9 7.9 0 000 6l-2 1.7 2 3.4 2.3-1a8 8 0 003.1 1.8l.5 2.1h3l.5-2.1a8 8 0 003.1-1.8l2.3 1 2-3.4z"/>',
+  shopping_cart: '<circle cx="9" cy="20" r="1.3"/><circle cx="18" cy="20" r="1.3"/><path d="M2 3h3l2.5 12h11L21 8H6"/>',
+  show_chart: '<path d="M3 17l5-6 4 3 6-8 3 3"/>',
+  skip_next: '<path d="M5 5v14l10-7z"/><path d="M18 5v14"/>',
+  storefront: '<path d="M3 9l1-5h16l1 5"/><path d="M4 9a2 2 0 004 0 2 2 0 004 0 2 2 0 004 0 2 2 0 004 0"/><path d="M5 9v10h14V9"/>',
+  sync: '<path d="M4 12a8 8 0 0114-5.3M20 5v5h-5"/><path d="M20 12a8 8 0 01-14 5.3M4 19v-5h5"/>',
+  thermometer: '<path d="M12 3a2 2 0 00-2 2v9a4 4 0 104 0V5a2 2 0 00-2-2z"/><circle cx="12" cy="18" r="2"/>',
+  touch_app: '<path d="M9 12V5a1.5 1.5 0 013 0v6"/><path d="M12 11V4a1.5 1.5 0 013 0v7"/><path d="M15 11V6a1.5 1.5 0 013 0v9c0 4-2 7-6 7s-6-2-7-5l-2-5a1.4 1.4 0 012.5-1.2L7 13"/>',
+  train: '<rect x="5" y="4" width="14" height="12" rx="4"/><path d="M5 12h14M9 16l-2 4M15 16l2 4"/><circle cx="9" cy="8" r="1"/><circle cx="15" cy="8" r="1"/>',
+  travel_explore: '<circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 010 14M10 3a7 7 0 000 14M3 10h14"/><path d="M20 20l-4.3-4.3"/>',
+  update: '<path d="M4 12a8 8 0 0114-5.3M20 5v5h-5"/><path d="M20 12a8 8 0 01-14 5.3M4 19v-5h5"/>',
+  upload_file: '<path d="M6 3h9l5 5v13H6z"/><path d="M15 3v5h5"/><path d="M12 17v-6M9 14l3-3 3 3"/>',
+  view_timeline: '<rect x="3" y="5" width="18" height="4" rx="1"/><rect x="3" y="11" width="12" height="4" rx="1"/><rect x="3" y="17" width="16" height="4" rx="1"/>',
+  warning: '<path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17h.01"/>',
+  wifi_off: '<path d="M3 3l18 18"/><path d="M9.5 9.5a7 7 0 018.5 1M5 8a11 11 0 013-1.8M2 5a15 15 0 013.5-2.3"/><path d="M12 18h.01"/>',
+};
+
+function materializeIcons(root) {
+  (root || document).querySelectorAll(".material-symbols-outlined").forEach(el => {
+    const name = el.textContent.trim();
+    const inner = ICON_PATHS[name];
+    if (!inner) return;
+    const fontSize = parseFloat(getComputedStyle(el).fontSize) || 20;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.8");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.style.width = svg.style.height = fontSize + "px";
+    svg.style.flexShrink = "0";
+    svg.style.display = "inline-block";
+    svg.style.verticalAlign = "middle";
+    svg.innerHTML = inner;
+    svg.className.baseVal = el.className;
+    svg.setAttribute("data-icon", name);
+    el.replaceWith(svg);
+  });
+}
+
+function setupIconObserver() {
+  materializeIcons(document);
+  const observer = new MutationObserver(mutations => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        if (node.classList && node.classList.contains("material-symbols-outlined")) materializeIcons(node.parentNode);
+        else if (node.querySelector && node.querySelector(".material-symbols-outlined")) materializeIcons(node);
+      }
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
 // ---------------- Backend API (Railway) shared-secret auth ----------------
 // Every backend route except GET /, GET /status, GET /config now requires an
 // X-Orbot-Key header matching a server-side shared secret (set once here by
@@ -125,11 +260,11 @@ function showToast(message, type = "info") {
     success: { bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.4)", text: "#10b981", icon: "check_circle" },
     error:   { bg: "rgba(239,68,68,0.12)",  border: "rgba(239,68,68,0.4)",  text: "#ef4444", icon: "error" },
     warning: { bg: "rgba(234,179,8,0.12)",  border: "rgba(234,179,8,0.4)",  text: "#eab308", icon: "warning" },
-    info:    { bg: "rgba(139,124,246,0.12)", border: "rgba(139,124,246,0.4)", text: "#8b7cf6", icon: "info" },
+    info:    { bg: "rgba(62, 207, 142,0.12)", border: "rgba(62, 207, 142,0.4)", text: "#3ecf8e", icon: "info" },
   };
   const c = palette[type] || palette.info;
   const toast = document.createElement("div");
-  toast.style.cssText = `background:${c.bg};border:1px solid ${c.border};color:${c.text};padding:0.65rem 0.875rem;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:0.78rem;backdrop-filter:blur(12px);pointer-events:auto;opacity:0;transform:translateX(12px);transition:all 0.22s ease;display:flex;align-items:flex-start;gap:0.5rem;word-break:break-word;`;
+  toast.style.cssText = `background:${c.bg};border:1px solid ${c.border};color:${c.text};padding:0.65rem 0.875rem;border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:0.78rem;backdrop-filter:blur(12px);pointer-events:auto;opacity:0;transform:translateX(12px);transition:all 0.22s ease;display:flex;align-items:flex-start;gap:0.5rem;word-break:break-word;`;
   toast.innerHTML = `<span class="material-symbols-outlined" style="font-size:15px;flex-shrink:0;margin-top:1px;">${c.icon}</span><span>${escapeHtml(message)}</span>`;
   container.appendChild(toast);
   requestAnimationFrame(() => { toast.style.opacity = "1"; toast.style.transform = "translateX(0)"; });
@@ -1977,9 +2112,9 @@ async function fetchAndRenderLogs() {
     if (filtered.length === 0) {
       box.innerHTML = emptyDiv("No matching activity.", "update");
     } else {
-      const railColor = { info: "#5fb4ff", warning: "#f5b942", error: "#f2657a", success: "#3ddc97" };
+      const railColor = { info: "#7ea6e8", warning: "#fbbf24", error: "#ff6666", success: "#3ecf8e" };
       box.innerHTML = filtered.map((ev, i) => {
-        const color = railColor[ev.level] || "#5fb4ff";
+        const color = railColor[ev.level] || "#7ea6e8";
         const hasDetails = !!ev.details;
         return `
           <div class="act-row${hasDetails ? " act-expandable" : ""}" data-act-idx="${i}">
@@ -2694,7 +2829,7 @@ function setupTabs() {
       currentTab = tabId;
       
       const pane = document.getElementById(`pane-${tabId}`);
-      pane.classList.add("active");
+      if (pane) pane.classList.add("active");
 
       // Synchronize global search input with tab search query
       if (globalSearch) {
@@ -2996,21 +3131,15 @@ function setupCommandPalette() {
   });
 }
 
-// Settings Modal Handling
+// Settings Page Handling (full nav tab — see pane-settings — not a modal)
 function setupSettings() {
-  const modal = document.getElementById("settings-modal");
   const openBtn = document.getElementById("settings-open-btn");
-  const closeBtn = document.getElementById("settings-close-btn");
-  const cancelBtn = document.getElementById("settings-cancel-btn");
   const saveBtn = document.getElementById("settings-save-btn");
+  const prefsSaveBtn = document.getElementById("settings-prefs-save-btn");
 
-  openBtn.addEventListener("click", () => modal.classList.add("active"));
-  
-  const closeModal = () => modal.classList.remove("active");
-  closeBtn.addEventListener("click", closeModal);
-  cancelBtn.addEventListener("click", closeModal);
+  openBtn?.addEventListener("click", () => navigateToTab("settings"));
 
-  saveBtn.addEventListener("click", async () => {
+  saveBtn?.addEventListener("click", async () => {
     const url = document.getElementById("setting-supabase-url").value.trim();
     const key = document.getElementById("setting-supabase-key").value.trim();
     let backendUrl = document.getElementById("setting-backend-url").value.trim();
@@ -3020,7 +3149,6 @@ function setupSettings() {
     }
     const apiKeyField = document.getElementById("setting-orbot-api-key");
     const apiKey = apiKeyField ? apiKeyField.value.trim() : "";
-    const spDispatchChecked = document.getElementById("setting-sp-dispatch").checked;
 
     // These are local-dev overrides only (blank = defer to the backend's /config
     // defaults, which is what every browser uses out of the box). The Supabase key
@@ -3033,27 +3161,9 @@ function setupSettings() {
       else localStorage.removeItem("orbot_api_key");
     }
 
-    // The dispatch toggle is a shared feature flag, not a per-browser credential —
-    // persist it on the backend so flipping it here applies on every device.
-    try {
-      const res = await backendFetch(`/config/sp-dispatch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: spDispatchChecked }),
-      });
-      if (!res.ok) {
-        let detail = `HTTP ${res.status}`;
-        try { detail = (JSON.parse(await res.text())).detail || detail; } catch (_) {}
-        throw new Error(detail);
-      }
-    } catch (error) {
-      console.error("Failed to persist SimplyPrint dispatch toggle:", error);
-      showToast(`Failed to save dispatch toggle to the server: ${error.message}`, "error");
-    }
+    const savedAt = document.getElementById("settings-conn-saved-at");
+    if (savedAt) savedAt.textContent = `Last saved ${new Date().toLocaleString()}`;
 
-    closeModal();
-
-    // Re-initialize
     if (await initSupabase()) {
       fetchSummaryStats();
       if (currentTab === "orders") {
@@ -3072,6 +3182,104 @@ function setupSettings() {
         fetchAndRenderPrintersAndQueue();
       }
     }
+    showToast("Connections saved.", "success");
+  });
+
+  // The dispatch toggle is a shared feature flag, not a per-browser credential —
+  // persist it on the backend so flipping it here applies on every device.
+  prefsSaveBtn?.addEventListener("click", async () => {
+    const spDispatchChecked = document.getElementById("setting-sp-dispatch").checked;
+    try {
+      const res = await backendFetch(`/config/sp-dispatch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: spDispatchChecked }),
+      });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try { detail = (JSON.parse(await res.text())).detail || detail; } catch (_) {}
+        throw new Error(detail);
+      }
+      showToast("Preferences saved.", "success");
+    } catch (error) {
+      console.error("Failed to persist SimplyPrint dispatch toggle:", error);
+      showToast(`Failed to save preferences: ${error.message}`, "error");
+    }
+  });
+
+  document.querySelectorAll(".settings-nav-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".settings-nav-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const section = btn.dataset.settingsSection;
+      document.querySelectorAll(".settings-section").forEach(s => {
+        s.classList.toggle("hidden", s.id !== `settings-section-${section}`);
+      });
+    });
+  });
+
+  setupLaunchTemplatesSettings();
+}
+
+const LAUNCH_TEMPLATE_TOKENS = ['{variant_types}', '{theme}', '{set_name}', '{set_number}', '{brand}', '{sku}'];
+const LAUNCH_TEMPLATE_DESC_TOKENS = ['{variant_bullets}', '{variant_types_lower}', '{theme}', '{set_name}', '{set_number}', '{brand}'];
+const LAUNCH_TEMPLATE_SAMPLE = {
+  set_name: 'Millennium Falcon', set_number: '75389', theme: 'Star Wars', brand_name: 'Blocked Off',
+  product_types: ['DS', 'WM'],
+  variants: [
+    { sku: 'BLO-SWR-75389-DS', platform_variation_name: 'Display Stand' },
+    { sku: 'BLO-SWR-75389-WM', platform_variation_name: 'Wall Mount' },
+  ],
+};
+
+// Settings > Launch Templates: token-insert editors + live preview, persisted to
+// localStorage (orbot_launch_title_template / orbot_launch_desc_template) — read by
+// applyLaunchCopy() during Launch preview generation.
+function setupLaunchTemplatesSettings() {
+  const titleEl = document.getElementById("setting-tpl-title");
+  const descEl = document.getElementById("setting-tpl-desc");
+  const saveBtn = document.getElementById("settings-tpl-save-btn");
+  if (!titleEl || !descEl) return;
+
+  titleEl.value = localStorage.getItem("orbot_launch_title_template") || "";
+  descEl.value = localStorage.getItem("orbot_launch_desc_template") || "";
+
+  const updatePreview = () => {
+    document.getElementById("settings-tpl-preview-title").textContent =
+      titleEl.value ? expandLaunchTemplate(titleEl.value, LAUNCH_TEMPLATE_SAMPLE) : "— no title template set, AI-generated copy will be used —";
+    document.getElementById("settings-tpl-preview-desc").textContent =
+      descEl.value ? expandLaunchTemplate(descEl.value, LAUNCH_TEMPLATE_SAMPLE) : "— no description template set, AI-generated copy will be used —";
+  };
+
+  const renderTokens = (containerId, fieldEl, tokens) => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = tokens.map(t => `<span class="tpl-token" data-token="${t}">${t}</span>`).join("");
+    container.querySelectorAll(".tpl-token").forEach(chip => {
+      chip.addEventListener("click", () => {
+        const tok = chip.dataset.token;
+        const start = fieldEl.selectionStart ?? fieldEl.value.length;
+        const end = fieldEl.selectionEnd ?? fieldEl.value.length;
+        fieldEl.value = fieldEl.value.slice(0, start) + tok + fieldEl.value.slice(end);
+        fieldEl.focus();
+        fieldEl.selectionStart = fieldEl.selectionEnd = start + tok.length;
+        updatePreview();
+      });
+    });
+  };
+  renderTokens("settings-tpl-title-tokens", titleEl, LAUNCH_TEMPLATE_TOKENS);
+  renderTokens("settings-tpl-desc-tokens", descEl, LAUNCH_TEMPLATE_DESC_TOKENS);
+
+  titleEl.addEventListener("input", updatePreview);
+  descEl.addEventListener("input", updatePreview);
+  updatePreview();
+
+  saveBtn?.addEventListener("click", () => {
+    localStorage.setItem("orbot_launch_title_template", titleEl.value.trim());
+    localStorage.setItem("orbot_launch_desc_template", descEl.value.trim());
+    const savedAt = document.getElementById("settings-tpl-saved-at");
+    if (savedAt) savedAt.textContent = `Last saved ${new Date().toLocaleString()}`;
+    showToast("Launch templates saved.", "success");
   });
 }
 
@@ -3274,16 +3482,16 @@ async function fetchAgentHeartbeats() {
         } else {
           dotEl.className = (prefix === "waybill-") ? "w-1.5 h-1.5 rounded-full bg-error" : (prefix === "header-") ? "w-2.5 h-2.5 rounded-full bg-error" : "status-light-offline";
           textEl.innerText = "Offline";
-          textEl.style.color = "#ff5252";
+          textEl.style.color = "#ff6666";
         }
       }
     });
 
     // --- Agents page cards ---
     const agentConfigs = [
-      { name: "orbot_service", threshold: 120000, color: "#8b7cf6", dotId: "agents-hb-service-dot", textId: "agents-hb-service-text", timeId: "agents-hb-service-time", fleetId: null },
+      { name: "orbot_service", threshold: 120000, color: "#3ecf8e", dotId: "agents-hb-service-dot", textId: "agents-hb-service-text", timeId: "agents-hb-service-time", fleetId: null },
       { name: "scout",         threshold: 600000, color: "#22d3ee", dotId: "agents-hb-scout-dot",   textId: "agents-hb-scout-text",   timeId: "agents-hb-scout-time",   fleetId: "overview-fleet-scout" },
-      { name: "orbot_service", threshold: 120000, color: "#8b7cf6", dotId: "agents-hb-foreman-dot", textId: "agents-hb-foreman-text", timeId: "agents-hb-foreman-time", fleetId: "overview-fleet-foreman" },
+      { name: "orbot_service", threshold: 120000, color: "#3ecf8e", dotId: "agents-hb-foreman-dot", textId: "agents-hb-foreman-text", timeId: "agents-hb-foreman-time", fleetId: "overview-fleet-foreman" },
       { name: "waybill_agent", threshold: 600000, color: "#ffaa6b", dotId: "agents-hb-waybill-dot",  textId: "agents-hb-waybill-text",  timeId: "agents-hb-waybill-time", fleetId: "overview-fleet-waybill" },
       { name: "orbot_service", threshold: 120000, color: "#7ea6e8", dotId: "agents-hb-spsync-dot",  textId: "agents-hb-spsync-text",  timeId: "agents-hb-spsync-time", fleetId: "overview-fleet-spsync" },
     ];
@@ -3293,16 +3501,16 @@ async function fetchAgentHeartbeats() {
       const dotEl = document.getElementById(dotId);
       const textEl = document.getElementById(textId);
       const timeEl = document.getElementById(timeId);
-      if (dotEl) dotEl.style.background = online ? "#10b981" : "#ff5252";
-      if (textEl) { textEl.innerText = online ? "Online" : "Offline"; textEl.style.color = online ? "#10b981" : "#ff5252"; }
+      if (dotEl) dotEl.style.background = online ? "#10b981" : "#ff6666";
+      if (textEl) { textEl.innerText = online ? "Online" : "Offline"; textEl.style.color = online ? "#10b981" : "#ff6666"; }
       if (timeEl) timeEl.innerText = timeAgo(hb?.last_heartbeat);
 
       // Overview dashboard's Agent Fleet summary — same signal again, list form.
       if (fleetId) {
         const fleetDot = document.getElementById(`${fleetId}-dot`);
         const fleetText = document.getElementById(`${fleetId}-text`);
-        if (fleetDot) fleetDot.style.background = online ? "#10b981" : "#ff5252";
-        if (fleetText) { fleetText.innerText = online ? "Online" : "Offline"; fleetText.style.color = online ? "#10b981" : "#ff5252"; }
+        if (fleetDot) fleetDot.style.background = online ? "#10b981" : "#ff6666";
+        if (fleetText) { fleetText.innerText = online ? "Online" : "Offline"; fleetText.style.color = online ? "#10b981" : "#ff6666"; }
       }
     });
 
@@ -3922,7 +4130,7 @@ async function fetchAndRenderJobs() {
         if (j.result.error) {
           resultStr = `<span style="color: var(--error-color); font-weight: 500;">Error: ${escapeHtml(j.result.error)}</span>`;
         } else if (j.result.url) {
-          resultStr = `<a href="${escapeHtml(sanitizeUrl(j.result.url))}" target="_blank" class="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-[#8b7cf6] rounded border border-primary/30 transition-all duration-150 inline-flex items-center gap-1.5 select-none no-underline text-[10px] font-semibold"><span class="material-symbols-outlined text-[12px] select-none">download</span> Download Batch</a>`;
+          resultStr = `<a href="${escapeHtml(sanitizeUrl(j.result.url))}" target="_blank" class="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-[#3ecf8e] rounded border border-primary/30 transition-all duration-150 inline-flex items-center gap-1.5 select-none no-underline text-[10px] font-semibold"><span class="material-symbols-outlined text-[12px] select-none">download</span> Download Batch</a>`;
         } else {
           resultStr = escapeHtml(JSON.stringify(j.result));
         }
@@ -4133,7 +4341,7 @@ async function fetchAndRenderOverviewLogs() {
 // ==========================================================================
 
 function chartPalette(i) {
-  return ["#8b7cf6", "#5fb4ff", "#3ddc97", "#f5b942", "#f2657a", "#22d3ee"][i % 6];
+  return ["#3ecf8e", "#7ea6e8", "#3ecf8e", "#fbbf24", "#ff6666", "#22d3ee"][i % 6];
 }
 
 function localDayKey(d) {
@@ -4160,7 +4368,7 @@ function svgSparkline(values, { color = "#ff8c00" } = {}) {
   </svg>`;
 }
 
-function svgBarChart(values, labels, { color = "#8b7cf6" } = {}) {
+function svgBarChart(values, labels, { color = "#3ecf8e" } = {}) {
   const w = 600, h = 170, padB = 18, padT = 10, padL = 26, padR = 6;
   const max = Math.max(...values, 1);
   const innerW = w - padL - padR, innerH = h - padT - padB;
@@ -4168,7 +4376,7 @@ function svgBarChart(values, labels, { color = "#8b7cf6" } = {}) {
   const grid = [0.5, 1].map(f => {
     const y = padT + innerH - innerH * f;
     return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w - padR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3 4"></line>
-      <text x="${padL - 5}" y="${(y + 3).toFixed(1)}" font-size="8" fill="rgba(255,255,255,0.3)" text-anchor="end" font-family="JetBrains Mono, monospace">${Math.round(max * f)}</text>`;
+      <text x="${padL - 5}" y="${(y + 3).toFixed(1)}" font-size="8" fill="rgba(255,255,255,0.3)" text-anchor="end" font-family="IBM Plex Mono, monospace">${Math.round(max * f)}</text>`;
   }).join("");
   const bars = values.map((v, i) => {
     const bh = (v / max) * innerH;
@@ -4177,7 +4385,7 @@ function svgBarChart(values, labels, { color = "#8b7cf6" } = {}) {
     return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw * 0.7).toFixed(1)}" height="${Math.max(bh, v > 0 ? 2 : 0).toFixed(1)}" rx="2" fill="${color}" opacity="${v > 0 ? 0.85 : 0.15}"><title>${labels[i]}: ${v}</title></rect>`;
   }).join("");
   const xLabels = values.map((_, i) => (i % 6 === 0 || i === values.length - 1)
-    ? `<text x="${(padL + i * bw + bw / 2).toFixed(1)}" y="${h - 4}" font-size="8" fill="rgba(255,255,255,0.35)" text-anchor="middle" font-family="JetBrains Mono, monospace">${labels[i].slice(5)}</text>`
+    ? `<text x="${(padL + i * bw + bw / 2).toFixed(1)}" y="${h - 4}" font-size="8" fill="rgba(255,255,255,0.35)" text-anchor="middle" font-family="IBM Plex Mono, monospace">${labels[i].slice(5)}</text>`
     : "").join("");
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:100%;display:block;">${grid}${bars}${xLabels}</svg>`;
 }
@@ -4192,11 +4400,11 @@ function svgLineChart(values, labels, { color = "#22d3ee" } = {}) {
   const grid = [0.5, 1].map(f => {
     const y = padT + innerH - innerH * f;
     return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w - padR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3 4"></line>
-      <text x="${padL - 5}" y="${(y + 3).toFixed(1)}" font-size="8" fill="rgba(255,255,255,0.3)" text-anchor="end" font-family="JetBrains Mono, monospace">${Math.round(max * f)}</text>`;
+      <text x="${padL - 5}" y="${(y + 3).toFixed(1)}" font-size="8" fill="rgba(255,255,255,0.3)" text-anchor="end" font-family="IBM Plex Mono, monospace">${Math.round(max * f)}</text>`;
   }).join("");
   const dots = values.map((v, i) => v > 0 ? `<circle cx="${px(i).toFixed(1)}" cy="${py(v).toFixed(1)}" r="2" fill="${color}"><title>${labels[i]}: ${v}</title></circle>` : "").join("");
   const xLabels = values.map((_, i) => (i % 6 === 0 || i === values.length - 1)
-    ? `<text x="${px(i).toFixed(1)}" y="${h - 4}" font-size="8" fill="rgba(255,255,255,0.35)" text-anchor="middle" font-family="JetBrains Mono, monospace">${labels[i].slice(5)}</text>`
+    ? `<text x="${px(i).toFixed(1)}" y="${h - 4}" font-size="8" fill="rgba(255,255,255,0.35)" text-anchor="middle" font-family="IBM Plex Mono, monospace">${labels[i].slice(5)}</text>`
     : "").join("");
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:100%;display:block;">
     ${grid}
@@ -4220,8 +4428,8 @@ function svgDonut(segments) {
   const legend = segments.map(s => `<div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-secondary);"><span style="width:8px;height:8px;border-radius:50%;background:${s.color};flex-shrink:0;"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.label)}</span><span style="font-family:var(--font-mono);color:var(--text-muted);">${s.value}</span></div>`).join("");
   return `<div style="display:flex;align-items:center;gap:14px;height:100%;">
     <svg viewBox="0 0 120 120" style="width:120px;height:120px;flex-shrink:0;">${rings}
-      <text x="60" y="57" text-anchor="middle" font-size="20" font-weight="700" fill="#f2f3f7" font-family="JetBrains Mono, monospace">${total}</text>
-      <text x="60" y="72" text-anchor="middle" font-size="8" fill="rgba(255,255,255,0.4)" font-family="JetBrains Mono, monospace">ORDERS</text>
+      <text x="60" y="57" text-anchor="middle" font-size="20" font-weight="700" fill="#f2f3f7" font-family="IBM Plex Mono, monospace">${total}</text>
+      <text x="60" y="72" text-anchor="middle" font-size="8" fill="rgba(255,255,255,0.4)" font-family="IBM Plex Mono, monospace">ORDERS</text>
     </svg>
     <div style="display:flex;flex-direction:column;gap:5px;min-width:0;flex:1;">${legend}</div>
   </div>`;
@@ -4255,7 +4463,7 @@ async function fetchAndRenderMissionControl() {
       if (k in orderCounts) orderCounts[k]++;
     });
     const orderSeries = keys.map(k => orderCounts[k]);
-    if (barsEl) barsEl.innerHTML = svgBarChart(orderSeries, keys, { color: "#8b7cf6" });
+    if (barsEl) barsEl.innerHTML = svgBarChart(orderSeries, keys, { color: "#3ecf8e" });
 
     const sparkEl = document.getElementById("spark-orders");
     if (sparkEl) sparkEl.innerHTML = svgSparkline(orderSeries.slice(-14), { color: "#ff8c00" });
@@ -4563,6 +4771,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   updateSystemClock();
   setInterval(updateSystemClock, 1000);
 
+  setupIconObserver();
   updateDispatchIndicator();
 
   if (await initSupabase()) {
@@ -4756,7 +4965,7 @@ function renderGanttChart(printers, queue, jobs) {
       const su = sku.toUpperCase();
       if (block.type === 'active') {
         const pct = block.percent || 0;
-        bgStyle = `background:linear-gradient(to right,rgba(139,124,246,.28) ${pct}%,rgba(139,124,246,.07) ${pct}%);`;
+        bgStyle = `background:linear-gradient(to right,rgba(62, 207, 142,.28) ${pct}%,rgba(62, 207, 142,.07) ${pct}%);`;
         cls = 'gantt-block-active';
       } else if (su.includes('-DS') && !su.includes('-DS-NP')) {
         cls = 'gantt-block-queued-ds';
@@ -4883,7 +5092,7 @@ async function fetchAndRenderPrintersAndQueue() {
         const stateLower = (p.state || "").toLowerCase();
         const isPrinting = p.online && stateLower === "printing";
         const isPaused = p.online && stateLower === "paused";
-        const stateColor = !p.online ? "#f2657a" : isPrinting ? "#8b7cf6" : isPaused ? "#f5b942" : "#3ddc97";
+        const stateColor = !p.online ? "#ff6666" : isPrinting ? "#3ecf8e" : isPaused ? "#fbbf24" : "#3ecf8e";
         let stateDisplay = p.online ? (p.state || "idle") : "offline";
         if (stateDisplay.toLowerCase() === "starting" || stateDisplay.toLowerCase() === "starting print") stateDisplay = "finishing";
         const statusClass = p.online ? "status-light-online" : "status-light-offline";
@@ -4922,7 +5131,7 @@ async function fetchAndRenderPrintersAndQueue() {
         } else if (p.online) {
           bodyHtml = `
             <div class="pt-body pt-body-idle">
-              <span class="material-symbols-outlined" style="color:#3ddc97;">check_circle</span>
+              <span class="material-symbols-outlined" style="color:#3ecf8e;">check_circle</span>
               Idle — ready for jobs
             </div>`;
         } else {
@@ -6540,7 +6749,7 @@ function renderLaunchTypes() {
   list.innerHTML = getAllLaunchTypes().map(t => `
     <div class="flex items-center justify-between">
       <label class="flex items-center gap-3 cursor-pointer select-none">
-        <input type="checkbox" data-ptype="${escapeHtml(t.code)}" ${checked.has(t.code) ? 'checked' : ''} style="accent-color:#8b7cf6" />
+        <input type="checkbox" data-ptype="${escapeHtml(t.code)}" ${checked.has(t.code) ? 'checked' : ''} style="accent-color:#3ecf8e" />
         <span class="text-sm text-white font-medium">${escapeHtml(t.code)}</span>
         <span class="text-xs text-[#6b7280]">${escapeHtml(t.label)}</span>
       </label>
@@ -6621,7 +6830,7 @@ function initLaunchTab() {
 
   // Image grid: drag & drop on the panel
   const panel = document.getElementById('launch-image-panel');
-  panel?.addEventListener('dragover', (e) => { e.preventDefault(); panel.style.boxShadow = '0 0 0 1px #8b7cf6'; });
+  panel?.addEventListener('dragover', (e) => { e.preventDefault(); panel.style.boxShadow = '0 0 0 1px #3ecf8e'; });
   panel?.addEventListener('dragleave', () => { panel.style.boxShadow = ''; });
   panel?.addEventListener('drop', (e) => {
     e.preventDefault(); panel.style.boxShadow = '';
@@ -6635,6 +6844,11 @@ function initLaunchTab() {
 
   document.getElementById('launch-preview-btn')?.addEventListener('click', doLaunchPreview);
   document.getElementById('launch-download-btn')?.addEventListener('click', doLaunchDownload);
+  document.getElementById('launch-regen-ai-btn')?.addEventListener('click', (e) => {
+    document.getElementById('launch-listing-title').value = _launchAiTitle || '';
+    document.getElementById('launch-description').value = _launchAiDescription || '';
+    document.getElementById('launch-copy-source').textContent = '— AI-generated, edit as needed before downloading';
+  });
 
   document.getElementById('launch-scrape-btn')?.addEventListener('click', doLaunchScrape);
   document.getElementById('launch-scrape-url')?.addEventListener('keydown', (e) => {
@@ -6664,7 +6878,7 @@ function renderLaunchImageGrid() {
       </button>
       <span class="absolute bottom-1 left-1 text-[10px] text-white/50 font-mono bg-black/40 px-1 rounded">${i + 1}</span>
       ${file._cleaning ? `<div class="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1">
-        <span class="material-symbols-outlined text-[#8b7cf6]" style="font-size:18px;animation:spin 1s linear infinite">sync</span>
+        <span class="material-symbols-outlined text-[#3ecf8e]" style="font-size:18px;animation:spin 1s linear infinite">sync</span>
         <span class="text-[9px] text-white/60">removing logos</span>
       </div>` : ''}
       ${file._cleaned ? `<span class="absolute top-1 left-1 bg-black/60 rounded-full p-0.5" title="Logos removed">
@@ -6679,7 +6893,7 @@ function renderLaunchImageGrid() {
   });
   for (let i = _launchImages.length; i < MAX; i++) {
     const slot = document.createElement('div');
-    slot.className = 'aspect-square rounded-lg border border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#8b7cf6]/60 transition-colors';
+    slot.className = 'aspect-square rounded-lg border border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#3ecf8e]/60 transition-colors';
     slot.setAttribute('data-empty', '');
     slot.innerHTML = `<span class="material-symbols-outlined text-[#4b5563]" style="font-size:20px">add_photo_alternate</span>`;
     grid.appendChild(slot);
@@ -6803,6 +7017,50 @@ async function cleanLaunchImages(files) {
 }
 
 let _launchVariants = [];
+let _launchAiTitle = null;
+let _launchAiDescription = null;
+
+const LAUNCH_TYPE_NAMES = { DS: 'Display Stand', 'DS-NP': 'Display Stand', WM: 'Wall Mount', FWM: 'Floating Wall Mount', LK: 'Light Kit' };
+
+// Fills {token} placeholders in a Launch Templates string (Settings > Launch Templates).
+// Unknown tokens are left as-is rather than erased, so a typo is visible instead of silently
+// producing blank output.
+function expandLaunchTemplate(template, ctx) {
+  if (!template) return '';
+  const typeNames = (ctx.product_types || []).map(t => LAUNCH_TYPE_NAMES[t] || t);
+  const variants = ctx.variants || [];
+  const tokens = {
+    '{variant_types}': typeNames.join(' / ') || '—',
+    '{variant_types_lower}': (typeNames.join(' / ') || '—').toLowerCase(),
+    '{theme}': ctx.theme || '',
+    '{set_name}': ctx.set_name || '',
+    '{set_number}': ctx.set_number || '',
+    '{brand}': ctx.brand_name || 'Blocked Off',
+    '{sku}': variants[0]?.sku || '',
+    '{variant_bullets}': variants.map(v => `✅ ${v.sku} — ${v.platform_variation_name}`).join('\n') || '',
+  };
+  return Object.entries(tokens).reduce((s, [tok, val]) => s.split(tok).join(val), template);
+}
+
+// Applies the user's Launch Templates (Settings > Launch Templates) as the default listing
+// copy when configured, falling back to the Gemini-generated copy from _launchAiTitle/
+// _launchAiDescription otherwise. The "Regenerate with AI" button always restores the AI copy.
+function applyLaunchCopy(formData, variants) {
+  const titleTpl = localStorage.getItem('orbot_launch_title_template') || '';
+  const descTpl = localStorage.getItem('orbot_launch_desc_template') || '';
+  const ctx = { ...formData, variants };
+  const titleEl = document.getElementById('launch-listing-title');
+  const descEl = document.getElementById('launch-description');
+  const sourceEl = document.getElementById('launch-copy-source');
+  const regenBtn = document.getElementById('launch-regen-ai-btn');
+  const usingTemplate = !!(titleTpl || descTpl);
+
+  if (titleEl) titleEl.value = titleTpl ? expandLaunchTemplate(titleTpl, ctx) : (_launchAiTitle || '');
+  if (descEl) descEl.value = descTpl ? expandLaunchTemplate(descTpl, ctx) : (_launchAiDescription || '');
+  if (sourceEl) sourceEl.textContent = usingTemplate ? '— from your Launch Template, edit as needed' : '— AI-generated, edit as needed before downloading';
+  if (regenBtn) regenBtn.classList.toggle('hidden', !usingTemplate);
+  regenBtn?.setAttribute('data-ctx', JSON.stringify(ctx));
+}
 
 function getLaunchFormData() {
   const types = [...document.querySelectorAll('#launch-types-list input[data-ptype]:checked')].map(cb => cb.dataset.ptype);
@@ -6826,7 +7084,7 @@ function getLaunchFormData() {
 function setLaunchStatus(type, msg) {
   const el = document.getElementById('launch-status');
   if (!el) return;
-  el.className = `glass-panel px-5 py-3 text-sm ${type === 'error' ? 'text-red-400 border border-red-500/20' : 'text-[#8b7cf6]'}`;
+  el.className = `glass-panel px-5 py-3 text-sm ${type === 'error' ? 'text-red-400 border border-red-500/20' : 'text-[#3ecf8e]'}`;
   el.textContent = msg;
   el.classList.remove('hidden');
 }
@@ -6909,15 +7167,16 @@ async function doLaunchPreview() {
     const data = JSON.parse(await res.text());
     if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
 
-    document.getElementById('launch-listing-title').value = data.listing_title;
-    document.getElementById('launch-description').value   = data.description;
+    _launchAiTitle = data.listing_title;
+    _launchAiDescription = data.description;
+    applyLaunchCopy({ set_name, set_number, theme, brand_name, product_types }, data.variants);
 
     _launchVariants = data.variants;
 
     const tbody = document.getElementById('launch-variants-body');
     tbody.innerHTML = data.variants.map(v => `
       <tr>
-        <td class="py-2 pr-6 text-[#8b7cf6]">${v.sku}</td>
+        <td class="py-2 pr-6 text-[#3ecf8e]">${v.sku}</td>
         <td class="py-2 pr-6 text-[#9ca3af]">${v.platform_variation_name}</td>
         <td class="py-2 text-right text-white">${v.price_myr ? 'MYR ' + Number(v.price_myr).toFixed(2) : '—'}</td>
       </tr>`).join('');
@@ -6925,7 +7184,7 @@ async function doLaunchPreview() {
     const detailsTbody = document.getElementById('launch-variant-details-body');
     detailsTbody.innerHTML = data.variants.map((v, i) => `
       <tr>
-        <td class="py-2 pr-4 text-[#8b7cf6] font-mono text-xs">${v.sku}</td>
+        <td class="py-2 pr-4 text-[#3ecf8e] font-mono text-xs">${v.sku}</td>
         <td class="py-2 pr-3"><input id="lv-${i}-stock" type="number" value="0" min="0" class="w-16 text-center" style="padding:0.25rem 0.375rem !important" /></td>
         <td class="py-2 pr-3"><input id="lv-${i}-seal" type="text" placeholder="https://drive.google.com/…" class="w-full" style="padding:0.25rem 0.5rem !important; font-size:0.7rem" /></td>
         <td class="py-2 pr-3"><input id="lv-${i}-files" type="text" placeholder="https://drive.google.com/…" class="w-full" style="padding:0.25rem 0.5rem !important; font-size:0.7rem" /></td>
@@ -7135,7 +7394,7 @@ function renderListingsFromCache() {
     const unmappedVars = vars.filter(v => !v.variant_id).length;
 
     const platformCount = LISTING_PLATFORMS.filter(p => !!l[p.key]).length;
-    const coverageColor = platformCount === 5 ? "#8b7cf6" : platformCount >= 3 ? "#eab308" : "#ef4444";
+    const coverageColor = platformCount === 5 ? "#3ecf8e" : platformCount >= 3 ? "#eab308" : "#ef4444";
 
     const platformDots = LISTING_PLATFORMS.map(p =>
       `<div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${l[p.key] ? p.color : "rgba(100,116,139,0.2)"}" title="${p.label}: ${l[p.key] ? escapeHtml(l[p.key]) : "not listed"}"></div>`
@@ -7162,7 +7421,7 @@ function renderListingsFromCache() {
         <button class="btn-copy-platform-id opacity-0 group-hover:opacity-100 p-0.5 rounded text-outline/60 hover:text-primary transition-all" data-id="${escapeHtml(id)}" data-label="${escapeHtml(p.label)}" type="button" title="Copy ${p.label} ID">
           <span class="material-symbols-outlined text-[14px] pointer-events-none">content_copy</span>
         </button>
-        <a href="${p.url}" target="_blank" rel="noopener noreferrer" class="opacity-0 group-hover:opacity-100 p-0.5 rounded text-outline/60 hover:text-[#8b7cf6] transition-all" title="Open ${p.label}" onclick="event.stopPropagation()">
+        <a href="${p.url}" target="_blank" rel="noopener noreferrer" class="opacity-0 group-hover:opacity-100 p-0.5 rounded text-outline/60 hover:text-[#3ecf8e] transition-all" title="Open ${p.label}" onclick="event.stopPropagation()">
           <span class="material-symbols-outlined text-[14px]">open_in_new</span>
         </a>
       </div>`;

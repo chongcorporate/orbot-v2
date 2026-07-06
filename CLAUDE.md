@@ -4,10 +4,10 @@
 
 Before writing or editing any UI (HTML, CSS, Tailwind classes, JS-rendered markup), read `Other/DESIGN.md` first. For visual polish, also consult `design-refs/` — it holds distilled design-system specs (Linear, Vercel, Raycast, Resend, Supabase, Warp, Cursor) and reference screenshots; see `design-refs/README.md` for how to use them. It defines the color tokens, typography rules, component patterns, and do's/don'ts for Orbot's dark sci-fi aesthetic. Key rules:
 
-- JetBrains Mono for all data values (SKUs, IDs, timestamps, file names, weights)
+- IBM Plex Mono for all data values (SKUs, IDs, timestamps, file names, weights)
 - Outfit for headings and button labels
-- Lime (`#a4e844`) is the only primary action color — one per section max
-- All cards use glassmorphism (`glass-panel` pattern) — never flat opaque backgrounds
+- Green (`#3ecf8e`) is the only primary action color — one per section max
+- All cards use the flat `panel` pattern (`card` background + `line` border) — no glassmorphism, no shadows/blur on inline cards; blur is reserved for floating elements (dock, dropdowns) only
 - Product type colors: DS = steel-blue `#7ea6e8`, WM = peach `#ffaa6b`, FWM = orange `#ff8c00`
 
 ## Frontend
