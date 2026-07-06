@@ -253,25 +253,21 @@ function showToast(message, type = "info") {
   if (!container) {
     container = document.createElement("div");
     container.id = "toast-container";
-    container.style.cssText = "position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;max-width:360px;";
+    container.style.cssText = "position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:9px;pointer-events:none;max-width:360px;";
     document.body.appendChild(container);
   }
-  const palette = {
-    success: { bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.4)", text: "#10b981", icon: "check_circle" },
-    error:   { bg: "rgba(239,68,68,0.12)",  border: "rgba(239,68,68,0.4)",  text: "#ef4444", icon: "error" },
-    warning: { bg: "rgba(234,179,8,0.12)",  border: "rgba(234,179,8,0.4)",  text: "#eab308", icon: "warning" },
-    info:    { bg: "rgba(62, 207, 142,0.12)", border: "rgba(62, 207, 142,0.4)", text: "#3ecf8e", icon: "info" },
-  };
-  const c = palette[type] || palette.info;
+  const kind = ["info", "success", "warning", "error"].includes(type) ? type : "info";
+  // Draft 4 timing: info/success 3s, warning 4s, error 5s (errors linger).
+  const ttl = { info: 3000, success: 3000, warning: 4000, error: 5000 }[kind];
   const toast = document.createElement("div");
-  toast.style.cssText = `background:${c.bg};border:1px solid ${c.border};color:${c.text};padding:0.65rem 0.875rem;border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:0.78rem;backdrop-filter:blur(12px);pointer-events:auto;opacity:0;transform:translateX(12px);transition:all 0.22s ease;display:flex;align-items:flex-start;gap:0.5rem;word-break:break-word;`;
-  toast.innerHTML = `<span class="material-symbols-outlined" style="font-size:15px;flex-shrink:0;margin-top:1px;">${c.icon}</span><span>${escapeHtml(message)}</span>`;
+  toast.className = `d4-toast ${kind}`;
+  toast.innerHTML = `<span class="dot"></span><div class="tm">${escapeHtml(message)}</div>`;
   container.appendChild(toast);
   requestAnimationFrame(() => { toast.style.opacity = "1"; toast.style.transform = "translateX(0)"; });
   setTimeout(() => {
     toast.style.opacity = "0"; toast.style.transform = "translateX(12px)";
     setTimeout(() => toast.remove(), 220);
-  }, 3500);
+  }, ttl);
 }
 
 async function logAction(message, level = "info", meta = {}) {

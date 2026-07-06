@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.15.7">
+  <link rel="stylesheet" href="index.css?v=1.15.8">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -150,19 +150,11 @@
     }
     .pulse-error { animation: pulse-neon-red 2s infinite; }
 
-    /* Glassmorphic Panel Design Utilities (Aurora Pro refined glass) */
-    .glass-panel {
-      background: rgba(255, 255, 255, 0.045);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
+    /* Flat panel (Draft 4) — no glassmorphism; border is the elevation cue */
+    .glass-panel,
     .glass-panel-gradient {
-      background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 100%), rgba(255, 255, 255, 0.045);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: var(--card-bg);
+      border: 1px solid var(--glass-border);
     }
 
     .neon-focus:focus-within {
@@ -205,8 +197,7 @@
       position: fixed;
       inset: 0;
       z-index: 100;
-      background-color: rgba(0, 0, 0, 0.75);
-      backdrop-filter: blur(8px);
+      background-color: rgba(0, 0, 0, 0.7);
       display: none;
       align-items: center;
       justify-content: center;
@@ -218,7 +209,7 @@
 
     /* Monospace mappings */
     .font-data-mono, code, pre, .mono, td.mono, th.mono, .order-item-inline, .overview-alert-time, .console, .terminal {
-      font-family: 'JetBrains Mono', monospace !important;
+      font-family: 'IBM Plex Mono', monospace !important;
     }
 
     /* Badge Custom Select Styling */
@@ -731,67 +722,41 @@
             <span class="material-symbols-outlined" id="waybill-tools-chevron">expand_more</span>
           </button>
 
-          <div class="waybill-tools-body hidden grid grid-cols-12 gap-4 items-start">
+          <div class="waybill-tools-body hidden d4-wbgrid">
             <!-- Left: Upload + Console -->
-            <div class="col-span-12 lg:col-span-5 xl:col-span-4 flex flex-col gap-4">
-              <div class="glass-panel rounded-xl p-5 flex flex-col gap-4">
-                <h3 class="font-headline-sm text-on-surface flex items-center gap-2">
-                  <span class="material-symbols-outlined text-[#22d3ee]">cloud_upload</span>
-                  Upload Waybill PDFs
-                </h3>
-                <div class="border-dashed border-2 border-[#22d3ee]/30 hover:border-[#22d3ee]/70 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-[#22d3ee]/5 transition-all duration-300 group relative" id="waybill-upload-zone">
-                  <div class="absolute inset-0 rounded-xl bg-[#22d3ee]/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-                  <div class="w-14 h-14 rounded-2xl bg-[#22d3ee]/10 border border-[#22d3ee]/20 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:bg-[#22d3ee]/20 transition-all duration-300">
-                    <span class="material-symbols-outlined text-3xl text-[#22d3ee] select-none">upload_file</span>
-                  </div>
-                  <p class="text-sm font-semibold text-on-surface group-hover:text-[#22d3ee] transition-colors">Drop PDFs here</p>
-                  <p class="text-[11px] text-outline mt-1 leading-relaxed">Drag &amp; drop raw waybill manifests, or</p>
-                  <input type="file" id="waybill-file-input" accept="application/pdf" style="display:none;" multiple>
-                  <button class="mt-3 px-4 py-1.5 bg-[#22d3ee]/15 hover:bg-[#22d3ee]/25 border border-[#22d3ee]/40 text-[#22d3ee] rounded-lg text-xs font-label-caps font-bold tracking-wider transition-all active:scale-95 relative z-10" id="waybill-browse-btn">Browse Files</button>
-                </div>
-                <div id="upload-status" class="hidden flex flex-col gap-2 bg-black/20 border border-outline-variant/15 rounded-lg p-3">
-                  <div class="flex justify-between items-center">
-                    <div class="flex items-center gap-2">
-                      <span class="material-symbols-outlined text-[#22d3ee] text-sm" id="upload-status-icon">autorenew</span>
-                      <span class="text-xs font-medium text-on-surface" id="upload-status-text">Uploading...</span>
-                    </div>
-                    <span class="font-data-mono text-xs font-bold text-[#22d3ee]" id="upload-progress-percent">0%</span>
-                  </div>
-                  <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
-                    <div id="upload-progress-bar" class="h-full bg-[#22d3ee] rounded-full transition-all duration-300 w-0"></div>
-                  </div>
-                </div>
+            <div class="d4-col" style="gap:14px">
+              <div class="d4-drop" id="waybill-upload-zone">
+                <span class="material-symbols-outlined">cloud_upload</span>
+                <p class="a">Drop waybill PDFs here</p>
+                <p class="b">Shopee &amp; Lazada shipping labels · multi-file OK</p>
+                <input type="file" id="waybill-file-input" accept="application/pdf" style="display:none;" multiple>
+                <button class="browse" id="waybill-browse-btn">Browse Files</button>
               </div>
-
-              <div class="glass-panel rounded-xl flex flex-col overflow-hidden">
-                <div class="flex items-center justify-between px-4 py-2.5 border-b border-outline-variant/10 bg-black/20">
-                  <div class="flex items-center gap-2">
-                    <div class="flex items-center gap-1 select-none">
-                      <div class="w-2 h-2 rounded-full bg-[#ff5f56]"></div>
-                      <div class="w-2 h-2 rounded-full bg-[#ffbd2e]"></div>
-                      <div class="w-2 h-2 rounded-full bg-[#27c93f]"></div>
-                    </div>
-                    <span class="font-data-mono text-[10px] text-outline tracking-wider">orbot-daemon</span>
+              <div id="upload-status" class="hidden d4-upload-status">
+                <div class="row">
+                  <div class="left">
+                    <span class="material-symbols-outlined" id="upload-status-icon">autorenew</span>
+                    <span id="upload-status-text">Uploading...</span>
                   </div>
-                  <button class="px-2 py-0.5 rounded border border-outline-variant/30 text-[9px] font-label-caps tracking-wider text-outline hover:text-error hover:border-error/30 hover:bg-error/10 transition-all" id="console-clear-btn">Clear</button>
+                  <span id="upload-progress-percent">0%</span>
                 </div>
-                <div class="h-[220px] overflow-y-auto p-3 font-data-mono text-[11px] text-on-surface-variant/80 space-y-1" id="waybill-console">
-                  <div class="text-outline">&gt; Console ready.<span class="terminal-cursor"></span></div>
-                </div>
+                <div class="d4-meter"><i id="upload-progress-bar" style="width:0%"></i></div>
+              </div>
+              <div class="d4-conshd"><span class="d4-sect" style="margin-bottom:0">Daemon Console</span><button class="clr" id="console-clear-btn">CLEAR</button></div>
+              <div class="d4-console" id="waybill-console">
+                <div class="terminal-line">&gt; Console ready.<span class="terminal-cursor"></span></div>
               </div>
             </div>
 
             <!-- Right: Compiled master PDFs -->
-            <div class="col-span-12 lg:col-span-7 xl:col-span-8 flex flex-col gap-3">
-              <h3 class="font-headline-sm text-on-surface flex items-center gap-2">
-                <span class="material-symbols-outlined text-[#ffaa6b]">picture_as_pdf</span>
-                Compiled Master PDFs
-              </h3>
-              <div class="overflow-y-auto rounded-xl border border-outline-variant/15 bg-black/10 h-[480px]" id="master-pdfs-container">
+            <div class="d4-col" style="gap:10px">
+              <span class="d4-sect" style="margin-bottom:0">Compiled Master PDFs</span>
+              <div class="d4-mpdfs" id="master-pdfs-container">
                 <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div></div>
               </div>
             </div>
-          </div></div>
+          </div>
+        </div>
 
       </section>
 
@@ -1937,6 +1902,6 @@
     </button>
   </div>
 
-  <script src="app.js?v=1.15.7"></script>
+  <script src="app.js?v=1.15.8"></script>
 </body>
 </html>
