@@ -16,7 +16,7 @@ import ipaddress
 import socket
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -362,6 +362,22 @@ class OrderItem(BaseModel):
     listing_title: str = Field(description="The name of the product listing. CRITICAL: Strip off any leading item numbering, indices, or list prefixes like '1. ', '2) ', '• ' so that it is just the text name, e.g. 'Display Stand for Time Machine...'.")
     variation_name: Optional[str] = Field(default=None, description="The specific variation/option selected. CRITICAL: Copy the variation name EXACTLY as it appears in the email — do NOT strip trailing numbers, commas, or suffixes (e.g. '(75394)Base - Plaque,1' must stay '(75394)Base - Plaque,1', not 'Base - Plaque'). These trailing values are part of the variant identifier, not quantities. Use None if no variation is mentioned.")
     purchased_quantity: int = Field(description="Quantity ordered.")
+    item_subtotal: Optional[float] = Field(default=None, description="The line price/subtotal shown next to THIS item in the email (number only, no currency symbol). Use None if no per-item price is shown.")
+    source_snippet: Optional[str] = Field(default=None, description="RECEIPT: copy the exact contiguous text from the email that this item was read from — the product name line as it literally appears, VERBATIM, character for character (including any numbering, prices, 'x1' quantities). Do not paraphrase, reorder, or fix typos. This is used to verify the item really exists in the email.")
+
+    @field_validator('item_subtotal', mode='before')
+    @classmethod
+    def clean_item_subtotal(cls, v):
+        if isinstance(v, str):
+            v = re.sub(r'[^\d,.]', '', v.strip())
+            if '.' in v and ',' in v:
+                v = v.replace(',', '')
+            elif ',' in v:
+                v = v.replace(',', '.')
+        try:
+            return float(v) if v not in (None, '') else None
+        except (ValueError, TypeError):
+            return None
 
 class OrderDetails(BaseModel):
     is_order_email: bool = Field(description="Set to true ONLY if this email is a genuine new order confirmation from Shopee or Lazada containing an order ID, customer name, and items. Set to false for logistics notifications (SPX, J&T, tracking updates, drop-off reminders, seller centre alerts, or any email that is NOT a new order).")
@@ -387,6 +403,7 @@ class OrderDetails(BaseModel):
         except (ValueError, TypeError):
             return 0.0
     items: List[OrderItem] = Field(description="CRITICAL: ALL items purchased in this order. Shopee/Lazada emails may list multiple products separated by numbers, bullets, line breaks, or in a table. You MUST extract every distinct product as a separate OrderItem — never collapse multiple products into one entry. If the email says '2 products' or '3 items', your list must have that many entries.")
+    stated_item_count: Optional[int] = Field(default=None, description="If the email explicitly states how many products/items the order contains (e.g. '2 products', '3 items', 'Jumlah Produk: 2'), copy that number. Use None if the email never states a count. Do NOT compute it yourself from the item list.")
 
 class PLItem(BaseModel):
     listing_title: str = Field(description="The name or title of the product listing. E.g. 'Display Base for Lego Minifigure' or 'Wall Mount for Lego NASA ISS Space Station (21312)'. Strip off any item indices like '1.' or trailing quantity/price if they are merged.")
@@ -1414,6 +1431,107 @@ class OrderHeldForReview(Exception):
     pass
 
 
+# ----------------- Extraction coverage verification -----------------
+# The LLM's item list is never trusted on its own: every extracted item must
+# quote its verbatim source text ("receipt"), and independent signals from the
+# email (stated item count, per-line prices vs order subtotal, leftover price
+# lines) must corroborate that the WHOLE email was ingested. Any hold-level
+# failure inserts the order as 'hold' (Foreman only dispatches pending/printing
+# orders) with a hold_reason, and fires a warning log → Discord.
+
+# Price token: currency indicator adjacent to an amount (matches _detect_currency's codes).
+_ITEM_PRICE_RE = re.compile(
+    r'(?:MYR|SGD|THB|PHP|IDR|VND|TWD|NT\$|S\$|RM|PhP|Rp|฿|₱|₫|đ)\s*\d[\d,.]*', re.I)
+# Residual lines carrying a price are expected when labeled as totals/fees/vouchers
+# (EN + MY/ID labels); anything else priced that survives snippet removal is an
+# item line no extracted item accounted for.
+_NON_ITEM_PRICE_LABELS = (
+    'subtotal', 'sub-total', 'total', 'shipping', 'delivery', 'postage', 'fee',
+    'voucher', 'discount', 'rebate', 'tax', 'sst', 'vat', 'cod', 'payment',
+    'refund', 'coin', 'cashback', 'jumlah', 'penghantaran', 'baucar', 'diskaun',
+)
+
+
+def _snippet_regex(snippet: str) -> re.Pattern:
+    """Whitespace-flexible verbatim matcher: the LLM copies text, but HTML→text
+    conversion means runs of spaces/newlines may differ between its quote and
+    our cleaned body."""
+    parts = [re.escape(p) for p in snippet.split()]
+    return re.compile(r'\s+'.join(parts), re.IGNORECASE)
+
+
+def verify_extraction_coverage(order_details: "OrderDetails", cleaned_body: Optional[str]) -> tuple[list[str], list[str]]:
+    """Cross-checks the LLM's extraction against the email it came from.
+    Returns (hold_problems, warn_problems). hold_problems block dispatch;
+    warn_problems only alert. cleaned_body may be None (manual ingestion) —
+    body-dependent checks are skipped then."""
+    hold: list[str] = []
+    warn: list[str] = []
+    items = order_details.items or []
+
+    # 1) Stated item count vs extracted count — the email's own number wins.
+    stated = order_details.stated_item_count
+    if stated is not None and stated > 0 and stated != len(items):
+        hold.append(f"Email states {stated} item(s) but only {len(items)} were extracted.")
+
+    # 2) Line-price checksum vs order subtotal. Shopee shows unit prices next to a
+    # 'xN' quantity, so accept either interpretation (unit×qty or line total) —
+    # only hold when even the larger sum falls far short of the subtotal, which
+    # is the signature of a whole missing line. Overage is a voucher/discount.
+    subtotal = order_details.order_subtotal or 0
+    prices = [it.item_subtotal for it in items]
+    if subtotal > 0 and prices and all(p is not None and p > 0 for p in prices):
+        sum_flat = sum(prices)
+        sum_qty = sum(p * max(it.purchased_quantity, 1) for p, it in zip(prices, items))
+        best = max(sum_flat, sum_qty)
+        shortfall = (subtotal - best) / subtotal
+        if shortfall > 0.20:
+            hold.append(f"Extracted line prices sum to {best:.2f} but order subtotal is "
+                        f"{subtotal:.2f} — {shortfall:.0%} unaccounted for (missing item?).")
+        elif shortfall > 0.02:
+            warn.append(f"Line prices sum to {best:.2f} vs subtotal {subtotal:.2f} "
+                        f"({shortfall:.0%} short) — verify nothing is missing.")
+
+    if not cleaned_body:
+        return hold, warn
+
+    body_norm = re.sub(r'[ \t]+', ' ', cleaned_body)
+    residual = body_norm
+
+    # 3) Receipts: every item must have quoted verbatim source text that actually
+    # occurs in the email. No receipt / unfindable receipt → can't prove the item
+    # came from this email → hold.
+    for it in items:
+        snip = (it.source_snippet or '').strip()
+        label = f"'{it.listing_title}'" + (f" ({it.variation_name})" if it.variation_name else "")
+        if not snip:
+            hold.append(f"Item {label} has no source snippet — cannot verify it against the email.")
+            continue
+        pat = _snippet_regex(snip)
+        m = pat.search(residual)
+        if m:
+            residual = residual[:m.start()] + ' ' + residual[m.end():]
+        elif not pat.search(body_norm):
+            hold.append(f"Item {label} quotes text that does not appear in the email — possible misread.")
+        # else: snippet exists but its region was already claimed by an identical
+        # earlier snippet (true duplicate lines) — count/checksum checks still guard.
+
+    # 4) Coverage: after deleting every verified receipt, any surviving line that
+    # still carries a price and isn't a known total/fee/voucher line is email
+    # content no extracted item claimed. Warn-level: line-splitting of HTML email
+    # bodies is too template-dependent to hard-block on.
+    for line in residual.splitlines():
+        if not _ITEM_PRICE_RE.search(line):
+            continue
+        low = line.lower()
+        if any(lbl in low for lbl in _NON_ITEM_PRICE_LABELS):
+            continue
+        warn.append(f"Unclaimed price line in email not covered by any extracted item: "
+                    f"'{line.strip()[:120]}'")
+
+    return hold, warn
+
+
 class ScoutAgent:
     def __init__(self):
         self.agent_name = "Scout"
@@ -1647,6 +1765,46 @@ class ScoutAgent:
         except HttpError as error:
             logger.error(f"An error occurred marking email as read: {error}")
 
+    def _store_ingested_email(self, email: dict, cleaned_body: str) -> Optional[str]:
+        """Persists the email verbatim BEFORE any parsing — the lossless-ingestion
+        guarantee. Upserts on gmail_message_id (retried emails reuse their row).
+        Never raises: capture failing must not stop order processing, it just
+        loses the audit copy for this one email."""
+        try:
+            received_at = None
+            if email.get('date'):
+                try:
+                    from email.utils import parsedate_to_datetime
+                    received_at = parsedate_to_datetime(email['date']).isoformat()
+                except Exception:
+                    pass
+            res = self.supabase.table("ingested_emails").upsert({
+                "gmail_message_id": email['id'],
+                "subject": email.get('subject'),
+                "sender": email.get('sender'),
+                "received_at": received_at,
+                "raw_body": email.get('body') or '',
+                "cleaned_body": cleaned_body,
+                "parse_status": "pending",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="gmail_message_id").execute()
+            return res.data[0]['id'] if res.data else None
+        except Exception as e:
+            logger.error(f"Failed to store ingested email {email.get('id')}: {e}")
+            self.log_to_db("error", f"Failed to store raw email copy (gmail id {email.get('id')}) — "
+                                     f"order will still be processed but without the audit copy: {e}")
+            return None
+
+    def _update_ingested_email(self, row_id: Optional[str], fields: dict):
+        """Best-effort status update on an ingested_emails row (no-op if capture failed)."""
+        if not row_id:
+            return
+        try:
+            fields = {**fields, "updated_at": datetime.now(timezone.utc).isoformat()}
+            self.supabase.table("ingested_emails").update(fields).eq("id", row_id).execute()
+        except Exception as e:
+            logger.error(f"Failed to update ingested_emails {row_id}: {e}")
+
     def _clean_text_for_llm(self, text: str) -> str:
         text = re.sub(r'http[s]?://\S+', '[URL]', text)
         # Cut at common footer markers
@@ -1663,7 +1821,11 @@ class ScoutAgent:
         ]:
             text = re.split(marker, text)[0]
         text = re.sub(r'\n{3,}', '\n\n', text)
-        return text.strip()[:1500]
+        # Generous cap — a truncated email is a silently lost order item (order
+        # 2607071JS7VYVW lost its 2nd item to the old 1500-char cap). Multi-item
+        # Shopee emails run several thousand chars; 20k covers any realistic order
+        # while still bounding pathological bodies.
+        return text.strip()[:20000]
 
     def _regex_preparse(self, subject: str, sender: str, date_header: str, body: str) -> dict:
         """Extract fields that don't need LLM — platform, order ID, timestamp."""
@@ -1748,6 +1910,12 @@ class ScoutAgent:
             f"CRITICAL for items: Extract EVERY product listed — Shopee/Lazada emails often list 2 or more items "
             f"separated by line breaks, numbers, or table rows. Each distinct product listing must be its own "
             f"entry in the items list. Do not skip any product even if it appears in a different section or language.\n"
+            f"CRITICAL for source_snippet: for EACH item, copy the exact contiguous text from the email covering "
+            f"that item — from its product name through its price and quantity if shown — VERBATIM, character for "
+            f"character. Your extraction is machine-verified against the email text: an item whose snippet is not "
+            f"found verbatim, or email price lines not covered by any item's snippet, will fail verification.\n"
+            f"CRITICAL for stated_item_count: if the email states a product/item count anywhere (e.g. '2 products'), "
+            f"copy that number; otherwise null. Never compute it from your own item list.\n"
             f"CRITICAL for shop_name: identify the SELLER'S shop/store name that received this order (the greeting "
             f"or footer names our store, e.g. 'Hello <ShopName>'). This is NOT the buyer and NOT 'Shopee'/'Lazada'. "
             f"If no seller shop name is present, set shop_name to null.\n\n"
@@ -1772,7 +1940,8 @@ class ScoutAgent:
                 parsed = OrderDetails(**order_data)
                 if not parsed.is_order_email:
                     logger.info(f"[Scout] Email is not an order (LLM flagged is_order_email=False). Skipping.")
-                    return None
+                # Non-order parses are returned too (not None) so the caller can mark
+                # the stored email row 'not_order' instead of 'failed'.
                 return parsed
             except Exception as e:
                 err_str = str(e)
@@ -1798,12 +1967,15 @@ class ScoutAgent:
                             shop_id: Optional[str] = None) -> tuple[Optional[str], bool, Optional[dict]]:
         return resolve_variant(self.supabase, listing_title, variation_name, shop_id=shop_id)
 
-    def process_order(self, order_details: OrderDetails):
+    def process_order(self, order_details: OrderDetails, cleaned_body: Optional[str] = None,
+                      source_email_id: Optional[str] = None):
         platform_order_id = order_details.platform_order_id.strip()
         try:
             existing = self.supabase.table("orders").select("id").eq("platform_order_id", platform_order_id).execute()
             if existing.data:
                 logger.info(f"Order {platform_order_id} already exists in database. Skipping ingestion.")
+                if source_email_id:
+                    self._update_ingested_email(source_email_id, {"order_id": existing.data[0]["id"]})
                 return
         except Exception as e:
             logger.error(f"Error checking order duplication: {e}")
@@ -1826,6 +1998,12 @@ class ScoutAgent:
                 self.log_to_db("error", msg, {"platform_order_id": platform_order_id, "listing_title": it.listing_title})
                 raise ValueError(msg)
 
+        # Coverage verification: prove the extraction accounts for the whole email
+        # BEFORE the order row exists — hold-level failures insert the order as
+        # 'hold' from the start, so the Foreman daemon can never race a post-insert
+        # status flip and dispatch an incompletely-ingested order.
+        hold_problems, warn_problems = verify_extraction_coverage(order_details, cleaned_body)
+
         # Resolve which of our shops this order belongs to, from the seller shop name the
         # LLM extracted. No match → shop_id stays None ("Unassigned"), surfaced in the UI.
         shop = resolve_shop(getattr(order_details, "shop_name", None))
@@ -1845,12 +2023,16 @@ class ScoutAgent:
                 "customer_name": order_details.customer_name,
                 "order_subtotal": order_details.order_subtotal,
                 "order_currency": order_details.order_currency,
-                "overall_order_status": "pending",
+                "overall_order_status": "hold" if hold_problems else "pending",
+                "hold_reason": "; ".join(hold_problems) if hold_problems else None,
+                "source_email_id": source_email_id,
                 "shop_id": shop_id
             }
             order_response = self.supabase.table("orders").insert(order_record).execute()
             order_id = order_response.data[0]['id']
             logger.info(f"Inserted order {order_details.platform_order_id} with ID: {order_id}")
+            if source_email_id:
+                self._update_ingested_email(source_email_id, {"order_id": order_id})
         except Exception as e:
             # A UNIQUE(platform_order_id) violation means this order was ingested by a
             # concurrent/redelivered scan between our pre-check and this insert — benign,
@@ -2013,7 +2195,11 @@ class ScoutAgent:
 
         if has_matching_failure or insert_incomplete:
             try:
-                self.supabase.table("orders").update({"overall_order_status": "hold"}).eq("id", order_id).execute()
+                reasons = [r for r in hold_problems + [missing_item_details.strip('; ') or None] if r]
+                self.supabase.table("orders").update({
+                    "overall_order_status": "hold",
+                    "hold_reason": "; ".join(reasons) if reasons else "Item matching/insert failure"
+                }).eq("id", order_id).execute()
             except Exception as e:
                 logger.error(f"Failed to set order status to hold: {e}")
 
@@ -2034,11 +2220,32 @@ class ScoutAgent:
                 "fuzzy_items": fuzzy_items,
             })
 
+        # Surface verification outcomes. Warn-level problems alert but don't block;
+        # hold-level problems already inserted the order as 'hold' — announce and
+        # bail before dispatch.
+        if warn_problems:
+            warn_msg = (f"⚠️ EXTRACTION COVERAGE WARNING — Order {order_details.platform_order_id}: "
+                        + " | ".join(warn_problems))
+            logger.warning(warn_msg)
+            self.log_to_db("warning", warn_msg, {"platform_order_id": order_details.platform_order_id,
+                                                  "coverage_warnings": warn_problems})
+        if hold_problems:
+            hold_msg = (f"🛑 ORDER HELD — EMAIL NOT FULLY INGESTED 🛑 Order {order_details.platform_order_id} "
+                        f"failed extraction verification and will NOT print until reviewed: "
+                        + " | ".join(hold_problems))
+            logger.warning(hold_msg)
+            self.log_to_db("warning", hold_msg, {"platform_order_id": order_details.platform_order_id,
+                                                  "coverage_holds": hold_problems,
+                                                  "source_email_id": source_email_id})
+
         if has_matching_failure:
             raise OrderHeldForReview(f"Order {order_details.platform_order_id} ingested with missing items: {missing_item_details}")
         if insert_incomplete:
             raise OrderHeldForReview(f"Order {order_details.platform_order_id} ingested with only "
                              f"{successful_items}/{expected_items} items inserted — set to hold.")
+        if hold_problems:
+            raise OrderHeldForReview(f"Order {order_details.platform_order_id} held: extraction coverage "
+                             f"verification failed ({'; '.join(hold_problems)}).")
 
         if successful_items > 0:
             self.log_to_db("info", f"Successfully ingested order {order_details.platform_order_id} with {successful_items} items.", {"platform_order_id": order_details.platform_order_id})
@@ -2064,8 +2271,15 @@ class ScoutAgent:
             if emails:
                 for email in emails:
                     logger.info(f"Processing order email: {email['subject']}")
+                    # Lossless capture FIRST: the raw email is in the DB before any
+                    # LLM sees it, so no downstream failure can lose order content.
+                    cleaned_body = self._clean_text_for_llm(email['body']) if email['body'] else ''
+                    email_row_id = self._store_ingested_email(email, cleaned_body)
+
                     if not email['body']:
                         logger.warning(f"Email {email['id']} has no readable body text. Marking read to skip.")
+                        self._update_ingested_email(email_row_id, {
+                            "parse_status": "failed", "parse_error": "No readable body text extracted from MIME parts."})
                         self.mark_email_as_read(email['id'])
                         continue
 
@@ -2078,25 +2292,35 @@ class ScoutAgent:
                         )
                     except TransientLLMError:
                         logger.warning(f"Transient Gemini error for email {email['id']} — leaving unread for next cycle.")
-                        continue
+                        continue  # row stays 'pending' — retried next cycle
 
-                    if order_details:
+                    if order_details and not order_details.is_order_email:
+                        self._update_ingested_email(email_row_id, {"parse_status": "not_order"})
+                        self.mark_email_as_read(email['id'])
+                    elif order_details:
                         try:
-                            self.process_order(order_details)
+                            self.process_order(order_details, cleaned_body=cleaned_body,
+                                               source_email_id=email_row_id)
                         except OrderHeldForReview as e:
                             # Order row was created (as 'hold') — safe to mark processed;
                             # re-scanning won't change the outcome.
                             logger.warning(f"Order {order_details.platform_order_id} held for review: {e}")
+                            self._update_ingested_email(email_row_id, {"parse_status": "held"})
                             self.mark_email_as_read(email['id'])
                         except Exception as e:
                             # Unexpected failure — we don't know the order was safely
                             # recorded, so leave the email unread for retry rather than
                             # silently marking it processed.
                             logger.error(f"Error processing order {order_details.platform_order_id}: {e}")
+                            self._update_ingested_email(email_row_id, {
+                                "parse_status": "failed", "parse_error": str(e)[:2000]})
                         else:
+                            self._update_ingested_email(email_row_id, {"parse_status": "parsed"})
                             self.mark_email_as_read(email['id'])
                     else:
                         logger.error(f"Permanent parse failure for email {email['id']}. Marking read to skip.")
+                        self._update_ingested_email(email_row_id, {
+                            "parse_status": "failed", "parse_error": "Permanent LLM parse failure (see system_logs)."})
                         self.mark_email_as_read(email['id'])
             else:
                 logger.info("No new order emails found.")
@@ -2486,8 +2710,63 @@ def parse_packing_list(text):
         print(f"[-] Error parsing packing list with Gemini: {e}")
         return []
 
+def reconcile_packing_list_order(pl_order: dict):
+    """Pack-time safety net: the packing list is an independent document listing what
+    each order actually contains — compare it against the order_items rows Scout
+    ingested. A quantity mismatch means the DB order is incomplete (or over-full):
+    hold the order and alert, BEFORE anything gets packed and shipped. Never raises —
+    reconciliation must not break waybill processing."""
+    try:
+        pid = (pl_order.get('platform_order_id') or '').strip()
+        pl_items = pl_order.get('items') or []
+        if not pid or not pl_items:
+            return
+        res = supabase.table('orders').select('id, overall_order_status, hold_reason') \
+            .eq('platform_order_id', pid).limit(1).execute()
+        if not res.data:
+            msg = f"Packing list references order {pid} which does not exist in the database — was its email ever ingested?"
+            print(f"[!] {msg}")
+            log_system_waybill("warning", msg, {"platform_order_id": pid})
+            return
+        order = res.data[0]
+        db_items = supabase.table('order_items').select('purchased_quantity, variant_id, variant_sku') \
+            .eq('order_id', order['id']).execute().data or []
+
+        pl_qty = sum(int(i.get('quantity') or 0) for i in pl_items)
+        db_qty = sum(int(i.get('purchased_quantity') or 0) for i in db_items)
+
+        if pl_qty != db_qty:
+            reason = (f"Packing list shows {pl_qty} unit(s) across {len(pl_items)} item(s) but the ingested "
+                      f"order has {db_qty} unit(s) across {len(db_items)} item(s).")
+            msg = (f"🛑 PACKING LIST MISMATCH 🛑 Order {pid}: {reason} "
+                   f"Do NOT pack this order until the missing items are resolved.")
+            print(f"[!] {msg}")
+            log_system_waybill("warning", msg, {"platform_order_id": pid,
+                                                 "packing_list_items": pl_items,
+                                                 "db_quantity": db_qty, "pl_quantity": pl_qty})
+            if order.get('overall_order_status') in ('pending', 'printing'):
+                prior = (order.get('hold_reason') or '').strip()
+                supabase.table('orders').update({
+                    "overall_order_status": "hold",
+                    "hold_reason": (prior + '; ' if prior else '') + reason
+                }).eq('id', order['id']).execute()
+        elif len(pl_items) != len(db_items):
+            # Same total units but different line counts — usually legitimate variant
+            # merging on ingest, so just flag it for a glance.
+            msg = (f"Packing list for order {pid} lists {len(pl_items)} line item(s) but the DB has "
+                   f"{len(db_items)} (same total quantity {pl_qty}) — likely variant merging; verify at pack time.")
+            print(f"[*] {msg}")
+            log_system_waybill("warning", msg, {"platform_order_id": pid, "packing_list_items": pl_items})
+        else:
+            print(f"[+] Packing list reconciled OK for order {pid}: {pl_qty} unit(s), {len(pl_items)} item(s).")
+    except Exception as e:
+        print(f"[-] Packing list reconciliation error for order {pl_order.get('platform_order_id')}: {e}")
+        log_system_waybill("error", f"Packing list reconciliation failed: {e}",
+                           {"platform_order_id": pl_order.get('platform_order_id')})
+
+
 def process_ingestion(service, waybill_pdf_path, packing_list_pdf_path=None, waybill_file_id=None, packing_list_file_id=None):
-    print("[*] Processing waybills. Packing list verification is disabled.")
+    print("[*] Processing waybills with packing-list reconciliation.")
     waybill_pages = []
     
     if packing_list_pdf_path is None:
@@ -2529,9 +2808,23 @@ def process_ingestion(service, waybill_pdf_path, packing_list_pdf_path=None, way
                 else:
                     print(f"[-] Warning: No Order ID identified on page {i+1}.")
             else:
-                print(f" - Page {i+1} is classified as packing list/other. Skipping verification.")
+                print(f" - Page {i+1} is packing list/other — parsing for reconciliation...")
+                for pl_order in parse_packing_list(text):
+                    reconcile_packing_list_order(pl_order)
     else:
-        print("[*] Processing separate waybill and packing list PDFs. Ignoring packing list.")
+        print("[*] Processing separate waybill and packing list PDFs.")
+        try:
+            pl_reader = PdfReader(packing_list_pdf_path)
+            print(f"[*] Reconciling {len(pl_reader.pages)} packing list page(s) against ingested orders...")
+            for i, pl_page in enumerate(pl_reader.pages):
+                pl_text = pl_page.extract_text() or ""
+                if not pl_text.strip():
+                    continue
+                for pl_order in parse_packing_list(pl_text):
+                    reconcile_packing_list_order(pl_order)
+        except Exception as e:
+            print(f"[-] Failed to parse packing list PDF for reconciliation: {e}")
+            log_system_waybill("error", f"Packing list PDF could not be parsed for reconciliation: {e}", {})
         wb_reader = PdfReader(waybill_pdf_path)
         print(f"[*] Total waybill pages to process: {len(wb_reader.pages)}")
         for i, page in enumerate(wb_reader.pages):
@@ -4093,14 +4386,65 @@ def scout_ingest_email(req: IngestEmailRequest):
     try:
         agent = ScoutAgent()
         order_details = agent.parse_email_with_llm(req.email_body)
-        if not order_details:
+        if not order_details or not order_details.is_order_email:
             raise HTTPException(status_code=422, detail="Failed to parse order details from email body.")
-        agent.process_order(order_details)
+        agent.process_order(order_details, cleaned_body=agent._clean_text_for_llm(req.email_body))
         return {"status": "Order ingested successfully", "platform_order_id": order_details.platform_order_id}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"scout/ingest-email error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ReparseEmailRequest(BaseModel):
+    ingested_email_id: Optional[str] = None
+    platform_order_id: Optional[str] = None
+
+@app.post("/scout/reparse-email", dependencies=[Depends(require_api_key)])
+def scout_reparse_email(req: ReparseEmailRequest):
+    """Re-runs parsing + coverage verification from a stored raw email (by
+    ingested_emails.id or by the platform_order_id of its linked order).
+    process_order dedups on platform_order_id, so to re-ingest a badly parsed
+    order, delete the broken order row first, then call this."""
+    if not req.ingested_email_id and not req.platform_order_id:
+        raise HTTPException(status_code=400, detail="Provide ingested_email_id or platform_order_id.")
+    try:
+        if req.ingested_email_id:
+            row_res = supabase.table("ingested_emails").select("*").eq("id", req.ingested_email_id).limit(1).execute()
+        else:
+            o_res = supabase.table("orders").select("id").eq("platform_order_id", req.platform_order_id).limit(1).execute()
+            if not o_res.data:
+                raise HTTPException(status_code=404, detail=f"No order found for {req.platform_order_id}.")
+            row_res = supabase.table("ingested_emails").select("*").eq("order_id", o_res.data[0]["id"]) \
+                .order("created_at", desc=True).limit(1).execute()
+        if not row_res.data:
+            raise HTTPException(status_code=404, detail="No stored email found for that reference.")
+        row = row_res.data[0]
+
+        agent = ScoutAgent()
+        order_details = agent.parse_email_with_llm(
+            row.get("raw_body") or "", subject=row.get("subject") or "", sender=row.get("sender") or "")
+        if not order_details or not order_details.is_order_email:
+            agent._update_ingested_email(row["id"], {"parse_status": "failed",
+                                                     "parse_error": "Reparse: LLM did not return an order."})
+            raise HTTPException(status_code=422, detail="Reparse failed: LLM did not return an order.")
+
+        cleaned_body = agent._clean_text_for_llm(row.get("raw_body") or "")
+        try:
+            agent.process_order(order_details, cleaned_body=cleaned_body, source_email_id=row["id"])
+            agent._update_ingested_email(row["id"], {"parse_status": "parsed", "parse_error": None})
+            status = "parsed"
+        except OrderHeldForReview as e:
+            agent._update_ingested_email(row["id"], {"parse_status": "held"})
+            status = f"held: {e}"
+        return {"status": status,
+                "platform_order_id": order_details.platform_order_id,
+                "items_extracted": len(order_details.items or []),
+                "stated_item_count": order_details.stated_item_count}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"scout/reparse-email error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 class ForemanDispatchRequest(BaseModel):
