@@ -496,10 +496,21 @@ async function initShopSwitcher() {
   sel.value = currentShop;
 
   // Keep the custom pill label in sync with the (invisible) native select.
+  const SHOP_DOT_COLORS = ["#3ecf8e", "#38bdf8", "#7ea6e8", "#ffaa6b", "#ff8c00"];
   const syncShopLabel = () => {
     const label = document.getElementById("shop-switcher-label");
     if (label) label.textContent = sel.options[sel.selectedIndex]?.text || "All Shops";
-    sel.closest(".shop-pill")?.classList.toggle("scoped", sel.value !== "all");
+    const pill = sel.closest(".shop-pill");
+    pill?.classList.toggle("scoped", sel.value !== "all");
+    const dot = pill?.querySelector(".sc-dot");
+    if (dot) {
+      if (sel.value === "all") dot.style.background = "#7d8794";
+      else if (sel.value === "unassigned") dot.style.background = "#525c69";
+      else {
+        const idx = cachedShops.findIndex(s => s.id === sel.value);
+        dot.style.background = SHOP_DOT_COLORS[((idx % SHOP_DOT_COLORS.length) + SHOP_DOT_COLORS.length) % SHOP_DOT_COLORS.length];
+      }
+    }
   };
   syncShopLabel();
 
@@ -3476,16 +3487,19 @@ async function fetchAgentHeartbeats() {
       const textEl = document.getElementById(`${prefix}hb-orbot_service-text`);
       if (dotEl && textEl) {
         if (svcOnline) {
-          dotEl.className = (prefix === "waybill-") ? "w-1.5 h-1.5 rounded-full bg-success" : (prefix === "header-") ? "w-2.5 h-2.5 rounded-full bg-success" : "status-light-online";
+          dotEl.className = (prefix === "waybill-") ? "w-1.5 h-1.5 rounded-full bg-success" : (prefix === "header-") ? "d4-dot on" : "status-light-online";
           textEl.innerText = "Online";
-          textEl.style.color = "#10b981";
+          textEl.style.color = "#3ecf8e";
         } else {
-          dotEl.className = (prefix === "waybill-") ? "w-1.5 h-1.5 rounded-full bg-error" : (prefix === "header-") ? "w-2.5 h-2.5 rounded-full bg-error" : "status-light-offline";
+          dotEl.className = (prefix === "waybill-") ? "w-1.5 h-1.5 rounded-full bg-error" : (prefix === "header-") ? "d4-dot off" : "status-light-offline";
           textEl.innerText = "Offline";
           textEl.style.color = "#ff6666";
         }
       }
     });
+
+    // Logo core doubles as the service indicator: red ◆ when orbot_service is down.
+    document.querySelector(".d4-logo .core")?.classList.toggle("offline", !svcOnline);
 
     // --- Agents page cards ---
     const agentConfigs = [
@@ -5393,8 +5407,29 @@ function setupPrinterControls() {
   });
 }
 
+// Floating command dock: the dock buttons delegate to the existing (hidden-pane)
+// waybill control buttons so all disable/toast/refresh logic stays in one place.
+function setupDock() {
+  document.getElementById("dock-btn-scout")?.addEventListener("click", () => {
+    document.getElementById("waybill-ctrl-trigger-scout")?.click();
+  });
+  document.getElementById("dock-btn-foreman")?.addEventListener("click", () => {
+    document.getElementById("waybill-ctrl-trigger-foreman")?.click();
+  });
+  document.getElementById("dock-btn-waybills")?.addEventListener("click", () => {
+    navigateToTab("orders");
+    // Reveal the waybill tools drawer if it is collapsed.
+    const body = document.querySelector(".waybill-tools-body");
+    if (body?.classList.contains("hidden")) {
+      document.getElementById("waybill-tools-toggle")?.click();
+    }
+    document.getElementById("waybill-upload-zone")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   setupTabs();
+  setupDock();
   setupSettings();
   setupLogsFiltering();
   setupCatalogSearch();

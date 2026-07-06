@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.14.0">
+  <link rel="stylesheet" href="index.css?v=1.15.0">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -178,46 +178,7 @@
       display: block !important;
     }
 
-    /* Sidebar Navigation active styling map */
-    .tab-btn {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 1rem;
-      border-radius: 9999px; /* unified pill shapes */
-      text-align: left;
-      transition: all 0.20s ease;
-      border-left-width: 2px;
-      border-color: transparent;
-      color: #b9cacb;
-      opacity: 0.75;
-    }
-
-    .tab-btn:hover {
-      background-color: rgba(255, 255, 255, 0.04);
-      opacity: 1;
-    }
-
-    .tab-btn.active {
-      background: linear-gradient(135deg, rgba(62, 207, 142,0.18), rgba(126, 166, 232,0.12)) !important;
-      color: #f2f3f7 !important;
-      box-shadow: 0 4px 16px rgba(62, 207, 142, 0.12) !important;
-      border-color: rgba(62, 207, 142, 0.3) !important;
-      border-width: 1px !important;
-      border-style: solid !important;
-      border-radius: 9999px !important;
-      opacity: 1;
-    }
-
-    .tab-btn .material-symbols-outlined {
-      font-variation-settings: "FILL" 0;
-    }
-
-    .tab-btn.active .material-symbols-outlined {
-      font-variation-settings: "FILL" 1;
-      color: #7ea6e8;
-    }
+    /* Nav pill styling lives in index.css (.tab-btn, Draft 4) */
 
     /* Override input borders & focus states dynamically */
     input[type="text"], input[type="password"], textarea, select {
@@ -459,21 +420,18 @@
 </head>
 <body class="bg-background text-on-surface font-body-md antialiased overflow-hidden w-full h-screen flex flex-col selection:bg-primary-container/30 selection:text-primary">
 
-  <!-- TopAppBar -->
-  <header class="fixed top-0 left-0 w-full z-50 flex items-center gap-4 px-6 h-16 bg-surface/90 backdrop-blur-md border-b border-outline-variant/20">
-    <div class="flex items-center gap-2.5 flex-shrink-0">
-      <div class="w-8 h-8 rounded-[10px] bg-primary/10 border border-primary/40 flex items-center justify-center text-primary flex-shrink-0" style="box-shadow:0 0 18px var(--primary-glow)">
-        <span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">bolt</span>
-      </div>
-      <div class="leading-none hidden sm:block">
-        <h1 class="font-headline-sm text-headline-sm font-bold text-on-surface tracking-tight leading-none">Orbot</h1>
-        <p class="font-data-mono text-[8px] tracking-[0.22em] text-outline uppercase leading-none mt-1">V2.0 Live Telemetry</p>
+  <!-- TopAppBar (Draft 4) -->
+  <header class="d4-hdr">
+    <div class="d4-logo">
+      <div class="core">◆</div>
+      <div>
+        <h1>ORBOT</h1>
+        <div class="sub">PRINT OPS · MISSION CONTROL</div>
       </div>
     </div>
 
-    <!-- Center pill nav -->
-    <div class="hidden lg:flex flex-1 justify-center min-w-0 overflow-hidden">
-      <nav id="nav-tabs" class="flex items-center gap-0.5 p-1 rounded-xl bg-surface-container border border-outline-variant/20 overflow-x-auto max-w-full">
+    <div class="d4-navwrap">
+      <nav id="nav-tabs">
         <button class="tab-btn active" data-tab="overview">Overview</button>
         <button class="tab-btn" data-tab="orders">Orders<span class="nav-badge" id="nav-badge-orders"></span></button>
         <button class="tab-btn" data-tab="operations">Printers</button>
@@ -484,42 +442,37 @@
       </nav>
     </div>
 
-    <div class="flex items-center gap-3 flex-shrink-0">
-      <!-- Command palette trigger (kept functional, condensed to a pill button) -->
-      <button id="global-search-input" class="hidden md:flex items-center gap-1.5 bg-surface-container-highest/50 border border-outline-variant/30 text-on-surface-variant hover:text-on-surface rounded-full pl-3 pr-2 py-1.5 transition-all font-body-md cursor-pointer" type="button" title="Search anything (⌘K)">
-        <span class="material-symbols-outlined text-[16px]">search</span>
+    <div class="d4-right">
+      <button id="global-search-input" class="d4-search" type="button" title="Search anything (⌘K)">
+        <span class="material-symbols-outlined">search</span>
         <kbd class="cp-kbd pointer-events-none">⌘K</kbd>
       </button>
 
-      <div class="hidden xl:flex items-center gap-1.5 bg-black/25 px-3 py-1.5 rounded-full border border-outline-variant/10 font-medium select-none" title="Orbot Unified Service Status">
-        <div class="w-2 h-2 rounded-full bg-error" id="header-hb-orbot_service-dot"></div>
-        <span class="text-[9px] font-bold font-data-mono text-outline uppercase tracking-wider">Service: <span id="header-hb-orbot_service-text" class="text-[#ff6666]">Offline</span></span>
+      <div class="d4-svc" title="Orbot Unified Service Status">
+        <div class="d4-dot off" id="header-hb-orbot_service-dot"></div>
+        <span class="lab">SVC · <span id="header-hb-orbot_service-text">Offline</span></span>
       </div>
 
-      <!-- Shop Scope Switcher: custom two-line pill with the native select
+      <!-- Shop Scope Switcher: Draft 4 scope pill with the native select
            layered invisibly on top (keeps the OS dropdown + all JS wiring). -->
-      <div class="shop-pill hidden md:flex" title="Active shop scope">
-        <span class="material-symbols-outlined sp-ic">storefront</span>
-        <div class="sp-text">
-          <span class="sp-cap">Shop</span>
-          <span class="sp-val" id="shop-switcher-label">All Shops</span>
-        </div>
-        <span class="material-symbols-outlined sp-chev">expand_more</span>
+      <div class="shop-pill" title="Active shop scope">
+        <i class="sc-dot"></i>
+        <span class="sc-val" id="shop-switcher-label">All Shops</span>
+        <span class="sc-car">▾</span>
         <select id="shop-switcher" class="sp-native">
           <option value="all">All Shops</option>
         </select>
       </div>
 
-      <!-- System Clock & Date -->
-      <div class="hidden md:flex flex-col justify-center select-none font-data-mono text-outline leading-none text-right">
-        <span class="text-xs font-bold text-on-surface" id="system-clock">--:--:-- --</span>
-        <span class="text-[9px] uppercase tracking-wider mt-1" id="system-date">—</span>
+      <div class="d4-clock">
+        <span class="tt" id="system-clock">--:--:-- --</span>
+        <span class="dd" id="system-date">—</span>
       </div>
 
-      <span class="sp-dispatch-indicator hidden items-center gap-1 px-2 py-1 rounded-full bg-warning/10 border border-warning/30 text-warning text-xs font-label-caps" title="SimplyPrint dispatch is disabled">
-        <span class="material-symbols-outlined text-sm">wifi_off</span> DRY RUN
+      <span class="sp-dispatch-indicator hidden" title="SimplyPrint dispatch is disabled">
+        <span class="material-symbols-outlined">wifi_off</span> DRY RUN
       </span>
-      <button class="p-2 rounded-full hover:bg-primary/10 hover:text-primary text-on-surface-variant transition-all duration-300 active:scale-95 flex items-center justify-center" id="settings-open-btn">
+      <button class="d4-iconbtn" id="settings-open-btn" title="Settings">
         <span class="material-symbols-outlined">settings</span>
       </button>
     </div>
@@ -528,7 +481,7 @@
   <!-- Main Layout Container -->
   <div class="flex pt-16 h-screen w-full">
     <!-- Main Content Canvas -->
-    <main class="flex-1 p-gutter overflow-y-auto relative bg-background h-[calc(100vh-64px)]">
+    <main class="flex-1 p-gutter overflow-y-auto relative bg-background h-[calc(100vh-64px)]" style="padding-bottom:110px">
       
       <!-- 0. Overview Home Pane -->
       <section class="tab-content active w-full max-w-[1440px] mx-auto space-y-5" id="pane-overview">
@@ -2251,6 +2204,19 @@
     </div>
   </div>
 
-  <script src="app.js?v=1.14.0"></script>
+  <!-- Floating command dock (Draft 4) -->
+  <div class="d4-dock">
+    <button class="ghost" id="dock-btn-scout" title="Scan Gmail for new orders">
+      <span class="material-symbols-outlined">search</span> Run Scout
+    </button>
+    <button class="ghost" id="dock-btn-waybills" title="Upload waybill PDFs">
+      <span class="material-symbols-outlined">cloud_upload</span> Upload Waybills
+    </button>
+    <button class="pri" id="dock-btn-foreman" title="Dispatch pending items to printers">
+      <span class="material-symbols-outlined">robot</span> Run Foreman
+    </button>
+  </div>
+
+  <script src="app.js?v=1.15.0"></script>
 </body>
 </html>
