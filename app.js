@@ -2268,12 +2268,23 @@ async function fetchAndRenderCatalog() {
 
   try {
     if (cachedVariants.length === 0) {
-      const { data, error } = await supabaseClient
-        .from("variants")
-        .select("*, products(*), print_files(*)");
-
-      if (error) throw error;
-      cachedVariants = data || [];
+      // Paginated via .range() — a plain unbounded .select() is silently
+      // truncated by the Supabase project's server-side Max Rows setting
+      // (default 1000) once the catalog grows past it, dropping whatever
+      // sorts after the cutoff with no error. See [[project_orbot_v2]] bug #13.
+      const PAGE_SIZE = 1000;
+      let all = [];
+      for (let page = 0; ; page++) {
+        const { data, error } = await supabaseClient
+          .from("variants")
+          .select("*, products(*), print_files(*)")
+          .order("id", { ascending: true })
+          .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+        if (error) throw error;
+        all = all.concat(data || []);
+        if (!data || data.length < PAGE_SIZE || page >= 49) break; // 49 => 50k-row safety cap
+      }
+      cachedVariants = all;
     }
 
     // Dynamic filters population
