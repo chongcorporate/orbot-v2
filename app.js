@@ -6271,27 +6271,43 @@ async function openAddOrderItemModal(orderId) {
   document.getElementById("add-order-item-qty").value = "1";
 
   const sel = document.getElementById("add-order-item-variant-select");
-  if (sel.options.length <= 1) {
-    let variants = cachedVariants;
-    if (variants.length === 0 && supabaseClient) {
-      const { data } = await supabaseClient
-        .from("variants")
-        .select("id, variant_sku, variant_name, variant_type, products(product_base_name)")
-        .order("variant_sku", { ascending: true });
-      variants = data || [];
-    }
-    variants.forEach(v => {
-      const opt = document.createElement("option");
-      opt.value = v.id;
-      opt.textContent = `${v.variant_sku} — ${v.variant_name || v.products?.product_base_name || ""}${v.variant_type ? ` (${v.variant_type})` : ""}`;
-      opt.dataset.search = `${v.variant_sku} ${v.variant_name || ""} ${v.products?.product_base_name || ""}`.toLowerCase();
-      opt.dataset.sku = v.variant_sku || "";
-      opt.dataset.name = v.variant_name || v.products?.product_base_name || "";
-      sel.appendChild(opt);
-    });
-  }
-  sel.value = "";
+  sel.querySelectorAll("option").forEach(o => { if (o.value) o.remove(); });
+  const loadingOpt = document.createElement("option");
+  loadingOpt.textContent = "Loading catalog…";
+  loadingOpt.disabled = true;
+  sel.appendChild(loadingOpt);
   modal.classList.add("active");
+
+  // Always hit the DB fresh here rather than trusting cachedVariants — that cache
+  // is populated once by the Products tab and never invalidated, so a product
+  // added/edited after that first load would silently never appear otherwise.
+  // High explicit limit guards against PostgREST's default 1000-row cap.
+  let variants = [];
+  try {
+    const { data, error } = await supabaseClient
+      .from("variants")
+      .select("id, variant_sku, variant_name, variant_type, products(product_base_name, brand_name, product_category)")
+      .order("variant_sku", { ascending: true })
+      .limit(10000);
+    if (error) throw error;
+    variants = data || [];
+  } catch (e) {
+    variants = cachedVariants;
+    showToast("Couldn't refresh catalog, showing last-known list: " + e.message, "warning");
+  }
+
+  loadingOpt.remove();
+  variants.forEach(v => {
+    const prod = v.products || {};
+    const opt = document.createElement("option");
+    opt.value = v.id;
+    opt.textContent = `${v.variant_sku} — ${v.variant_name || prod.product_base_name || ""}${v.variant_type ? ` (${v.variant_type})` : ""}`;
+    opt.dataset.search = `${v.variant_sku} ${v.variant_name || ""} ${prod.product_base_name || ""} ${prod.brand_name || ""} ${prod.product_category || ""}`.toLowerCase();
+    opt.dataset.sku = v.variant_sku || "";
+    opt.dataset.name = v.variant_name || prod.product_base_name || "";
+    sel.appendChild(opt);
+  });
+  sel.value = "";
 }
 
 async function confirmAddOrderItem() {
