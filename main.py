@@ -279,6 +279,29 @@ def log_gemini_usage(agent_name: str, model_name: str, response):
     except Exception as e:
         print(f"[*] Failed to log Gemini usage: {e}")
 
+def gemini_generate(agent_name: str, contents, config: Optional[dict] = None,
+                    models: tuple = ('gemini-2.5-flash', 'gemini-2.5-pro')):
+    """Calls Gemini with a model fallback chain — transient errors (timeout/503/429) move
+    to the next model — logging token usage per call. Raises the last error if every model
+    fails. Scout keeps its own chain: its retry semantics differ (TransientLLMError must
+    leave the source email unread for the next scan)."""
+    last_err = None
+    for model in models:
+        try:
+            kwargs = {'config': config} if config else {}
+            response = ai_client.models.generate_content(model=model, contents=contents, **kwargs)
+            log_gemini_usage(agent_name, model, response)
+            return response
+        except Exception as e:
+            last_err = e
+            err_str, err_type = str(e), type(e).__name__
+            is_transient = ('Timeout' in err_type or 'timeout' in err_str.lower() or '503' in err_str
+                            or 'UNAVAILABLE' in err_str or '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str)
+            if not is_transient:
+                break
+            logger.warning(f"[{agent_name}] {model} transient error ({err_type}) — trying next model.")
+    raise last_err
+
 def fetch_all_rows(table: str, columns: str = "*", page_size: int = 1000) -> list:
     """Fetches every row of a table, paginating past the Supabase server-side max-rows cap
     (default 1000): a plain .select() silently truncates once a table outgrows the cap,
@@ -757,7 +780,16 @@ def resolve_variant(supabase_client, listing_title: str, variation_name: Optiona
                 fuzzy_q = fuzzy_q.eq("products.shop_id", shop_id)
             fuzzy_listings = fuzzy_q.limit(5).execute()
             if fuzzy_listings.data:
-                best_fuzzy = fuzzy_listings.data[0]
+                candidates = fuzzy_listings.data
+                # Rank by actual title similarity — Postgres returns ILIKE matches in
+                # unspecified order, so data[0] was an arbitrary pick whenever several
+                # listings share the same first two words.
+                if fuzz and len(candidates) > 1:
+                    candidates = sorted(
+                        candidates,
+                        key=lambda l: fuzz.token_sort_ratio(listing_title, l["platform_listing_name"]),
+                        reverse=True)
+                best_fuzzy = candidates[0]
                 variations = supabase_client.table("listing_variations")\
                     .select(f"variant_id, platform_variation_name, normalized_variation_name, variants({_VARIANT_COLS})")\
                     .eq("listing_id", best_fuzzy["id"]).execute()
@@ -1646,10 +1678,19 @@ class ScoutAgent:
         self._lock_file = None
         self._held_thread_lock = False
 
-        # Initialize clients referencing globals
+        # Initialize clients referencing globals. Gmail auth is lazy (see gmail_service):
+        # several endpoints (/scout/ingest-order, /scout/reparse-email, /scout/ingest-email)
+        # construct a ScoutAgent for parsing/matching only, and a Gmail token hiccup must
+        # not take those Gmail-independent paths down with it.
         self.supabase = supabase
         self.ai_client = ai_client
-        self.gmail_service = self._authenticate_gmail()
+        self._gmail_service = None
+
+    @property
+    def gmail_service(self):
+        if self._gmail_service is None:
+            self._gmail_service = self._authenticate_gmail()
+        return self._gmail_service
 
     def _log_gemini_usage(self, model_name: str, response):
         log_gemini_usage(self.agent_name, model_name, response)
@@ -2646,7 +2687,10 @@ def download_file_from_url(service, url, dest_path):
             return False
 
 def get_or_create_folder(service, folder_name, parent_id=None):
-    query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    # Escape backslashes and single quotes for the Drive query language — an unescaped
+    # apostrophe in a product name (e.g. "Luke's Landspeeder") breaks the query.
+    safe_name = folder_name.replace("\\", "\\\\").replace("'", "\\'")
+    query = f"name = '{safe_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     if parent_id:
         query += f" and '{parent_id}' in parents"
     try:
@@ -2771,6 +2815,33 @@ def extract_shopee_order_id(text):
         return matches[0]
     return None
 
+def _extract_waybill_order_id(text: str) -> Optional[str]:
+    """Extracts the platform order ID from a waybill page: regex first, Gemini fallback.
+    Strips whitespace, and strips a leading alpha prefix only when the remainder is a pure
+    numeric Shopee-style ID (preserving Lazada IDs that legitimately start with letters)."""
+    order_id = extract_shopee_order_id(text)
+    if not order_id:
+        prompt = (
+            "Extract the platform/shipping Order ID (e.g. Shopee/Lazada order ID) from this shipping label text.\n"
+            "Return ONLY a JSON object: {\"order_id\": \"ID_STRING\"}. If no order ID is found, return {\"order_id\": null}.\n"
+            "Do not include any formatting other than raw JSON.\n"
+            f"Text:\n{text}"
+        )
+        try:
+            response = gemini_generate("Waybill Agent", prompt)
+            res_text = response.text.replace('```json', '').replace('```', '').strip()
+            order_id = json.loads(res_text).get('order_id')
+        except Exception as e:
+            print(f"[-] Gemini order-ID extraction failed: {e}")
+            order_id = None
+    if not order_id:
+        return None
+    order_id = "".join(order_id.split())
+    _stripped = re.sub(r'^[A-Za-z]+', '', order_id)
+    if _stripped and _stripped.isdigit():
+        order_id = _stripped
+    return order_id
+
 def classify_page_text(text):
     text_lower = text.lower()
     if "packing list" in text_lower:
@@ -2787,11 +2858,7 @@ def classify_document(text):
         f"Text:\n{text}"
     )
     try:
-        response = ai_client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
-        log_gemini_usage("Waybill Agent", "gemini-2.5-flash", response)
+        response = gemini_generate("Waybill Agent", prompt)
         res_text = response.text.replace('```json', '').replace('```', '').strip()
         data = json.loads(res_text)
         return data.get('class')
@@ -2807,16 +2874,11 @@ def parse_packing_list(text):
         "Text:\n" + text
     )
     try:
-        response = ai_client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config={
-                'response_mime_type': 'application/json',
-                'response_schema': PackingListDetails,
-                'temperature': 0.1
-            }
-        )
-        log_gemini_usage("Waybill Agent", "gemini-2.5-flash", response)
+        response = gemini_generate("Waybill Agent", prompt, config={
+            'response_mime_type': 'application/json',
+            'response_schema': PackingListDetails,
+            'temperature': 0.1
+        })
         res_text = response.text.strip()
         data = json.loads(res_text)
         orders = data.get('orders', [])
@@ -2902,33 +2964,18 @@ def process_ingestion(service, waybill_pdf_path, packing_list_pdf_path=None, way
             print(f" - Page {i+1}: Classified as: {doc_class}")
             
             if doc_class == 'waybill':
-                order_id = extract_shopee_order_id(text)
-                if not order_id:
-                    prompt = (
-                        "Extract the platform/shipping Order ID (e.g. Shopee/Lazada order ID) from this shipping label text.\n"
-                        "Return ONLY a JSON object: {\"order_id\": \"ID_STRING\"}. If no order ID is found, return {\"order_id\": null}.\n"
-                        "Do not include any formatting other than raw JSON.\n"
-                        f"Text:\n{text}"
-                    )
-                    try:
-                        response = ai_client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-                        log_gemini_usage("Waybill Agent", "gemini-2.5-flash", response)
-                        res_text = response.text.replace('```json', '').replace('```', '').strip()
-                        order_id = json.loads(res_text).get('order_id')
-                    except Exception as e:
-                        print(f"[-] Gemini extraction failed for page {i+1}: {e}")
-                        order_id = None
-                
+                order_id = _extract_waybill_order_id(text)
                 if order_id:
-                    order_id = "".join(order_id.split())
-                    # Only strip a leading alpha prefix when the remainder is a pure numeric
-                    # Shopee-style ID; preserve Lazada IDs that legitimately start with letters.
-                    _stripped = re.sub(r'^[A-Za-z]+', '', order_id)
-                    if _stripped and _stripped.isdigit():
-                        order_id = _stripped
                     waybill_pages.append((page, order_id))
                 else:
                     print(f"[-] Warning: No Order ID identified on page {i+1}.")
+            elif doc_class is None:
+                # Classification failed outright (Gemini error) — don't misroute the page
+                # into the packing-list parser; a waybill page routed there would silently
+                # drop out of the stitched batch.
+                msg = f"Waybill ingest: page {i+1} could not be classified — skipped. Re-upload to retry."
+                print(f"[-] {msg}")
+                log_system_waybill("warning", msg)
             else:
                 print(f" - Page {i+1} is packing list/other — parsing for reconciliation...")
                 for pl_order in parse_packing_list(text):
@@ -2951,28 +2998,8 @@ def process_ingestion(service, waybill_pdf_path, packing_list_pdf_path=None, way
         print(f"[*] Total waybill pages to process: {len(wb_reader.pages)}")
         for i, page in enumerate(wb_reader.pages):
             text = page.extract_text() or ""
-            order_id = extract_shopee_order_id(text)
-            if not order_id:
-                prompt = (
-                    "Extract the platform/shipping Order ID (e.g. Shopee/Lazada order ID) from this shipping label text.\n"
-                    "Return ONLY a JSON object: {\"order_id\": \"ID_STRING\"}. If no order ID is found, return {\"order_id\": null}.\n"
-                    "Do not include any formatting other than raw JSON.\n"
-                    f"Text:\n{text}"
-                )
-                try:
-                    response = ai_client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-                    log_gemini_usage("Waybill Agent", "gemini-2.5-flash", response)
-                    res_text = response.text.replace('```json', '').replace('```', '').strip()
-                    order_id = json.loads(res_text).get('order_id')
-                except:
-                    order_id = None
+            order_id = _extract_waybill_order_id(text)
             if order_id:
-                order_id = "".join(order_id.split())
-                # Only strip a leading alpha prefix when the remainder is a pure numeric
-                # Shopee-style ID; preserve Lazada IDs that legitimately start with letters.
-                _stripped = re.sub(r'^[A-Za-z]+', '', order_id)
-                if _stripped and _stripped.isdigit():
-                    order_id = _stripped
                 waybill_pages.append((page, order_id))
             else:
                 print(f"[-] Warning: No Order ID identified on page {i+1}.")
@@ -3307,7 +3334,7 @@ def sync_simplyprint_printers_and_queue(printers_data, queue_data):
                 "autoprint": autoprint,
                 "autoprint_current_jobs": autoprint_current_jobs,
                 "autoprint_max_jobs": autoprint_max_jobs,
-                "updated_at": datetime.now().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }
             supabase.table('simplyprint_printers').upsert(printer_row).execute()
             active_ids.append(p_id)
@@ -3332,7 +3359,7 @@ def sync_simplyprint_printers_and_queue(printers_data, queue_data):
                 "name": q_item.get("filename") or q_item.get("name", "Unknown"),
                 "position": idx + 1,
                 "estimate_seconds": duration_seconds,
-                "updated_at": datetime.now().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }
             supabase.table('simplyprint_queue').upsert(queue_row).execute()
             active_queue_ids.append(q_id)
@@ -3461,7 +3488,7 @@ def sync_simplyprint_jobs():
             if sp_job_id in active_printer_jobs:
                 p_job = active_printer_jobs[sp_job_id]
                 eta_time = time.time() + p_job["remaining_seconds"]
-                eta_iso = datetime.fromtimestamp(eta_time).isoformat()
+                eta_iso = datetime.fromtimestamp(eta_time, tz=timezone.utc).isoformat()
                 supabase.table('print_jobs').update({
                     'job_execution_status': 'printing',
                     'printer_name': p_job["printer_name"],
@@ -3474,7 +3501,7 @@ def sync_simplyprint_jobs():
             elif sp_job_id in queued_jobs:
                 q_job = queued_jobs[sp_job_id]
                 eta_time = time.time() + q_job["eta_seconds"]
-                eta_iso = datetime.fromtimestamp(eta_time).isoformat()
+                eta_iso = datetime.fromtimestamp(eta_time, tz=timezone.utc).isoformat()
                 supabase.table('print_jobs').update({
                     'job_execution_status': 'pending',
                     'printer_name': None,
@@ -3489,7 +3516,7 @@ def sync_simplyprint_jobs():
                 h_status = h_job.get("status")
                 new_status = 'completed' if h_status == 'completed' else 'failed'
                 percent = 100 if new_status == 'completed' else 0
-                end_date = h_job.get("endDate") or datetime.now().isoformat()
+                end_date = h_job.get("endDate") or datetime.now(timezone.utc).isoformat()
                 supabase.table('print_jobs').update({
                     'job_execution_status': new_status,
                     'queue_position': None,
@@ -3507,7 +3534,7 @@ def sync_simplyprint_jobs():
                 supabase.table('print_jobs').update({
                     'job_execution_status': 'completed',
                     'percent_complete': 100,
-                    'estimated_finish_time': datetime.now().isoformat()
+                    'estimated_finish_time': datetime.now(timezone.utc).isoformat()
                 }).eq('id', job_db_id).execute()
                 check_and_update_item_completion(job.get("order_item_id"))
                 print(f"[?] Job {sp_job_id} not found in active/queue/history. Marking completed as fallback.")
@@ -3527,8 +3554,8 @@ def run_retention_cleanup():
     
     print("[*] Running daily data retention cleanup...")
     try:
-        cutoff_90 = (datetime.utcnow() - timedelta(days=90)).isoformat()
-        cutoff_60 = (datetime.utcnow() - timedelta(days=60)).isoformat()
+        cutoff_90 = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+        cutoff_60 = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
         
         wj = supabase.table('waybill_jobs').delete().eq('status', 'completed').lt('updated_at', cutoff_90).execute()
         print(f"[+] Retention: removed {len(wj.data or [])} completed waybill_jobs older than 90d")
@@ -3586,7 +3613,7 @@ async def run_waybill_daemon_async():
             await asyncio.to_thread(
                 supabase.table('agent_heartbeats').upsert({
                     'agent_name': 'orbot_service',
-                    'last_heartbeat': datetime.now().isoformat()
+                    'last_heartbeat': datetime.now(timezone.utc).isoformat()
                 }).execute
             )
         except Exception as e:
@@ -3661,7 +3688,7 @@ async def run_waybill_daemon_async():
                         await asyncio.to_thread(
                             supabase.table('agent_heartbeats').upsert({
                                 'agent_name': 'orbot_service',
-                                'last_heartbeat': datetime.now().isoformat()
+                                'last_heartbeat': datetime.now(timezone.utc).isoformat()
                             }).execute
                         )
                         print("[+] Scout Gmail scan completed successfully.")
@@ -3672,7 +3699,7 @@ async def run_waybill_daemon_async():
                         await asyncio.to_thread(
                             supabase.table('agent_heartbeats').upsert({
                                 'agent_name': 'orbot_service',
-                                'last_heartbeat': datetime.now().isoformat()
+                                'last_heartbeat': datetime.now(timezone.utc).isoformat()
                             }).execute
                         )
                         print("[+] SimplyPrint IDs sync completed successfully.")
@@ -3802,7 +3829,7 @@ async def run_scout_periodic_async():
             await asyncio.to_thread(
                 supabase.table('agent_heartbeats').upsert({
                     'agent_name': 'scout',
-                    'last_heartbeat': datetime.now().isoformat()
+                    'last_heartbeat': datetime.now(timezone.utc).isoformat()
                 }).execute
             )
         except Exception as e:
@@ -3822,7 +3849,7 @@ async def run_gmail_watch_renewal_async():
                 await asyncio.to_thread(
                     supabase.table('agent_heartbeats').upsert({
                         'agent_name': 'scout',
-                        'last_heartbeat': datetime.now().isoformat()
+                        'last_heartbeat': datetime.now(timezone.utc).isoformat()
                     }).execute
                 )
         except Exception as e:
@@ -3846,7 +3873,7 @@ async def run_scout_backstop_async():
             await asyncio.to_thread(
                 supabase.table('agent_heartbeats').upsert({
                     'agent_name': 'scout',
-                    'last_heartbeat': datetime.now().isoformat()
+                    'last_heartbeat': datetime.now(timezone.utc).isoformat()
                 }).execute
             )
         except Exception as e:
@@ -4120,7 +4147,7 @@ def _run_foreman_dispatch_locked(dry_run: bool = False) -> dict:
             if remaining_to_print == 0:
                 supabase.table('order_items').update({
                     'item_print_status': 'completed',
-                    'sent_to_print_timestamp': datetime.now().isoformat()
+                    'sent_to_print_timestamp': datetime.now(timezone.utc).isoformat()
                 }).eq('id', item['id']).execute()
                 check_overall_order_status(item['order_id'])
                 total_fulfilled_from_stock += fulfilled_from_stock
@@ -4187,7 +4214,7 @@ def _run_foreman_dispatch_locked(dry_run: bool = False) -> dict:
 
             supabase.table('order_items').update({
                 'item_print_status': 'printing',
-                'sent_to_print_timestamp': datetime.now().isoformat()
+                'sent_to_print_timestamp': datetime.now(timezone.utc).isoformat()
             }).eq('id', item['id']).execute()
             check_overall_order_status(item['order_id'])
             processed_item_ids.append(item['id'])
@@ -4404,7 +4431,7 @@ def set_sp_dispatch(body: SpDispatchRequest):
     supabase.table("app_settings").upsert({
         "key": "sp_dispatch_enabled",
         "value": "true" if body.enabled else "false",
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }).execute()
     return {"status": "ok", "sp_dispatch_enabled": body.enabled}
 
@@ -4454,7 +4481,7 @@ async def gmail_notifications(request: Request, background_tasks: BackgroundTask
 def scout_ingest_order(order: dict):
     """Manually ingests an order payload using Scout matching and database ingestion logic."""
     try:
-        order_details = OrderDetails.parse_obj(order)
+        order_details = OrderDetails.model_validate(order)
         agent = ScoutAgent()
         agent.process_order(order_details)
         return {
