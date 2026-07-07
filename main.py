@@ -1838,12 +1838,26 @@ class ScoutAgent:
         elif 'lazada' in s:
             result['sales_platform'] = 'Lazada'
 
-        # Order ID: 14-20 digit numeric string common to both platforms
-        for text in [subject, body[:600]]:
-            m = re.search(r'#?(\d{14,20})', text)
-            if m:
-                result['platform_order_id'] = m.group(1)
+        # Order ID: Shopee's real order ID is alphanumeric (YYMMDD + 8 alnum chars),
+        # e.g. "2607072M1VWU29". Forwarded Shopee emails also contain a *different*
+        # purely-numeric internal order reference inside redirect-link URLs (e.g.
+        # .../seller.shopee.ph/.../order/237090258205769?utm_content=...) — strip URLs
+        # first and prefer the alnum pattern, or a bare digit run gets misread as the
+        # order ID (see order 2607072M1VWU29, wrongly ingested as 237090258205769).
+        url_stripped_body = re.sub(r'http[s]?://\S+', '[URL]', body[:600])
+        for text in [subject, url_stripped_body]:
+            order_id = extract_shopee_order_id(text)
+            if order_id:
+                result['platform_order_id'] = order_id
                 break
+        # 14-20 digit numeric string fallback — Lazada's format, or any Shopee variant
+        # that doesn't match the alnum pattern above.
+        if 'platform_order_id' not in result:
+            for text in [subject, url_stripped_body]:
+                m = re.search(r'#?(\d{14,20})', text)
+                if m:
+                    result['platform_order_id'] = m.group(1)
+                    break
         # Lazada shorter alphanumeric format e.g. 102xxxxxxx
         if 'platform_order_id' not in result:
             m = re.search(r'(?:order\s*(?:id|no|number|#)\s*[:\-]?\s*)([A-Z0-9]{8,20})', subject, re.I)
