@@ -215,7 +215,7 @@ function setupIconObserver() {
 }
 
 // ---------------- Backend API (Railway) shared-secret auth ----------------
-// Every backend route except GET /, GET /status, GET /config now requires an
+// Every backend route except GET /, GET /status now requires an
 // X-Orbot-Key header matching a server-side shared secret (set once here by
 // whoever runs the dashboard, not a per-user credential). backendFetch() is
 // the single call site every backend request should go through so the header
@@ -290,6 +290,23 @@ async function logAction(message, level = "info", meta = {}) {
 function priceOrNull(raw) {
   const n = parseFloat(raw);
   return Number.isFinite(n) ? n : null;
+}
+
+// Fetches every row of a query, transparently paging past Supabase's server-side
+// Max Rows cap (default 1000) — a plain unbounded .select() is silently truncated
+// once a table grows past it, dropping whatever sorts after the cutoff with no
+// error (see [[project_orbot_v2]] bug #13). `buildPage(from, to)` must return a
+// fresh PostgREST query with the given inclusive .range() applied. Throws on any
+// page error; maxPages*pageSize (default 50k) is a runaway-loop safety ceiling.
+async function fetchAllRows(buildPage, pageSize = 1000, maxPages = 50) {
+  let all = [];
+  for (let page = 0; page < maxPages; page++) {
+    const { data, error } = await buildPage(page * pageSize, page * pageSize + pageSize - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < pageSize) break;
+  }
+  return all;
 }
 
 // Skeleton shimmer placeholders (Aurora 3.0). Same call signatures as the
@@ -415,27 +432,30 @@ function updateDispatchIndicator() {
 async function initSupabase() {
   const localUrl = localStorage.getItem("orbot_supabase_url");
   const localKey = localStorage.getItem("orbot_supabase_key");
-  const backendUrl = getBackendUrl();
 
-  // Shared secret required by every backend route except GET /, /status, /config.
+  // Shared secret required by every backend route except GET /, /status.
   // Prompt once (if not already stored) so the very first backend call after
   // this succeeds without a surprise 401.
   getOrbotApiKey();
 
   let remote = null;
   try {
-    const res = await fetch(`${backendUrl}/config`);
+    // /config is now key-gated (it hands out the Supabase anon key). getOrbotApiKey()
+    // above ensures a key is stored before this call. If the stored key is wrong,
+    // backendFetch clears it and re-prompts on the 401 — retry once with the new key
+    // so a first-load typo doesn't force a manual reload.
+    let res = await backendFetch("/config");
+    if (res.status === 401) res = await backendFetch("/config");
     remote = JSON.parse(await res.text());
   } catch (error) {
     console.error("Failed to fetch /config from backend:", error);
   }
 
-  const envUrl = window.ENV ? window.ENV.SUPABASE_URL : "";
-  const envKey = window.ENV ? window.ENV.SUPABASE_SERVICE_ROLE_KEY : "";
-  const supabaseUrl = localUrl || (remote && remote.supabase_url) || envUrl || "";
-  // NOTE: /config now returns the Supabase anon key (RLS-gated), not the service-role
-  // key — safe to store/display in Settings, no special secret handling needed.
-  const supabaseKey = localKey || (remote && remote.supabase_key) || envKey || "";
+  const supabaseUrl = localUrl || (remote && remote.supabase_url) || "";
+  // /config returns the Supabase anon key. NOTE: until RLS is enabled this key still
+  // has full read/write access to every table, so treat it as sensitive — that's why
+  // /config is key-gated rather than public.
+  const supabaseKey = localKey || (remote && remote.supabase_key) || "";
   spDispatchEnabled = remote ? remote.sp_dispatch_enabled !== false : true;
 
   document.getElementById("setting-supabase-url").value = supabaseUrl;
@@ -587,7 +607,7 @@ async function fetchSummaryStats() {
       scopeByShop(supabaseClient.from("orders").select("id", { count: "exact", head: true })
         .neq("overall_order_status", "completed")),
       scopeByShop(supabaseClient.from("orders").select("id", { count: "exact", head: true })
-        .eq("overall_order_status", "hold")),
+        .in("overall_order_status", ["hold", "on hold"])),
       supabaseClient.from("system_logs").select("id", { count: "exact", head: true }).eq("log_level", "error"),
     ]);
 
@@ -694,12 +714,13 @@ async function fetchAndRenderGeminiUsage() {
     today.setHours(0, 0, 0, 0);
     const todayIso = today.toISOString();
 
-    const { data: logs, error } = await supabaseClient
+    // Paginated — a high-traffic day can exceed the 1000-row cap and undercount usage.
+    const logs = await fetchAllRows((from, to) => supabaseClient
       .from("gemini_usage_log")
       .select("*")
-      .gte("created_at", todayIso);
-
-    if (error) throw error;
+      .gte("created_at", todayIso)
+      .order("created_at", { ascending: false })
+      .range(from, to));
 
     let totalRequests = 0;
     let totalPromptTokens = 0;
@@ -1750,7 +1771,10 @@ function bindOrderDetailPanelEvents() {
 
 // Separate helper for on-hold panel to keep code clean
 function renderHoldPanel(allOrdersList) {
-  const holdOrders = allOrdersList.filter(o => o.overall_order_status.toLowerCase() === "hold" || o.overall_order_status.toLowerCase() === "on hold");
+  const holdOrders = allOrdersList.filter(o => {
+    const s = (o.overall_order_status || "").toLowerCase();
+    return s === "hold" || s === "on hold";
+  });
   const holdPanel = document.getElementById("on-hold-panel");
   const holdList = document.getElementById("on-hold-list");
   const holdCount = document.getElementById("on-hold-count");
@@ -2954,8 +2978,10 @@ async function clearDatabase() {
     showToast(`Error clearing database: ${err.message}`, "error");
   } finally {
     const button = document.getElementById("clear-db-btn");
-    button.disabled = false;
-    button.innerHTML = `<i class="fa-solid fa-trash-can"></i> Clear All Data`;
+    if (button) {
+      button.disabled = false;
+      button.innerHTML = `<span class="material-symbols-outlined">delete</span> Clear`;
+    }
   }
 }
 
@@ -3326,7 +3352,11 @@ function setupSettingsFieldTools() {
           let base = document.getElementById("setting-backend-url").value.trim() || localStorage.getItem("orbot_backend_url") || "";
           if (base && !base.startsWith("http")) base = "https://" + base;
           if (!base) throw new Error("URL required");
-          const res = await fetch(`${base.replace(/\/$/, "")}/config`);
+          // /config is key-gated — send the stored shared secret so a healthy
+          // backend reports "connected" instead of a 401.
+          const res = await fetch(`${base.replace(/\/$/, "")}/config`, {
+            headers: { "X-Orbot-Key": localStorage.getItem("orbot_api_key") || "" },
+          });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           setChip("ok", "connected");
         }
@@ -3803,8 +3833,10 @@ function writeWaybillConsole(text, type = "") {
 
 function pollWaybillJob(jobId, onComplete, onFailure) {
   const MAX_WAIT_MS = 5 * 60 * 1000; // 5-minute hard timeout
+  const MAX_CONSECUTIVE_ERRORS = 3;  // ride out transient network blips
   const startTime = Date.now();
   let delay = 2000;
+  let consecutiveErrors = 0;
   let timeoutHandle = null;
 
   function schedule() {
@@ -3820,6 +3852,7 @@ function pollWaybillJob(jobId, onComplete, onFailure) {
           .eq("id", jobId)
           .single();
         if (error) throw error;
+        consecutiveErrors = 0;
 
         if (job.status === "completed") {
           onComplete(job.result);
@@ -3831,7 +3864,15 @@ function pollWaybillJob(jobId, onComplete, onFailure) {
           schedule();
         }
       } catch (err) {
-        onFailure(err.message);
+        // A single failed poll (dropped connection, brief 5xx) shouldn't kill the
+        // whole job — the backend keeps working. Only give up after several in a
+        // row, and never past the 5-minute budget checked above.
+        if (++consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          onFailure(err.message);
+        } else {
+          delay = Math.min(delay * 1.5, 8000);
+          schedule();
+        }
       }
     }, delay);
   }
@@ -3843,11 +3884,11 @@ function pollWaybillJob(jobId, onComplete, onFailure) {
 async function populateProductsSelect() {
   if (!supabaseClient) return;
   try {
-    const { data: products, error } = await supabaseClient
+    const products = await fetchAllRows((from, to) => supabaseClient
       .from("products")
       .select("id, brand_name, product_base_name, master_sku")
-      .order("product_base_name", { ascending: true });
-    if (error) throw error;
+      .order("product_base_name", { ascending: true })
+      .range(from, to));
     const select = document.getElementById("catalog-select-product");
     if (select) {
       select.innerHTML = products.map(p => `
@@ -4561,7 +4602,7 @@ async function fetchAndRenderOverviewJobs() {
     }
     if (logs) {
       logs.forEach(l => {
-        const lvl = l.log_level.toLowerCase();
+        const lvl = (l.log_level || "").toLowerCase();
         combined.push({
           type: "log",
           created_at: l.created_at,
@@ -4591,7 +4632,7 @@ async function fetchAndRenderOverviewJobs() {
           <td class="py-2 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-l border-outline-variant/15 rounded-l-lg font-data-mono text-[11px] text-on-surface-variant/70">${dateStr}</td>
           <td class="py-2 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15 font-semibold text-on-surface">${escapeHtml(item.source)}</td>
           <td class="py-2 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-outline-variant/15"><span class="badge ${item.badgeClass} text-[9px] py-0.5 px-2 uppercase select-none">${escapeHtml(item.badgeText)}</span></td>
-          <td class="py-2 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-r border-outline-variant/15 rounded-r-lg text-on-surface-variant/80 text-[11px] max-w-[280px] truncate select-all" title="${escapeHtml(item.detail)}">${item.detail}</td>
+          <td class="py-2 px-4 bg-surface-container-low/40 group-hover:bg-surface-container/60 border-t border-b border-r border-outline-variant/15 rounded-r-lg text-on-surface-variant/80 text-[11px] max-w-[280px] truncate select-all" title="${item.detail.replace(/<[^>]*>/g, "")}">${item.detail}</td>
         </tr>
       `;
     }).join("");
@@ -4722,13 +4763,18 @@ async function fetchAndRenderMissionControl() {
 
   try {
     const sinceIso = new Date(Date.now() - 30 * 86400000).toISOString();
-    const [ordersRes, jobsRes] = await Promise.all([
-      supabaseClient.from("orders").select("order_timestamp, created_at, sales_platform, shop_id").gte("created_at", sinceIso),
-      supabaseClient.from("print_jobs").select("created_at, job_execution_status").gte("created_at", sinceIso),
+    // Paginated — a busy 30-day window can exceed the 1000-row cap, which would
+    // silently undercount the charts and the KPI sparkline.
+    const [allOrders, jobs] = await Promise.all([
+      fetchAllRows((from, to) => supabaseClient
+        .from("orders").select("order_timestamp, created_at, sales_platform, shop_id")
+        .gte("created_at", sinceIso).order("created_at", { ascending: false }).range(from, to)),
+      fetchAllRows((from, to) => supabaseClient
+        .from("print_jobs").select("created_at, job_execution_status")
+        .gte("created_at", sinceIso).order("created_at", { ascending: false }).range(from, to)),
     ]);
 
-    const orders = (ordersRes.data || []).filter(o => passesShopScope(o.shop_id));
-    const jobs = jobsRes.data || [];
+    const orders = allOrders.filter(o => passesShopScope(o.shop_id));
 
     const keys = dayBuckets(30);
     const orderCounts = Object.fromEntries(keys.map(k => [k, 0]));
@@ -6699,7 +6745,7 @@ function openCatalogEditModal(productId) {
   // Shop dropdown built from cachedShops (loaded at startup for the header switcher).
   const shopOptions = [
     `<option value="" ${!product.shop_id ? "selected" : ""}>— Unassigned —</option>`,
-    ...cachedShops.map(s => `<option value="${s.id}" ${s.id === product.shop_id ? "selected" : ""}>${s.name}</option>`)
+    ...cachedShops.map(s => `<option value="${escapeHtml(s.id)}" ${s.id === product.shop_id ? "selected" : ""}>${escapeHtml(s.name)}</option>`)
   ].join("");
 
   let html = `
@@ -8394,11 +8440,18 @@ async function openEditVariationModal(dataset) {
   if (variantSelect.options.length <= 1) {
     let variants = cachedVariants;
     if (variants.length === 0 && supabaseClient) {
-      const { data } = await supabaseClient
-        .from("variants")
-        .select("id, variant_sku, variant_type")
-        .order("variant_sku", { ascending: true });
-      variants = data || [];
+      // Full paginated fetch, not a plain .select() — the catalog exceeds the
+      // 1000-row server cap, so an unbounded read would drop later variants and
+      // make them unmappable here.
+      try {
+        variants = await fetchAllRows((from, to) => supabaseClient
+          .from("variants")
+          .select("id, variant_sku, variant_type")
+          .order("variant_sku", { ascending: true })
+          .range(from, to));
+      } catch (e) {
+        console.warn("Variant list fetch failed:", e);
+      }
     }
     variants.forEach(v => {
       const opt = document.createElement("option");
@@ -8555,11 +8608,16 @@ async function populateProductSelect(selectId) {
   const sel = document.getElementById(selectId);
   if (!sel || sel.options.length > 0) return;
   if (cachedProducts.length === 0 && supabaseClient) {
-    const { data } = await supabaseClient
-      .from("products")
-      .select("id, master_sku, product_base_name, brand_name")
-      .order("master_sku", { ascending: true });
-    cachedProducts = data || [];
+    // Paginated so the picker isn't silently missing products past the 1000-row cap.
+    try {
+      cachedProducts = await fetchAllRows((from, to) => supabaseClient
+        .from("products")
+        .select("id, master_sku, product_base_name, brand_name")
+        .order("master_sku", { ascending: true })
+        .range(from, to));
+    } catch (e) {
+      console.warn("Product list fetch failed:", e);
+    }
   }
   cachedProducts.forEach(p => {
     const opt = document.createElement("option");

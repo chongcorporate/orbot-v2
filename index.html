@@ -11,9 +11,13 @@
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
-       TODO: verify this is the intended/latest-tested version and add an integrity="sha384-..."
-       attribute once the exact deployed version is confirmed (not fabricated here). -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+       integrity hash computed from the actual bytes served for this pinned (immutable) URL —
+       a CDN compromise serving altered JS will now be rejected by the browser rather than
+       running with access to the Supabase key in localStorage. crossorigin=anonymous is
+       required for SRI verification of a cross-origin script. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"
+          integrity="sha384-GFr3yTh5lJznCbZfpTtXnwboFsxqtTQoeTZCRHhE0579KrRmlCzen5AA8ohaB5ug"
+          crossorigin="anonymous"></script>
 
   <script id="tailwind-config">
     tailwind.config = {
@@ -1936,6 +1940,6 @@
     </button>
   </div>
 
-  <script src="app.js?v=1.17.6"></script>
+  <script src="app.js?v=1.18.0"></script>
 </body>
 </html>
