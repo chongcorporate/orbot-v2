@@ -8,6 +8,7 @@ import shutil
 import re
 import json
 import base64
+import hmac
 import logging
 import mimetypes
 import tempfile
@@ -20,7 +21,7 @@ from datetime import datetime, date, timedelta, timezone
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 # Third-party imports
 import requests
@@ -3666,7 +3667,9 @@ async def run_waybill_daemon_async():
                         file_name = payload.get('file_name')
                         if file_name:
                             print(f"[*] Downloading file {file_name} from Supabase Storage...")
-                            local_path = f"/tmp/{file_name}"
+                            # basename: file_name comes from the job payload — never let it
+                            # traverse outside /tmp. (It stays untouched as the storage key.)
+                            local_path = f"/tmp/{os.path.basename(file_name)}"
                             res_storage = await asyncio.to_thread(supabase.storage.from_('incoming-waybills').download, file_name)
                             with open(local_path, 'wb') as f:
                                 f.write(res_storage)
@@ -4366,7 +4369,8 @@ def require_api_key(request: Request):
     the public /config bootstrap endpoint, and inbound webhooks (Gmail Pub/Sub push)
     that can't send a custom header. Fails CLOSED — if ORBOT_API_KEY isn't configured,
     every dependent request is rejected rather than the check being silently skipped."""
-    if not ORBOT_API_KEY or request.headers.get("X-Orbot-Key") != ORBOT_API_KEY:
+    provided = request.headers.get("X-Orbot-Key") or ""
+    if not ORBOT_API_KEY or not hmac.compare_digest(provided, ORBOT_API_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 app = FastAPI(
@@ -4778,6 +4782,25 @@ def _is_safe_url(url: str) -> bool:
         return False
 
 
+def _safe_get(url: str, *, headers: Optional[dict] = None, timeout: int = 30, max_redirects: int = 5):
+    """GET that re-validates every redirect hop against _is_safe_url. requests' automatic
+    redirect handling only sees the first URL pass validation — a hostile page could 302
+    the request to a private/internal address after the initial check."""
+    current = url
+    for _ in range(max_redirects + 1):
+        if not _is_safe_url(current):
+            raise ValueError(f"Blocked unsafe URL: {current}")
+        r = http_session.get(current, headers=headers, timeout=timeout, allow_redirects=False)
+        if r.is_redirect or r.is_permanent_redirect:
+            loc = r.headers.get('Location')
+            if not loc:
+                return r
+            current = urljoin(current, loc)
+            continue
+        return r
+    raise ValueError(f"Too many redirects fetching {url}")
+
+
 _SCRAPE_HEADERS = {
     "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
                    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"),
@@ -4851,7 +4874,7 @@ async def catalog_scrape_product(request: Request):
         # the text fields but not image URLs (the fetcher strips markup).
         html_text = None
         try:
-            page = http_session.get(url, headers=_SCRAPE_HEADERS, timeout=30)
+            page = _safe_get(url, headers=_SCRAPE_HEADERS, timeout=30)
             page.raise_for_status()
             if len(page.text) >= 500 and not re.search(
                     r'captcha|access denied|are you a robot|unusual traffic', page.text[:5000], re.I):
@@ -4929,7 +4952,7 @@ async def catalog_scrape_product(request: Request):
                            agent_name="Product Intake")
                 continue
             try:
-                r = http_session.get(img_url, headers={**_SCRAPE_HEADERS, "Referer": url}, timeout=30)
+                r = _safe_get(img_url, headers={**_SCRAPE_HEADERS, "Referer": url}, timeout=30)
                 r.raise_for_status()
                 # Keep the raw original — no crop/resize here. Launch processes to
                 # square 2000px later; verify it decodes so we never ship an HTML
