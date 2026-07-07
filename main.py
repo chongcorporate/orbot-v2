@@ -86,9 +86,10 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Shared-secret auth for backend routes. Every route except the health checks, the public
-# /config bootstrap endpoint, and inbound webhooks that third parties call directly
-# (which can't send a custom header) requires this in the X-Orbot-Key header. Fails
+# Shared-secret auth for backend routes. Every route except the health checks and
+# inbound webhooks that third parties call directly (which can't send a custom header)
+# requires this in the X-Orbot-Key header — including /config, which returns the
+# Supabase anon key and so must not be reachable by URL alone. Fails
 # CLOSED: if unset, require_api_key() rejects every request rather than skipping the check.
 ORBOT_API_KEY = os.environ.get("ORBOT_API_KEY")
 
@@ -4381,9 +4382,9 @@ def _do_cancel_order(order_id: str, platform_order_id: Optional[str] = None) -> 
 # ----------------- FastAPI Web Server Routes -----------------
 
 def require_api_key(request: Request):
-    """Shared-secret auth dependency. Applied to every route except the health checks,
-    the public /config bootstrap endpoint, and inbound webhooks (Gmail Pub/Sub push)
-    that can't send a custom header. Fails CLOSED — if ORBOT_API_KEY isn't configured,
+    """Shared-secret auth dependency. Applied to every route except the health checks
+    and inbound webhooks (Gmail Pub/Sub push) that can't send a custom header; /config
+    is included since it returns the Supabase anon key. Fails CLOSED — if ORBOT_API_KEY isn't configured,
     every dependent request is rejected rather than the check being silently skipped."""
     provided = request.headers.get("X-Orbot-Key") or ""
     if not ORBOT_API_KEY or not hmac.compare_digest(provided, ORBOT_API_KEY):
@@ -4444,11 +4445,16 @@ def get_status():
             "error": str(e)
         }
 
-@app.get("/config")
+@app.get("/config", dependencies=[Depends(require_api_key)])
 def get_config():
     """Bootstrap config for the frontend so it works from any browser/device without
     manual setup — the dashboard previously required pasting these into a Settings
-    modal saved to localStorage, which meant a fresh browser had nothing configured."""
+    modal saved to localStorage, which meant a fresh browser had nothing configured.
+
+    Gated by require_api_key: this returns the Supabase anon key, and until RLS is
+    enabled that key can read/write every table, so it must not be handed out to any
+    caller that merely knows the Railway URL. The frontend prompts for the shared
+    secret (getOrbotApiKey) before its first /config call, so bootstrap still works."""
     sp_dispatch_enabled = True
     try:
         res = supabase.table("app_settings").select("value").eq("key", "sp_dispatch_enabled").limit(1).execute()
