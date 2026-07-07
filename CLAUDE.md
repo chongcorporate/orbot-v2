@@ -20,8 +20,10 @@ Before writing or editing any UI (HTML, CSS, Tailwind classes, JS-rendered marku
 
 ## Backend
 
-- `main.py` is the entire backend (~3200 lines), FastAPI on Railway.
+- `main.py` is the entire backend (~5300 lines), FastAPI on Railway.
 - Railway auto-deploys on push to `main`.
+- The backend must run as a single process/replica (one uvicorn worker): Foreman dispatch serialization, Scout scan coalescing, and the module-level caches all rely on in-process locks. Never scale it horizontally without reworking those.
+- Any query meant to return an entire table must paginate (`fetch_all_rows()` helper) — Supabase's server-side max-rows cap silently truncates unpaginated selects once a table passes ~1000 rows.
 - Do not use `maybeSingle()` from supabase-py — use `.limit(1).execute()` and index `r.data[0]`.
 - When fetching from Railway in JS, use `response.text()` then `JSON.parse()` — never call `.json()` directly, as Railway returns HTML on 5xx errors.
 

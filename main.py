@@ -9,13 +9,17 @@ import re
 import json
 import base64
 import hmac
+import html as html_module
 import logging
 import mimetypes
 import tempfile
 import traceback
 import ipaddress
 import socket
+import zipfile
+from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
+from email.utils import parsedate_to_datetime
 from io import BytesIO
 from datetime import datetime, date, timedelta, timezone
 from collections import defaultdict
@@ -115,6 +119,25 @@ INCOMING_FOLDER_ID = "1rBxiIFTHgRVizQ8nwQjTiUhrU-a9j2rN"
 WAYBILL_MAIN_FOLDER_ID = "1AH2vclLcPO7xNTvcW9s3w5XqfuA4mkFE"
 SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/gmail.modify']
 SIMPLYPRINT_COMPANY_ID = "13502"
+# SimplyPrint printer groups by capability: files sliced for the A1 Mini can only run on
+# the Minis; everything else runs on the regular A1s. Keep in sync with the physical farm.
+A1_MINI_PRINTER_IDS = [38959, 38960]
+A1_REGULAR_PRINTER_IDS = [38961, 39538]
+
+def route_printers_for_file(print_file_name: str) -> list:
+    """Returns the printer-ID group for a file based on filename slice markers ('a1m'/'mini'
+    → A1 Mini, else regular A1; 'minifig' is not a Mini marker). Single source of truth —
+    Foreman dispatch and /print-files/queue previously carried two diverging copies."""
+    name_lower = print_file_name.lower()
+    name_no_ext = name_lower[:-6].strip() if name_lower.endswith('.gcode') else name_lower.strip()
+    if name_no_ext.endswith('a1m') or name_no_ext.endswith('mini'):
+        is_a1_mini = True
+    elif name_no_ext.endswith('a1'):
+        is_a1_mini = False
+    else:
+        is_a1_mini = bool(re.search(r'(?:[-_ ]a1m\b|^a1m\b|\ba1m\b|[-_]a1m[-_(])|(?:\bmini\b|[-_]mini\b)', name_lower)) \
+                     and not re.search(r'\bminifig', name_lower)
+    return A1_MINI_PRINTER_IDS if is_a1_mini else A1_REGULAR_PRINTER_IDS
 
 # Gmail push notifications (Pub/Sub). When GMAIL_PUBSUB_TOPIC is set, Scout runs
 # event-driven: Gmail users.watch() publishes to this topic, Pub/Sub pushes to the
@@ -1248,27 +1271,29 @@ def process_catalog(file_path: str):
                 
                 for f_idx, orig_name in enumerate(file_names):
                     weight = weights[f_idx] if f_idx < len(weights) else None
-                    time = times[f_idx] if f_idx < len(times) else None
-                    
+                    # time_val, not time: shadowing the time module here would break any
+                    # later time.* call in this scope.
+                    time_val = times[f_idx] if f_idx < len(times) else None
+
                     is_plate = "PLATE" in orig_name.upper()
                     is_weight_blank = (weight is None or str(weight).strip() == "" or str(weight).lower() in ["nan", "none"])
-                    is_time_blank = (time is None or str(time).strip() == "" or str(time).lower() in ["nan", "none"])
-                    
+                    is_time_blank = (time_val is None or str(time_val).strip() == "" or str(time_val).lower() in ["nan", "none"])
+
                     if is_plate:
                         if is_weight_blank:
                             weight = 5
                             is_weight_blank = False
                         if is_time_blank:
-                            time = 17
+                            time_val = 17
                             is_time_blank = False
-                            
+
                     try:
                         clean_weight = int(float(str(weight).strip())) if not is_weight_blank else 0
                     except ValueError:
                         clean_weight = 0
-                        
+
                     try:
-                        clean_time = int(float(str(time).strip())) if not is_time_blank else 0
+                        clean_time = int(float(str(time_val).strip())) if not is_time_blank else 0
                     except ValueError:
                         clean_time = 0
                         
@@ -1891,7 +1916,6 @@ class ScoutAgent:
             return plain
         if html:
             # Strip HTML tags to get readable text for the LLM
-            import html as html_module
             text = re.sub(r'<style[^>]*>.*?</style>', ' ', html, flags=re.DOTALL | re.IGNORECASE)
             text = re.sub(r'<script[^>]*>.*?</script>', ' ', text, flags=re.DOTALL | re.IGNORECASE)
             text = re.sub(r'<[^>]+>', ' ', text)
@@ -1941,7 +1965,6 @@ class ScoutAgent:
             received_at = None
             if email.get('date'):
                 try:
-                    from email.utils import parsedate_to_datetime
                     received_at = parsedate_to_datetime(email['date']).isoformat()
                 except Exception:
                     pass
@@ -2034,7 +2057,6 @@ class ScoutAgent:
         # Timestamp from email Date header (avoids asking Gemini to guess it)
         if date_header:
             try:
-                from email.utils import parsedate_to_datetime
                 dt = parsedate_to_datetime(date_header)
                 result['order_timestamp'] = dt.isoformat()
             except Exception:
@@ -3287,18 +3309,13 @@ def check_and_update_item_completion(order_item_id):
             }).eq('id', order_item_id).execute()
             print(f"[+] All print jobs for order item {order_item_id} completed. Updated item status to completed.")
             
-            item_res = supabase.table('order_items').select('order_id, item_print_status').eq('id', order_item_id).execute()
+            item_res = supabase.table('order_items').select('order_id').eq('id', order_item_id).execute()
             if item_res.data:
                 order_id = item_res.data[0].get('order_id')
                 if order_id:
-                    all_items_res = supabase.table('order_items').select('item_print_status').eq('order_id', order_id).execute()
-                    all_items = all_items_res.data
-                    DONE_STATUSES = {'completed', 'not_applicable'}
-                    if all_items and all(i.get('item_print_status') in DONE_STATUSES for i in all_items):
-                        supabase.table('orders').update({
-                            'overall_order_status': 'printed'
-                        }).eq('id', order_id).execute()
-                        print(f"[+] All items for order {order_id} completed. Updated order status to printed.")
+                    # Same all-items-done → 'printed' recompute Foreman uses — one
+                    # implementation instead of two drifting copies.
+                    check_overall_order_status(order_id)
     except Exception as e:
         log_system("error", f"check_and_update_item_completion failed for item {order_item_id}: {e}", agent_name="Waybill Agent")
 
@@ -4190,17 +4207,7 @@ def _run_foreman_dispatch_locked(dry_run: bool = False) -> dict:
                     if total_files_dispatched > 0:
                         time.sleep(1)
 
-                    name_lower = file['print_file_name'].lower()
-                    name_no_ext = name_lower[:-6].strip() if name_lower.endswith('.gcode') else name_lower.strip()
-                    if name_no_ext.endswith('a1m') or name_no_ext.endswith('mini'):
-                        is_a1_mini = True
-                    elif name_no_ext.endswith('a1'):
-                        is_a1_mini = False
-                    else:
-                        is_a1_mini = bool(re.search(r'(?:[-_ ]a1m\b|^a1m\b|\ba1m\b|[-_]a1m[-_(])|(?:\bmini\b|[-_]mini\b)', name_lower)) \
-                                     and not re.search(r'\bminifig', name_lower)
-
-                    for_printers = [38959, 38960] if is_a1_mini else [38961, 39538]
+                    for_printers = route_printers_for_file(file['print_file_name'])
 
                     sp_res = http_session.post(f"{base_url}/queue/AddItem", headers=sp_headers, json={
                         "filesystem": file['simplyprint_file_id'],
@@ -4382,10 +4389,34 @@ def require_api_key(request: Request):
     if not ORBOT_API_KEY or not hmac.compare_digest(provided, ORBOT_API_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+# Hard references to daemon tasks: asyncio only keeps weak refs to tasks, so an
+# un-referenced background task can be garbage-collected mid-flight.
+_daemon_tasks: list = []
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Starts the background worker tasks on web server startup when enabled (replaces
+    the deprecated @app.on_event('startup') hook)."""
+    if os.environ.get("START_DAEMON_THREADS", "true").lower() == "true":
+        print("[*] Spawning background worker tasks in unified app event loop...")
+        _daemon_tasks.append(asyncio.create_task(run_waybill_daemon_async()))
+        if GMAIL_PUBSUB_TOPIC:
+            # Event-driven: scans are triggered by the /gmail/notifications webhook.
+            # The watch-renewal loop keeps the Gmail watch registered; the backstop loop
+            # is a low-frequency safety net catching dropped pushes / transient-error retries.
+            print("[*] GMAIL_PUBSUB_TOPIC set — Scout running in event-driven (push) mode.")
+            _daemon_tasks.append(asyncio.create_task(run_gmail_watch_renewal_async()))
+            _daemon_tasks.append(asyncio.create_task(run_scout_backstop_async()))
+        else:
+            print("[*] GMAIL_PUBSUB_TOPIC not set — Scout running in legacy periodic-poll mode.")
+            _daemon_tasks.append(asyncio.create_task(run_scout_periodic_async()))
+    yield
+
 app = FastAPI(
     title="Orbot Unified Service",
     description="Consolidated backend service for Scout Agent, Waybill Agent, Product Manager, and Archivist.",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=_lifespan
 )
 
 app.add_middleware(
@@ -4533,17 +4564,18 @@ async def catalog_import(background_tasks: BackgroundTasks, file: UploadFile = F
     }
 
 @app.post("/waybill/batch-print", dependencies=[Depends(require_api_key)])
-def waybill_batch_print(background_tasks: BackgroundTasks):
-    """Manually triggers compilation of ready-to-print waybills into a single batch PDF."""
-    def run_batch():
-        try:
-            drive_service = get_drive_service()
-            run_batch_print(drive_service)
-        except Exception as e:
-            print(f"Batch print background task error: {e}")
-
-    background_tasks.add_task(run_batch)
-    return {"status": "Batch printing compilation triggered"}
+def waybill_batch_print():
+    """Queues compilation of ready-to-print waybills into a single batch PDF. Enqueued as
+    a waybill_jobs row (the daemon picks it up within ~5s) instead of running inline —
+    the old direct path could compile the same orders concurrently with a queued
+    waybill_batch_print job; now the daemon is the single executor."""
+    res = supabase.table('waybill_jobs').insert({
+        'job_type': 'waybill_batch_print',
+        'status': 'pending',
+        'payload': {}
+    }).execute()
+    job_id = res.data[0]['id'] if res.data else None
+    return {"status": "Batch printing compilation queued", "job_id": job_id}
 
 @app.post("/telemetry/sync", dependencies=[Depends(require_api_key)])
 def telemetry_sync(background_tasks: BackgroundTasks):
@@ -4831,9 +4863,6 @@ class ProductScrapeExtract(BaseModel):
 def _condense_product_html(html_text: str, base_url: str) -> str:
     """Boil a product page down to what the LLM needs: meta tags, JSON-LD,
     candidate image URLs, and visible text. Keeps token usage sane on JS-heavy pages."""
-    from urllib.parse import urljoin
-    import html as html_module
-
     # JSON blobs (Next.js et al.) escape slashes — normalise so URL regexes hit
     html_text = html_text.replace('\\u002F', '/').replace('\\/', '/')
 
@@ -5099,8 +5128,6 @@ def _do_launch_product(set_name: str, set_number: str, theme: str, product_types
     /catalog/scrape-product for the same pattern). raw_images are the already-read bytes
     of each uploaded image (reading the UploadFile itself must happen in the async route
     handler, since that part is genuinely async)."""
-    import zipfile
-
     shop       = resolve_shop(brand_name)
     sku_prefix = shop["sku_prefix"] if shop else "BLO"
 
@@ -5358,9 +5385,7 @@ def queue_single_file(req: QueueFileRequest):
 
     sp_headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
     base_url = f"https://api.simplyprint.io/{SIMPLYPRINT_COMPANY_ID}"
-    name_lower = req.print_file_name.lower()
-    is_a1_mini = ('a1m' in name_lower or 'mini' in name_lower) and not re.search(r'\bminifig', name_lower)
-    for_printers = [38959, 38960] if is_a1_mini else [38961, 39538]
+    for_printers = route_printers_for_file(req.print_file_name)
     try:
         sp_res = http_session.post(f"{base_url}/queue/AddItem", headers=sp_headers, json={
             "filesystem": sp_file_id,
@@ -5426,26 +5451,6 @@ def cancel_order(req: CancelRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ----------------- Startup Event Handler for Background Daemons -----------------
-
-@app.on_event("startup")
-async def startup_event():
-    """Runs background worker tasks on web server startup if enabled."""
-    if os.environ.get("START_DAEMON_THREADS", "true").lower() == "true":
-        print("[*] Spawning background worker tasks in unified app event loop...")
-        asyncio.create_task(run_waybill_daemon_async())
-        if GMAIL_PUBSUB_TOPIC:
-            # Event-driven: scans are triggered by the /gmail/notifications webhook.
-            # The watch-renewal loop keeps the Gmail watch registered; the backstop loop
-            # is a low-frequency safety net catching dropped pushes / transient-error retries.
-            print("[*] GMAIL_PUBSUB_TOPIC set — Scout running in event-driven (push) mode.")
-            asyncio.create_task(run_gmail_watch_renewal_async())
-            asyncio.create_task(run_scout_backstop_async())
-        else:
-            print("[*] GMAIL_PUBSUB_TOPIC not set — Scout running in legacy periodic-poll mode.")
-            asyncio.create_task(run_scout_periodic_async())
-
-
 # ----------------- CLI Argument Routing -----------------
 
 def main():
@@ -5486,6 +5491,8 @@ def main():
         print("[*] No command specified. Starting unified web server + background daemons...")
         os.environ["START_DAEMON_THREADS"] = "true"
         port = int(os.environ.get("PORT", 8080))
+        # MUST stay a single worker/replica: dispatch serialization, Scout scan
+        # coalescing, and the module-level caches all rely on in-process locks.
         uvicorn.run("main:app", host="0.0.0.0", port=port)
         return
 
