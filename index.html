@@ -1600,6 +1600,37 @@
     </div>
   </div>
 
+  <!-- Add Order Item Modal (manual line-item add) -->
+  <div class="modal-overlay" id="add-order-item-modal">
+    <div class="modal d4-email-modal" style="max-width:460px;">
+      <div class="d4-email-modal-head">
+        <div class="d4-email-modal-title"><span class="material-symbols-outlined">add_box</span>Add Item to Order</div>
+        <button class="d4-iconbtn" id="add-order-item-close-btn" title="Close"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <div class="d4-fields">
+        <div class="d4-f full">
+          <label class="d4-lb">Filter</label>
+          <input type="text" id="add-order-item-filter" class="d4-fin" placeholder="Filter by SKU or name…" />
+        </div>
+        <div class="d4-f full">
+          <label class="d4-lb">Product / Variant</label>
+          <select id="add-order-item-variant-select" class="d4-fin" size="6">
+            <option value="">Select a variant…</option>
+          </select>
+        </div>
+        <div class="d4-f full">
+          <label class="d4-lb">Quantity</label>
+          <input id="add-order-item-qty" type="number" min="1" step="1" value="1" class="d4-fin" />
+        </div>
+      </div>
+      <div class="d4-foot">
+        <button class="d4-btn pri" id="add-order-item-confirm-btn">
+          <span class="material-symbols-outlined">add</span>Add Item
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Catalog Detail Modal -->
   <div class="modal-overlay" id="catalog-detail-modal">
     <div class="modal glass-panel w-full max-w-2xl rounded-2xl p-6 flex flex-col gap-4 relative max-h-[85vh] overflow-y-auto">
@@ -1905,6 +1936,6 @@
     </button>
   </div>
 
-  <script src="app.js?v=1.17.1"></script>
+  <script src="app.js?v=1.17.2"></script>
 </body>
 </html>

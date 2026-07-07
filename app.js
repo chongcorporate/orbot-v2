@@ -1542,7 +1542,10 @@ function buildOrderDetailPanel(order) {
     ${holdBannerHtml}
 
     <div>
-      <div class="omd-section-title"><span class="material-symbols-outlined">inventory_2</span>Items (${itemsList.length})</div>
+      <div class="omd-section-title omd-row-between">
+        <span style="display:flex; align-items:center; gap:6px;"><span class="material-symbols-outlined">inventory_2</span>Items (${itemsList.length})</span>
+        <button class="omd-tag-btn btn-add-order-item" data-order-id="${order.id}"><span class="material-symbols-outlined">add</span>Add Item</button>
+      </div>
       ${itemsHtml}
     </div>
 
@@ -1613,6 +1616,9 @@ function bindOrderDetailPanelEvents() {
   });
   panel.querySelectorAll(".btn-reparse-email").forEach(btn => {
     btn.addEventListener("click", () => reparseOrderEmail(btn.getAttribute("data-platform-order-id"), btn));
+  });
+  panel.querySelectorAll(".btn-add-order-item").forEach(btn => {
+    btn.addEventListener("click", () => openAddOrderItemModal(btn.getAttribute("data-order-id")));
   });
 
   // One-click advance: sets the select to the next pipeline status and fires
@@ -6199,6 +6205,86 @@ async function reparseOrderEmail(platformOrderId, btn) {
     showToast(`Re-parse failed: ${e.message || e}`, "error");
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+async function openAddOrderItemModal(orderId) {
+  const modal = document.getElementById("add-order-item-modal");
+  if (!modal || !supabaseClient) return;
+
+  if (!modal.dataset.bound) {
+    modal.dataset.bound = "1";
+    document.getElementById("add-order-item-close-btn")?.addEventListener("click", () => modal.classList.remove("active"));
+    modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.remove("active"); });
+    document.getElementById("add-order-item-filter")?.addEventListener("input", (e) => {
+      filterProductSelect("add-order-item-variant-select", e.target.value);
+    });
+    document.getElementById("add-order-item-confirm-btn")?.addEventListener("click", confirmAddOrderItem);
+  }
+
+  modal.dataset.orderId = orderId;
+  document.getElementById("add-order-item-filter").value = "";
+  document.getElementById("add-order-item-qty").value = "1";
+
+  const sel = document.getElementById("add-order-item-variant-select");
+  if (sel.options.length <= 1) {
+    let variants = cachedVariants;
+    if (variants.length === 0 && supabaseClient) {
+      const { data } = await supabaseClient
+        .from("variants")
+        .select("id, variant_sku, variant_name, variant_type, products(product_base_name)")
+        .order("variant_sku", { ascending: true });
+      variants = data || [];
+    }
+    variants.forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = `${v.variant_sku} — ${v.variant_name || v.products?.product_base_name || ""}${v.variant_type ? ` (${v.variant_type})` : ""}`;
+      opt.dataset.search = `${v.variant_sku} ${v.variant_name || ""} ${v.products?.product_base_name || ""}`.toLowerCase();
+      opt.dataset.sku = v.variant_sku || "";
+      opt.dataset.name = v.variant_name || v.products?.product_base_name || "";
+      sel.appendChild(opt);
+    });
+  }
+  sel.value = "";
+  modal.classList.add("active");
+}
+
+async function confirmAddOrderItem() {
+  const modal = document.getElementById("add-order-item-modal");
+  const orderId = modal?.dataset.orderId;
+  const sel = document.getElementById("add-order-item-variant-select");
+  const variantId = sel?.value;
+  const qty = parseInt(document.getElementById("add-order-item-qty").value, 10) || 1;
+  if (!orderId || !variantId) {
+    showToast("Please select a variant to add.", "warning");
+    return;
+  }
+
+  const opt = sel.options[sel.selectedIndex];
+
+  const confirmBtn = document.getElementById("add-order-item-confirm-btn");
+  confirmBtn.disabled = true;
+  try {
+    const { error } = await supabaseClient
+      .from("order_items")
+      .insert({
+        order_id: orderId,
+        variant_id: variantId,
+        variant_sku: opt.dataset.sku || null,
+        variant_name: opt.dataset.name || null,
+        purchased_quantity: qty,
+        item_print_status: "pending",
+      });
+    if (error) throw error;
+    logAction("Manually added order item", "info", { order_id: orderId, variant_id: variantId, quantity: qty });
+    showToast("Item added to order.", "success");
+    modal.classList.remove("active");
+    fetchAndRenderOrders();
+  } catch (e) {
+    showToast("Error adding item: " + e.message, "error");
+  } finally {
+    confirmBtn.disabled = false;
   }
 }
 
