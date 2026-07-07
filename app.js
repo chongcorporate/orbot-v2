@@ -1439,7 +1439,12 @@ function buildOrderDetailPanel(order) {
         <div class="omd-item-card">
           <div class="omd-row-between">
             <span class="omd-isku">${escapeHtml(item.variant_sku || "UNKNOWN")}</span>
-            <span class="d4-stchip sm ${d4StatusChipCls(item.item_print_status?.toLowerCase() === "printing" ? "printing" : (item.item_print_status?.toLowerCase() === "pending" ? "pending" : "completed"))}"><i></i>${item.item_print_status}</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span class="d4-stchip sm ${d4StatusChipCls(item.item_print_status?.toLowerCase() === "printing" ? "printing" : (item.item_print_status?.toLowerCase() === "pending" ? "pending" : "completed"))}"><i></i>${item.item_print_status}</span>
+              <button class="d4-iconbtn sm danger btn-delete-order-item" data-item-id="${escapeHtml(item.id)}" data-variant-sku="${escapeHtml(item.variant_sku || "")}" title="Delete Item">
+                <span class="material-symbols-outlined">delete</span>
+              </button>
+            </div>
           </div>
           <div class="d4-body12">${escapeHtml(item.variant_name || "Generic Item")} · Qty ${item.purchased_quantity}</div>
           <div class="d4-mono10">Dispatched: ${dispatchedStr}</div>
@@ -1619,6 +1624,45 @@ function bindOrderDetailPanelEvents() {
   });
   panel.querySelectorAll(".btn-add-order-item").forEach(btn => {
     btn.addEventListener("click", () => openAddOrderItemModal(btn.getAttribute("data-order-id")));
+  });
+
+  panel.querySelectorAll(".btn-delete-order-item").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const itemId = btn.getAttribute("data-item-id");
+      const variantSku = btn.getAttribute("data-variant-sku");
+
+      const confirmed = await showConfirmModal(
+        "Delete Item",
+        `Are you sure you want to delete item ${escapeHtml(variantSku)}? This will also cancel any associated print jobs.`,
+        "Delete"
+      );
+      if (!confirmed) return;
+
+      btn.disabled = true;
+      try {
+        const { data: jobs, error: jobsErr } = await supabaseClient
+          .from("print_jobs").select("id").eq("order_item_id", itemId);
+        if (jobsErr) throw jobsErr;
+
+        if (jobs && jobs.length > 0) {
+          const jobIds = jobs.map(j => j.id);
+          const { error: pjErr } = await supabaseClient
+            .from("print_jobs").delete().in("id", jobIds);
+          if (pjErr) throw pjErr;
+        }
+
+        const { error: oiErr } = await supabaseClient
+          .from("order_items").delete().eq("id", itemId);
+        if (oiErr) throw oiErr;
+
+        logAction(`Order item deleted: ${variantSku}`, "info", { order_item_id: itemId, variant_sku: variantSku });
+        await fetchAndRenderOrders(true);
+      } catch (err) {
+        showToast("Error deleting item: " + err.message, "error");
+        btn.disabled = false;
+      }
+    });
   });
 
   // One-click advance: sets the select to the next pipeline status and fires
