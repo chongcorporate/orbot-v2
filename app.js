@@ -6281,16 +6281,22 @@ async function openAddOrderItemModal(orderId) {
   // Always hit the DB fresh here rather than trusting cachedVariants — that cache
   // is populated once by the Products tab and never invalidated, so a product
   // added/edited after that first load would silently never appear otherwise.
-  // High explicit limit guards against PostgREST's default 1000-row cap.
+  // Paginated via .range() because a single request's .limit() is still clamped
+  // by the Supabase project's server-side Max Rows setting (default 1000) —
+  // looping in page-sized chunks is the only way to get the full table back.
+  const PAGE_SIZE = 1000;
   let variants = [];
   try {
-    const { data, error } = await supabaseClient
-      .from("variants")
-      .select("id, variant_sku, variant_name, variant_type, products(product_base_name, brand_name, product_category)")
-      .order("variant_sku", { ascending: true })
-      .limit(10000);
-    if (error) throw error;
-    variants = data || [];
+    for (let page = 0; ; page++) {
+      const { data, error } = await supabaseClient
+        .from("variants")
+        .select("id, variant_sku, variant_name, variant_type, products(product_base_name, brand_name, product_category)")
+        .order("variant_sku", { ascending: true })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+      if (error) throw error;
+      variants = variants.concat(data || []);
+      if (!data || data.length < PAGE_SIZE || page >= 49) break; // 49 => 50k-row safety cap
+    }
   } catch (e) {
     variants = cachedVariants;
     showToast("Couldn't refresh catalog, showing last-known list: " + e.message, "warning");
