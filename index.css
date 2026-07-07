@@ -3389,3 +3389,29 @@ input.d4-vin.stk::-webkit-outer-spin-button, input.d4-vin.stk::-webkit-inner-spi
 .d4-email-meta-row .k { flex: none; width: 70px; font: 600 10px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-4); padding-top: 1px; }
 .d4-email-meta-row .v { font: 500 11.5px var(--font-mono); color: var(--ink-2); word-break: break-word; }
 .d4-email-pre { flex: 1; overflow: auto; background: var(--inset); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font: 400 11px var(--font-mono); line-height: 1.6; color: var(--ink-2); white-space: pre-wrap; word-break: break-word; margin: 0; }
+
+/* ---- Analytics tab (Draft 4, schema v13) ---- */
+.d4-costform { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 14px; padding: 14px 18px; align-items: end; }
+.d4-costform label { display: flex; flex-direction: column; gap: 6px; font: 600 10px var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.d4-costform-save { display: flex; justify-content: flex-end; }
+input.d4-input { background: var(--inset); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font: 500 12px var(--font-mono); padding: 8px 12px; outline: none; width: 100%; }
+input.d4-input:focus { border-color: var(--line-2); }
+.d4-atbl { width: 100%; border-collapse: collapse; }
+.d4-atbl th { font: 600 10px var(--font-body); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-4); text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); background: var(--inset); white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+.d4-atbl td { padding: 9px 12px; border-bottom: 1px solid var(--line); font: 500 11.5px var(--font-mono); color: var(--ink-2); white-space: nowrap; vertical-align: middle; }
+.d4-atbl tr:last-child td { border-bottom: none; }
+.d4-atbl tbody tr:hover td { background: var(--card-2); }
+.d4-atbl th.num, .d4-atbl td.num { text-align: right; }
+.d4-atbl td.lbl { font-family: var(--font-body); color: var(--ink-2); max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.d4-atbl td .sku { font: 500 11.5px var(--font-mono); color: var(--ink); }
+.d4-atbl .pos { color: var(--green); }
+.d4-atbl .neg { color: var(--red); }
+.d4-atbl .d4-stchip { padding: 2px 8px; font-size: 10px; }
+.d4-atbl-scroll { max-height: 440px; overflow: auto; }
+.d4-fnote { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 10px 18px; border-top: 1px solid var(--line); font: 500 11px var(--font-mono); color: var(--ink-4); }
+.d4-fnote:empty { display: none; }
+.d4-stchip.ml-auto { margin-left: auto; }
+/* Product-type badge tints (DS steel-blue / WM peach / FWM orange per DESIGN.md) */
+.d4-atbl .type-ds { color: var(--blue); border-color: rgba(126, 166, 232, 0.3); background: rgba(126, 166, 232, 0.08); }
+.d4-atbl .type-wm { color: var(--peach); border-color: rgba(255, 170, 107, 0.3); background: rgba(255, 170, 107, 0.08); }
+.d4-atbl .type-fwm { color: var(--orange); border-color: rgba(255, 140, 0, 0.3); background: rgba(255, 140, 0, 0.08); }

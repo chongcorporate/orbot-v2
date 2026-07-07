@@ -573,6 +573,7 @@ function onShopChange() {
   if (currentTab === "overview") {
     fetchAndRenderMissionControl();
   }
+  if (currentTab === "analytics" && anxCache) renderAnalytics();
 }
 
 // Stats & General Refreshes
@@ -3050,6 +3051,9 @@ function setupTabs() {
       if (tabId === "launch") {
         initLaunchTab();
       }
+      if (tabId === "analytics") {
+        fetchAndRenderAnalytics();
+      }
     });
   });
 }
@@ -3078,6 +3082,7 @@ function cpActions() {
     { icon: "hub", label: "Go to Operations", type: "Nav", run: () => navigateToTab("operations") },
     { icon: "inventory_2", label: "Go to Products", type: "Nav", run: () => navigateToTab("products") },
     { icon: "rocket_launch", label: "Go to Launch", type: "Nav", run: () => navigateToTab("launch") },
+    { icon: "monitoring", label: "Go to Analytics", type: "Nav", run: () => navigateToTab("analytics") },
     { icon: "description", label: "Go to Logs", type: "Nav", run: () => navigateToTab("logs") },
   ];
 }
@@ -4703,9 +4708,9 @@ function svgBarChart(values, labels, { color = "#3ecf8e" } = {}) {
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:100%;display:block;">${grid}${bars}${xLabels}</svg>`;
 }
 
-function svgLineChart(values, labels, { color = "#22d3ee" } = {}) {
+function svgLineChart(values, labels, { color = "#22d3ee", refLine = null } = {}) {
   const w = 420, h = 170, padB = 18, padT = 10, padL = 26, padR = 8;
-  const max = Math.max(...values, 1);
+  const max = Math.max(...values, refLine ? refLine.value : 0, 1);
   const innerW = w - padL - padR, innerH = h - padT - padB;
   const px = i => padL + (i / Math.max(values.length - 1, 1)) * innerW;
   const py = v => padT + innerH - (v / max) * innerH;
@@ -4719,30 +4724,35 @@ function svgLineChart(values, labels, { color = "#22d3ee" } = {}) {
   const xLabels = values.map((_, i) => (i % 6 === 0 || i === values.length - 1)
     ? `<text x="${px(i).toFixed(1)}" y="${h - 4}" font-size="8" fill="rgba(255,255,255,0.35)" text-anchor="middle" font-family="IBM Plex Mono, monospace">${labels[i].slice(5)}</text>`
     : "").join("");
+  const ref = refLine ? `<line x1="${padL}" y1="${py(refLine.value).toFixed(1)}" x2="${w - padR}" y2="${py(refLine.value).toFixed(1)}" stroke="rgba(255,102,102,0.5)" stroke-dasharray="5 4"></line>
+    <text x="${w - padR - 2}" y="${(py(refLine.value) - 4).toFixed(1)}" font-size="8" fill="rgba(255,102,102,0.7)" text-anchor="end" font-family="IBM Plex Mono, monospace">${escapeHtml(refLine.label || "")}</text>` : "";
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:100%;display:block;">
-    ${grid}
+    ${grid}${ref}
     <polygon points="${padL},${(padT + innerH).toFixed(1)} ${pts} ${(padL + innerW).toFixed(1)},${(padT + innerH).toFixed(1)}" fill="${color}" opacity="0.08"></polygon>
     <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.85"></polyline>
     ${dots}${xLabels}
   </svg>`;
 }
 
-function svgDonut(segments) {
+function svgDonut(segments, { centerLabel = "ORDERS", valueFormat = null, emptyMsg = "No orders in the last 30 days." } = {}) {
   const total = segments.reduce((s, x) => s + x.value, 0);
-  if (total === 0) return emptyDiv("No orders in the last 30 days.", "donut_small");
+  if (total === 0) return emptyDiv(emptyMsg, "donut_small");
+  const fmt = valueFormat || (v => v);
   const R = 44, C = 2 * Math.PI * R;
   let acc = 0;
   const rings = segments.map(s => {
     const frac = s.value / total;
-    const ring = `<circle r="${R}" cx="60" cy="60" fill="none" stroke="${s.color}" stroke-width="14" stroke-dasharray="${(frac * C).toFixed(2)} ${(C - frac * C).toFixed(2)}" stroke-dashoffset="${(-acc * C).toFixed(2)}" transform="rotate(-90 60 60)" opacity="0.9"><title>${escapeHtml(s.label)}: ${s.value}</title></circle>`;
+    const ring = `<circle r="${R}" cx="60" cy="60" fill="none" stroke="${s.color}" stroke-width="14" stroke-dasharray="${(frac * C).toFixed(2)} ${(C - frac * C).toFixed(2)}" stroke-dashoffset="${(-acc * C).toFixed(2)}" transform="rotate(-90 60 60)" opacity="0.9"><title>${escapeHtml(s.label)}: ${fmt(s.value)}</title></circle>`;
     acc += frac;
     return ring;
   }).join("");
-  const legend = segments.map(s => `<div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-secondary);"><span style="width:8px;height:8px;border-radius:50%;background:${s.color};flex-shrink:0;"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.label)}</span><span style="font-family:var(--font-mono);color:var(--text-muted);">${s.value}</span></div>`).join("");
+  const legend = segments.map(s => `<div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-secondary);"><span style="width:8px;height:8px;border-radius:50%;background:${s.color};flex-shrink:0;"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.label)}</span><span style="font-family:var(--font-mono);color:var(--text-muted);">${fmt(s.value)}</span></div>`).join("");
+  const centerText = fmt(total);
+  const centerSize = String(centerText).length > 6 ? 13 : 20;
   return `<div style="display:flex;align-items:center;gap:14px;height:100%;">
     <svg viewBox="0 0 120 120" style="width:120px;height:120px;flex-shrink:0;">${rings}
-      <text x="60" y="57" text-anchor="middle" font-size="20" font-weight="700" fill="#f2f3f7" font-family="IBM Plex Mono, monospace">${total}</text>
-      <text x="60" y="72" text-anchor="middle" font-size="8" fill="rgba(255,255,255,0.4)" font-family="IBM Plex Mono, monospace">ORDERS</text>
+      <text x="60" y="57" text-anchor="middle" font-size="${centerSize}" font-weight="700" fill="#f2f3f7" font-family="IBM Plex Mono, monospace">${centerText}</text>
+      <text x="60" y="72" text-anchor="middle" font-size="8" fill="rgba(255,255,255,0.4)" font-family="IBM Plex Mono, monospace">${escapeHtml(centerLabel)}</text>
     </svg>
     <div style="display:flex;flex-direction:column;gap:5px;min-width:0;flex:1;">${legend}</div>
   </div>`;
@@ -4810,6 +4820,650 @@ async function fetchAndRenderMissionControl() {
   } catch (err) {
     console.error("Mission Control fetch failed:", err);
   }
+}
+
+// ==========================================================================
+// Analytics tab (schema v13): profitability, monthly P&L + CSV export,
+// launch outcomes. Computed client-side from Supabase rows like Mission
+// Control — one cached fetch per visit, re-rendered on period/shop changes.
+// COGS/fees are ESTIMATES driven by the shared cost params in app_settings.
+// ==========================================================================
+
+const DEFAULT_COST_PARAMS = {
+  filament_cost_per_gram: 0.09,
+  machine_cost_per_hour: 0.5,
+  labor_cost_per_item: 0.5,
+  platform_fee_rate_shopee: 0.12,
+  platform_fee_rate_lazada: 0.12,
+  launch_flag_days: 21,
+  printer_capacity_hours_per_day: 0,
+};
+let anxCache = null;       // raw rows: { orders, items, printFiles, variants, products }
+let anxCostParams = null;  // DEFAULT_COST_PARAMS overlaid with app_settings.cost_params
+let anxPeriod = "90d";
+let anxSkuSort = "pph";
+let anxLoading = false;
+let anxLastBuild = null;   // last buildAnalyticsLines() result (feeds the CSV exports)
+
+function formatRM(n, decimals = 2) {
+  if (!Number.isFinite(n)) return "—";
+  return new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR", minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
+}
+
+function formatRMCompact(n) {
+  if (!Number.isFinite(n)) return "—";
+  return "RM" + new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}
+
+function formatPct(n) {
+  return Number.isFinite(n) ? `${(n * 100).toFixed(1)}%` : "—";
+}
+
+function localMonthKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function anxPeriodCutoff() {
+  if (anxPeriod === "30d") return new Date(Date.now() - 30 * 86400000);
+  if (anxPeriod === "90d") return new Date(Date.now() - 90 * 86400000);
+  if (anxPeriod === "12m") return new Date(Date.now() - 365 * 86400000);
+  return null;
+}
+
+function anxPlatformFeeRate(platform, params) {
+  const p = String(platform || "").toLowerCase();
+  if (p.includes("shopee")) return { rate: params.platform_fee_rate_shopee, known: true };
+  if (p.includes("lazada")) return { rate: params.platform_fee_rate_lazada, known: true };
+  return { rate: 0, known: false };
+}
+
+async function loadCostParams(force = false) {
+  if (anxCostParams && !force) return anxCostParams;
+  let saved = {};
+  try {
+    const { data, error } = await supabaseClient.from("app_settings").select("value").eq("key", "cost_params").limit(1);
+    if (error) throw error;
+    if (data && data[0]) saved = JSON.parse(data[0].value) || {};
+  } catch (err) {
+    console.warn("Failed to load cost_params, using defaults:", err);
+  }
+  anxCostParams = { ...DEFAULT_COST_PARAMS, ...saved };
+  return anxCostParams;
+}
+
+function renderCostForm() {
+  const p = anxCostParams;
+  if (!p) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set("anx-cost-filament", p.filament_cost_per_gram);
+  set("anx-cost-machine", p.machine_cost_per_hour);
+  set("anx-cost-labor", p.labor_cost_per_item);
+  // Fee rates are stored as fractions but edited as percentages.
+  set("anx-cost-fee-shopee", Math.round(p.platform_fee_rate_shopee * 1000) / 10);
+  set("anx-cost-fee-lazada", Math.round(p.platform_fee_rate_lazada * 1000) / 10);
+  set("anx-cost-flagdays", p.launch_flag_days);
+  set("anx-cost-capacity", p.printer_capacity_hours_per_day);
+}
+
+async function saveCostParams() {
+  const num = (id, fallback) => {
+    const v = parseFloat(document.getElementById(id)?.value);
+    return Number.isFinite(v) && v >= 0 ? v : fallback;
+  };
+  const p = {
+    filament_cost_per_gram: num("anx-cost-filament", DEFAULT_COST_PARAMS.filament_cost_per_gram),
+    machine_cost_per_hour: num("anx-cost-machine", DEFAULT_COST_PARAMS.machine_cost_per_hour),
+    labor_cost_per_item: num("anx-cost-labor", DEFAULT_COST_PARAMS.labor_cost_per_item),
+    platform_fee_rate_shopee: num("anx-cost-fee-shopee", DEFAULT_COST_PARAMS.platform_fee_rate_shopee * 100) / 100,
+    platform_fee_rate_lazada: num("anx-cost-fee-lazada", DEFAULT_COST_PARAMS.platform_fee_rate_lazada * 100) / 100,
+    launch_flag_days: Math.max(1, Math.round(num("anx-cost-flagdays", DEFAULT_COST_PARAMS.launch_flag_days))),
+    printer_capacity_hours_per_day: num("anx-cost-capacity", 0),
+  };
+  try {
+    const { error } = await supabaseClient.from("app_settings")
+      .upsert({ key: "cost_params", value: JSON.stringify(p), updated_at: new Date().toISOString() });
+    if (error) throw error;
+    anxCostParams = p;
+    showToast("Cost assumptions saved.", "success");
+    logAction("save_cost_params", "info", p);
+    renderAnalytics();
+  } catch (err) {
+    console.error("Failed to save cost params:", err);
+    showToast(`Failed to save cost assumptions: ${err.message}`, "error");
+  }
+}
+
+async function fetchAnalyticsData(force = false) {
+  if (anxCache && !force) return anxCache;
+  // All five fetches paginate — every one of these tables can exceed the
+  // server-side row cap (see fetchAllRows). Ordered by id for stable pages.
+  const [orders, items, printFiles, variants, products] = await Promise.all([
+    fetchAllRows((from, to) => supabaseClient.from("orders")
+      .select("id, platform_order_id, order_timestamp, created_at, order_subtotal, order_currency, sales_platform, shop_id, overall_order_status")
+      .order("id", { ascending: true }).range(from, to)),
+    fetchAllRows((from, to) => supabaseClient.from("order_items")
+      .select("id, order_id, variant_id, variant_sku, variant_name, purchased_quantity, item_print_status, item_subtotal, sent_to_print_timestamp")
+      .order("id", { ascending: true }).range(from, to)),
+    fetchAllRows((from, to) => supabaseClient.from("print_files")
+      .select("id, variant_id, weight_g, print_time_m")
+      .order("id", { ascending: true }).range(from, to)),
+    fetchAllRows((from, to) => supabaseClient.from("variants")
+      .select("id, product_id, variant_sku, variant_name, variant_type")
+      .order("id", { ascending: true }).range(from, to)),
+    fetchAllRows((from, to) => supabaseClient.from("products")
+      .select("id, master_sku, product_base_name, shop_id, created_at")
+      .order("id", { ascending: true }).range(from, to)),
+  ]);
+  anxCache = { orders, items, printFiles, variants, products };
+  markFresh("pnl");
+  return anxCache;
+}
+
+// Per-unit cost of a variant summed over ALL its print_files rows (a variant
+// can have several component files). Zero weight/time rows still count toward
+// the sum but flag the estimate as incomplete — never silently zero-cost.
+function computeVariantCosts(printFiles, params) {
+  const map = new Map();
+  for (const f of printFiles) {
+    if (!f.variant_id) continue;
+    let e = map.get(f.variant_id);
+    if (!e) { e = { materialCost: 0, printMinutes: 0, incomplete: false }; map.set(f.variant_id, e); }
+    const w = Number(f.weight_g) || 0;
+    const m = Number(f.print_time_m) || 0;
+    if (w <= 0 || m <= 0) e.incomplete = true;
+    e.materialCost += w * params.filament_cost_per_gram;
+    e.printMinutes += m;
+  }
+  return map;
+}
+
+// Flattens orders + items into per-line rows with allocated revenue, fees and
+// estimated costs. Cancelled/failed orders are excluded; held orders included
+// (footnoted). item_subtotal is only ever an allocation WEIGHT within its
+// order (on Shopee it can be a unit price, not a line total) — allocations
+// always sum exactly to orders.order_subtotal.
+function buildAnalyticsLines() {
+  const params = anxCostParams;
+  const costMap = computeVariantCosts(anxCache.printFiles, params);
+  const variantById = new Map(anxCache.variants.map(v => [v.id, v]));
+  const variantBySku = new Map(anxCache.variants.map(v => [v.variant_sku, v]));
+  const productById = new Map(anxCache.products.map(p => [p.id, p]));
+  const itemsByOrder = new Map();
+  for (const it of anxCache.items) {
+    if (!itemsByOrder.has(it.order_id)) itemsByOrder.set(it.order_id, []);
+    itemsByOrder.get(it.order_id).push(it);
+  }
+  const notes = { heldOrders: 0, nonMyrOrders: 0, nonMyrByCurrency: {}, ordersMissingSubtotal: 0, linesMissingCost: 0, linesUnknownFee: 0 };
+  const lines = [];
+  for (const o of anxCache.orders) {
+    if (!passesShopScope(o.shop_id)) continue;
+    const status = String(o.overall_order_status || "").toLowerCase();
+    if (status === "cancelled" || status === "failed") continue;
+    const eligible = (itemsByOrder.get(o.id) || []).filter(it => it.item_print_status !== "not_applicable");
+    if (!eligible.length) continue;
+    const currency = (o.order_currency || "MYR").toUpperCase();
+    const isMyr = currency === "MYR";
+    const isHold = status === "hold" || status === "on hold";
+    if (isHold) notes.heldOrders++;
+    if (!isMyr) {
+      notes.nonMyrOrders++;
+      notes.nonMyrByCurrency[currency] = (notes.nonMyrByCurrency[currency] || 0) + 1;
+    }
+    let subtotal = Number(o.order_subtotal);
+    if (!Number.isFinite(subtotal)) { notes.ordersMissingSubtotal++; subtotal = 0; }
+
+    let weights = eligible.map(it => (it.item_subtotal == null ? null : Number(it.item_subtotal)));
+    let basis = "item_subtotal";
+    if (weights.some(w => w == null || !Number.isFinite(w)) || weights.reduce((s, w) => s + (w || 0), 0) <= 0) {
+      weights = eligible.map(it => Number(it.purchased_quantity) || 0);
+      basis = "quantity";
+    }
+    let wSum = weights.reduce((s, w) => s + w, 0);
+    if (wSum <= 0) { weights = eligible.map(() => 1); wSum = eligible.length; basis = "even"; }
+
+    const date = new Date(o.order_timestamp || o.created_at);
+    const { rate: feeRate, known: feeKnown } = anxPlatformFeeRate(o.sales_platform, params);
+    for (let i = 0; i < eligible.length; i++) {
+      const it = eligible[i];
+      const qty = Number(it.purchased_quantity) || 0;
+      const revenue = subtotal * (weights[i] / wSum);
+      const fee = revenue * feeRate;
+      if (!feeKnown && isMyr) notes.linesUnknownFee++;
+      // Fall back to SKU lookup when the FK was severed (ON DELETE SET NULL)
+      // so cost estimates survive variant re-imports.
+      const variant = variantById.get(it.variant_id) || variantBySku.get(it.variant_sku) || null;
+      const cost = variant ? costMap.get(variant.id) : null;
+      if (!cost) notes.linesMissingCost++;
+      const material = cost ? cost.materialCost * qty : 0;
+      const minutes = cost ? cost.printMinutes * qty : 0;
+      const machine = (minutes / 60) * params.machine_cost_per_hour;
+      const labor = params.labor_cost_per_item * qty;
+      const product = variant ? productById.get(variant.product_id) : null;
+      lines.push({
+        date, monthKey: localMonthKey(date),
+        orderId: o.id, platformOrderId: o.platform_order_id, platform: o.sales_platform || "Unknown",
+        shopId: o.shop_id, status, isHold, isMyr, currency,
+        variantId: variant ? variant.id : null,
+        variantSku: (variant && variant.variant_sku) || it.variant_sku || "(unmatched)",
+        variantName: (variant && variant.variant_name) || it.variant_name || "",
+        variantType: (variant && variant.variant_type) || "",
+        productId: product ? product.id : null,
+        masterSku: product ? product.master_sku : "",
+        productName: product ? (product.product_base_name || "") : "",
+        qty, revenue, fee, feeKnown, material, machine, labor, minutes,
+        profit: revenue - fee - material - machine - labor,
+        costKnown: !!cost, costIncomplete: cost ? cost.incomplete : true, basis,
+      });
+    }
+  }
+  return { lines, notes, costMap };
+}
+
+function computeMonthlyPnl(lines) {
+  const months = new Map();
+  const get = (k) => {
+    if (!months.has(k)) months.set(k, {
+      month: k, orderIds: new Set(), heldOrderIds: new Set(), nonMyrOrderIds: new Set(),
+      units: 0, revenue: 0, material: 0, machine: 0, labor: 0, fees: 0, profit: 0, linesMissingCost: 0,
+    });
+    return months.get(k);
+  };
+  for (const l of lines) {
+    const m = get(l.monthKey);
+    if (!l.isMyr) { m.nonMyrOrderIds.add(l.orderId); continue; }
+    m.orderIds.add(l.orderId);
+    if (l.isHold) m.heldOrderIds.add(l.orderId);
+    m.units += l.qty;
+    m.revenue += l.revenue;
+    m.material += l.material;
+    m.machine += l.machine;
+    m.labor += l.labor;
+    m.fees += l.fee;
+    m.profit += l.profit;
+    if (!l.costKnown) m.linesMissingCost++;
+  }
+  return Array.from(months.values()).sort((a, b) => a.month.localeCompare(b.month));
+}
+
+function computeSkuProfitability(periodLines) {
+  const rows = new Map();
+  for (const l of periodLines) {
+    if (!l.isMyr) continue;
+    const key = l.variantId || `sku:${l.variantSku}`;
+    if (!rows.has(key)) rows.set(key, {
+      sku: l.variantSku, name: l.variantName, type: l.variantType, masterSku: l.masterSku,
+      unmatched: !l.variantId, incomplete: false,
+      units: 0, revenue: 0, fees: 0, material: 0, machine: 0, labor: 0, minutes: 0, profit: 0,
+    });
+    const r = rows.get(key);
+    r.units += l.qty;
+    r.revenue += l.revenue;
+    r.fees += l.fee;
+    r.material += l.material;
+    r.machine += l.machine;
+    r.labor += l.labor;
+    r.minutes += l.minutes;
+    r.profit += l.profit;
+    if (l.costIncomplete) r.incomplete = true;
+  }
+  const arr = Array.from(rows.values());
+  for (const r of arr) {
+    r.margin = r.revenue > 0 ? r.profit / r.revenue : null;
+    const hours = r.minutes / 60;
+    // Machine cost is deliberately excluded from the numerator: plate time is
+    // the denominator resource, and machine_cost_per_hour is the breakeven bar.
+    r.pph = hours > 0 ? (r.revenue - r.fees - r.material - r.labor) / hours : null;
+  }
+  const sorters = {
+    pph: (a, b) => (b.pph ?? -Infinity) - (a.pph ?? -Infinity),
+    revenue: (a, b) => b.revenue - a.revenue,
+    margin: (a, b) => (b.margin ?? -Infinity) - (a.margin ?? -Infinity),
+  };
+  arr.sort(sorters[anxSkuSort] || sorters.pph);
+  return arr;
+}
+
+// Lifetime per-product outcomes. Launch date = products.created_at (bulk
+// catalog imports share an import date — still useful for dead-SKU flags).
+function computeLaunchOutcomes(lines) {
+  const params = anxCostParams;
+  const byProduct = new Map();
+  for (const l of lines) {
+    if (!l.productId) continue;
+    if (!byProduct.has(l.productId)) byProduct.set(l.productId, []);
+    byProduct.get(l.productId).push(l);
+  }
+  const now = Date.now();
+  const rows = [];
+  for (const p of anxCache.products) {
+    if (!passesShopScope(p.shop_id)) continue;
+    const launched = new Date(p.created_at);
+    const sales = (byProduct.get(p.id) || []).slice().sort((a, b) => a.date - b.date);
+    const first = sales[0] || null;
+    const last = sales.length ? sales[sales.length - 1] : null;
+    const cut30 = launched.getTime() + 30 * 86400000;
+    let units30 = 0, rev30 = 0, totalUnits = 0;
+    for (const s of sales) {
+      totalUnits += s.qty;
+      if (s.date.getTime() <= cut30) { units30 += s.qty; if (s.isMyr) rev30 += s.revenue; }
+    }
+    const ageDays = (now - launched.getTime()) / 86400000;
+    let flag;
+    if (!sales.length) flag = ageDays > params.launch_flag_days ? "no-sales" : "watching";
+    else if (now - last.date.getTime() > 90 * 86400000) flag = "stale";
+    else flag = "selling";
+    rows.push({
+      masterSku: p.master_sku, name: p.product_base_name || "", launched,
+      daysToFirst: first ? Math.max(0, Math.round((first.date - launched) / 86400000)) : null,
+      units30, rev30, totalUnits, lastSale: last ? last.date : null, flag,
+    });
+  }
+  rows.sort((a, b) => b.launched - a.launched);
+  return rows;
+}
+
+// Estimated plate-hours dispatched per day, bucketed on sent_to_print_timestamp.
+function computeDispatchHours(costMap) {
+  const nDays = anxPeriod === "30d" ? 30 : 90;
+  const keys = dayBuckets(nDays);
+  const buckets = Object.fromEntries(keys.map(k => [k, 0]));
+  const variantById = new Map(anxCache.variants.map(v => [v.id, v]));
+  const variantBySku = new Map(anxCache.variants.map(v => [v.variant_sku, v]));
+  const orderById = new Map(anxCache.orders.map(o => [o.id, o]));
+  for (const it of anxCache.items) {
+    if (!it.sent_to_print_timestamp || it.item_print_status === "not_applicable") continue;
+    const o = orderById.get(it.order_id);
+    if (!o || !passesShopScope(o.shop_id)) continue;
+    const k = localDayKey(new Date(it.sent_to_print_timestamp));
+    if (!(k in buckets)) continue;
+    const variant = variantById.get(it.variant_id) || variantBySku.get(it.variant_sku);
+    const cost = variant ? costMap.get(variant.id) : null;
+    if (!cost) continue;
+    buckets[k] += (cost.printMinutes * (Number(it.purchased_quantity) || 0)) / 60;
+  }
+  return { keys, values: keys.map(k => Math.round(buckets[k] * 10) / 10) };
+}
+
+function svgDualBarChart(valuesA, valuesB, labels, { colorA = "#3ecf8e", colorB = "#7ea6e8", nameA = "A", nameB = "B", format = v => v } = {}) {
+  const w = 600, h = 170, padB = 18, padT = 14, padL = 34, padR = 6;
+  const max = Math.max(...valuesA, ...valuesB.map(v => Math.max(v, 0)), 1);
+  const innerW = w - padL - padR, innerH = h - padT - padB;
+  const bw = innerW / labels.length;
+  const grid = [0.5, 1].map(f => {
+    const y = padT + innerH - innerH * f;
+    return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w - padR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3 4"></line>
+      <text x="${padL - 5}" y="${(y + 3).toFixed(1)}" font-size="8" fill="rgba(255,255,255,0.3)" text-anchor="end" font-family="IBM Plex Mono, monospace">${formatRMCompact(max * f)}</text>`;
+  }).join("");
+  const bar = (v, i, off, color, name) => {
+    const clamped = Math.max(v, 0);
+    const bh = (clamped / max) * innerH;
+    const x = padL + i * bw + bw * (0.12 + off);
+    const y = padT + innerH - bh;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw * 0.36).toFixed(1)}" height="${Math.max(bh, clamped > 0 ? 2 : 0).toFixed(1)}" rx="1.5" fill="${color}" opacity="${v > 0 ? 0.85 : 0.25}"><title>${labels[i]} ${name}: ${format(v)}</title></rect>`;
+  };
+  const bars = labels.map((_, i) => bar(valuesA[i], i, 0, colorA, nameA) + bar(valuesB[i], i, 0.38, colorB, nameB)).join("");
+  const step = Math.max(1, Math.ceil(labels.length / 6));
+  const xLabels = labels.map((lb, i) => (i % step === 0 || i === labels.length - 1)
+    ? `<text x="${(padL + i * bw + bw / 2).toFixed(1)}" y="${h - 4}" font-size="8" fill="rgba(255,255,255,0.35)" text-anchor="middle" font-family="IBM Plex Mono, monospace">${lb.slice(2)}</text>`
+    : "").join("");
+  const legend = `<g font-size="8" font-family="IBM Plex Mono, monospace">
+    <rect x="${padL}" y="2" width="8" height="8" rx="2" fill="${colorA}"></rect><text x="${padL + 12}" y="9" fill="rgba(255,255,255,0.5)">${escapeHtml(nameA)}</text>
+    <rect x="${padL + 74}" y="2" width="8" height="8" rx="2" fill="${colorB}"></rect><text x="${padL + 86}" y="9" fill="rgba(255,255,255,0.5)">${escapeHtml(nameB)}</text>
+  </g>`;
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:100%;display:block;">${grid}${legend}${bars}${xLabels}</svg>`;
+}
+
+function anxTypeChip(type) {
+  if (!type) return "";
+  const t = String(type).toUpperCase();
+  const cls = t.startsWith("FWM") ? "type-fwm" : t.startsWith("WM") ? "type-wm" : t.startsWith("DS") ? "type-ds" : "mut";
+  return `<span class="d4-stchip ${cls}">${escapeHtml(t)}</span>`;
+}
+
+function renderAnxPnlTable(months) {
+  const el = document.getElementById("anx-pnl-table");
+  if (!el) return;
+  if (!months.length) { el.innerHTML = emptyDiv("No orders yet.", "finance"); return; }
+  const body = months.slice().reverse().map(m => {
+    const margin = m.revenue > 0 ? m.profit / m.revenue : null;
+    const cls = m.profit >= 0 ? "pos" : "neg";
+    return `<tr>
+      <td>${m.month}</td>
+      <td class="num">${m.orderIds.size}</td>
+      <td class="num">${m.units}</td>
+      <td class="num">${formatRM(m.revenue)}</td>
+      <td class="num">${formatRM(m.material)}</td>
+      <td class="num">${formatRM(m.machine)}</td>
+      <td class="num">${formatRM(m.labor)}</td>
+      <td class="num">${formatRM(m.fees)}</td>
+      <td class="num ${cls}">${formatRM(m.profit)}</td>
+      <td class="num ${cls}">${formatPct(margin)}</td>
+    </tr>`;
+  }).join("");
+  el.innerHTML = `<table class="d4-atbl"><thead><tr>
+    <th>Month</th><th class="num">Orders</th><th class="num">Units</th><th class="num">Revenue</th>
+    <th class="num">Material</th><th class="num">Machine</th><th class="num">Labor</th><th class="num">Fees</th>
+    <th class="num">Gross Profit</th><th class="num">Margin</th>
+  </tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function renderAnxFootnotes(notes) {
+  const el = document.getElementById("anx-footnotes");
+  if (!el) return;
+  const parts = [];
+  if (notes.heldOrders) parts.push(`<span>includes ${notes.heldOrders} held order${notes.heldOrders > 1 ? "s" : ""}</span>`);
+  if (notes.nonMyrOrders) {
+    const per = Object.entries(notes.nonMyrByCurrency).map(([c, n]) => `${c}×${n}`).join(", ");
+    parts.push(`<span>${notes.nonMyrOrders} non-MYR order${notes.nonMyrOrders > 1 ? "s" : ""} excluded from money figures (${per})</span>`);
+  }
+  if (notes.ordersMissingSubtotal) parts.push(`<span>${notes.ordersMissingSubtotal} order${notes.ordersMissingSubtotal > 1 ? "s" : ""} missing subtotal (counted as RM0)</span>`);
+  if (notes.linesMissingCost) parts.push(`<span>${notes.linesMissingCost} line${notes.linesMissingCost > 1 ? "s" : ""} without a cost estimate (no matched print files)</span>`);
+  if (notes.linesUnknownFee) parts.push(`<span>${notes.linesUnknownFee} line${notes.linesUnknownFee > 1 ? "s" : ""} on unrecognised platforms (0% fee assumed)</span>`);
+  el.innerHTML = parts.join("");
+}
+
+function renderAnxSkuTable(rows) {
+  const el = document.getElementById("anx-sku-table");
+  const cnt = document.getElementById("anx-sku-count");
+  const fn = document.getElementById("anx-sku-fnote");
+  if (!el) return;
+  if (cnt) cnt.textContent = `${rows.length} SKUs · period · MYR`;
+  if (!rows.length) {
+    el.innerHTML = emptyDiv("No MYR sales in this period.", "query_stats");
+    if (fn) fn.innerHTML = "";
+    return;
+  }
+  const shown = rows.slice(0, 80);
+  const body = shown.map(r => {
+    const cogs = r.material + r.machine + r.labor;
+    const chips = [
+      r.unmatched ? `<span class="d4-stchip err">unmatched</span>` : "",
+      !r.unmatched && r.incomplete ? `<span class="d4-stchip mut" title="Some print files have zero weight/time — cost is underestimated">est. incomplete</span>` : "",
+    ].join(" ");
+    const pphCls = r.pph == null ? "" : r.pph >= anxCostParams.machine_cost_per_hour ? "pos" : "neg";
+    return `<tr>
+      <td><span class="sku">${escapeHtml(r.sku)}</span></td>
+      <td class="lbl" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</td>
+      <td>${anxTypeChip(r.type)}</td>
+      <td class="num">${r.units}</td>
+      <td class="num">${formatRM(r.revenue)}</td>
+      <td class="num">${formatRM(cogs)}</td>
+      <td class="num">${formatRM(r.fees)}</td>
+      <td class="num ${r.profit >= 0 ? "pos" : "neg"}">${formatRM(r.profit)}</td>
+      <td class="num ${r.margin != null && r.margin < 0 ? "neg" : ""}">${formatPct(r.margin)}</td>
+      <td class="num ${pphCls}">${r.pph != null ? formatRM(r.pph) : "—"}</td>
+      <td>${chips}</td>
+    </tr>`;
+  }).join("");
+  el.innerHTML = `<table class="d4-atbl"><thead><tr>
+    <th>SKU</th><th>Variant</th><th>Type</th><th class="num">Units</th><th class="num">Revenue</th>
+    <th class="num">Est. COGS</th><th class="num">Fees</th><th class="num">Profit</th><th class="num">Margin</th>
+    <th class="num">Profit/hr</th><th></th>
+  </tr></thead><tbody>${body}</tbody></table>`;
+  if (fn) fn.innerHTML = `<span>Profit/hr excludes machine cost — a SKU is worth the plate time above your machine rate of ${formatRM(anxCostParams.machine_cost_per_hour)}/hr (green = above, red = below).</span>${rows.length > shown.length ? `<span>showing top ${shown.length} of ${rows.length}</span>` : ""}`;
+}
+
+function renderAnxLaunchTable(rows) {
+  const el = document.getElementById("anx-launch-table");
+  const badge = document.getElementById("anx-dead-count");
+  if (!el) return;
+  const flagged = rows.filter(r => r.flag === "no-sales" || r.flag === "stale").length;
+  if (badge) {
+    badge.classList.toggle("hidden", flagged === 0);
+    badge.textContent = `${flagged} flagged`;
+  }
+  if (!rows.length) { el.innerHTML = emptyDiv("No products in this shop scope.", "rocket_launch"); return; }
+  const chip = (f) => f === "selling" ? `<span class="d4-stchip done">selling</span>`
+    : f === "watching" ? `<span class="d4-stchip mut">watching</span>`
+    : f === "stale" ? `<span class="d4-stchip queue" title="Sold before, but nothing in the last 90 days">stale 90d+</span>`
+    : `<span class="d4-stchip err" title="Zero sales ${anxCostParams.launch_flag_days}+ days after launch">no sales</span>`;
+  const body = rows.map(r => `<tr>
+    <td><span class="sku">${escapeHtml(r.masterSku)}</span></td>
+    <td class="lbl" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</td>
+    <td>${r.launched.toLocaleDateString()}</td>
+    <td class="num">${r.daysToFirst != null ? `${r.daysToFirst}d` : "—"}</td>
+    <td class="num">${r.units30}</td>
+    <td class="num">${formatRM(r.rev30)}</td>
+    <td class="num">${r.totalUnits}</td>
+    <td>${r.lastSale ? r.lastSale.toLocaleDateString() : "—"}</td>
+    <td>${chip(r.flag)}</td>
+  </tr>`).join("");
+  el.innerHTML = `<table class="d4-atbl"><thead><tr>
+    <th>Product</th><th>Name</th><th>Launched</th><th class="num">First Sale</th><th class="num">30d Units</th>
+    <th class="num">30d Rev</th><th class="num">Total Units</th><th>Last Sale</th><th>Status</th>
+  </tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function renderAnalytics() {
+  if (!anxCache || !anxCostParams) return;
+  const built = buildAnalyticsLines();
+  anxLastBuild = built;
+  const { lines, notes, costMap } = built;
+  const cutoff = anxPeriodCutoff();
+  const periodLines = cutoff ? lines.filter(l => l.date >= cutoff) : lines;
+  const myr = periodLines.filter(l => l.isMyr);
+
+  const revenue = myr.reduce((s, l) => s + l.revenue, 0);
+  const profit = myr.reduce((s, l) => s + l.profit, 0);
+  const orders = new Set(myr.map(l => l.orderId)).size;
+  const hours = periodLines.reduce((s, l) => s + l.minutes, 0) / 60;
+  const put = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  put("anx-kpi-revenue", formatRM(revenue, 0));
+  put("anx-kpi-revenue-foot", `${orders} MYR order${orders === 1 ? "" : "s"} in period`);
+  put("anx-kpi-profit", formatRM(profit, 0));
+  put("anx-kpi-margin", formatPct(revenue > 0 ? profit / revenue : null));
+  put("anx-kpi-aov", formatRM(orders > 0 ? revenue / orders : NaN));
+  put("anx-kpi-hours", `${hours >= 100 ? Math.round(hours) : hours.toFixed(1)} h`);
+
+  const months = computeMonthlyPnl(lines);
+  const chartMonths = months.slice(-12);
+  const mEl = document.getElementById("anx-chart-monthly");
+  if (mEl) mEl.innerHTML = chartMonths.length
+    ? svgDualBarChart(
+        chartMonths.map(m => m.revenue), chartMonths.map(m => m.profit), chartMonths.map(m => m.month),
+        { colorA: "#3ecf8e", colorB: "#7ea6e8", nameA: "Revenue", nameB: "Profit", format: v => formatRM(v) })
+    : emptyDiv("No orders yet.", "finance");
+
+  const platRev = {};
+  myr.forEach(l => {
+    const p = (l.platform || "Unknown").trim() || "Unknown";
+    platRev[p] = (platRev[p] || 0) + l.revenue;
+  });
+  const segs = Object.entries(platRev).sort((a, b) => b[1] - a[1])
+    .map(([label, value], i) => ({ label, value: Math.round(value), color: chartPalette(i) }));
+  const dEl = document.getElementById("anx-chart-platform");
+  if (dEl) dEl.innerHTML = svgDonut(segs, { centerLabel: "REVENUE", valueFormat: formatRMCompact, emptyMsg: "No MYR revenue in this period." });
+
+  const disp = computeDispatchHours(costMap);
+  const cap = anxCostParams.printer_capacity_hours_per_day;
+  const hEl = document.getElementById("anx-chart-hours");
+  if (hEl) hEl.innerHTML = svgLineChart(disp.values, disp.keys, { color: "#38bdf8", refLine: cap > 0 ? { value: cap, label: `cap ${cap}h` } : null });
+
+  renderAnxPnlTable(months);
+  renderAnxFootnotes(notes);
+  renderAnxSkuTable(computeSkuProfitability(periodLines));
+  renderAnxLaunchTable(computeLaunchOutcomes(lines));
+}
+
+function anxDownloadCsv(rows, filename) {
+  const esc = (s) => `"${String(s ?? "").replace(/"/g, '""')}"`;
+  const blob = new Blob([rows.map(r => r.map(esc).join(",")).join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportPnlCsv() {
+  if (!anxLastBuild) { showToast("Analytics are still loading.", "warning"); return; }
+  const months = computeMonthlyPnl(anxLastBuild.lines);
+  if (!months.length) { showToast("Nothing to export.", "warning"); return; }
+  const rows = [["month", "orders", "units", "revenue_myr", "est_material_cost", "est_machine_cost", "est_labor_cost", "est_platform_fees", "gross_profit", "margin_pct", "held_orders_included", "non_myr_orders_excluded", "lines_missing_cost_estimate"]]
+    .concat(months.map(m => [
+      m.month, m.orderIds.size, m.units, m.revenue.toFixed(2), m.material.toFixed(2), m.machine.toFixed(2),
+      m.labor.toFixed(2), m.fees.toFixed(2), m.profit.toFixed(2),
+      m.revenue > 0 ? ((m.profit / m.revenue) * 100).toFixed(1) : "",
+      m.heldOrderIds.size, m.nonMyrOrderIds.size, m.linesMissingCost,
+    ]));
+  anxDownloadCsv(rows, `orbot-pnl-${new Date().toISOString().slice(0, 10)}.csv`);
+  logAction("export_pnl_csv", "info", { months: months.length });
+}
+
+function exportOrderLinesCsv() {
+  if (!anxLastBuild || !anxLastBuild.lines.length) { showToast("Nothing to export.", "warning"); return; }
+  const lines = anxLastBuild.lines.slice().sort((a, b) => a.date - b.date);
+  const rows = [["order_date_iso", "platform_order_id", "platform", "shop", "order_status", "currency", "master_sku", "variant_sku", "variant_name", "qty", "revenue_alloc", "platform_fee", "material_cost", "machine_cost", "labor_cost", "gross_profit", "cost_estimate_complete", "allocation_basis"]]
+    .concat(lines.map(l => [
+      l.date.toISOString(), l.platformOrderId, l.platform, shopName(l.shopId), l.status, l.currency,
+      l.masterSku, l.variantSku, l.variantName, l.qty, l.revenue.toFixed(2), l.fee.toFixed(2),
+      l.material.toFixed(2), l.machine.toFixed(2), l.labor.toFixed(2), l.profit.toFixed(2),
+      l.costKnown && !l.costIncomplete ? "yes" : "no", l.basis,
+    ]));
+  anxDownloadCsv(rows, `orbot-order-lines-${new Date().toISOString().slice(0, 10)}.csv`);
+  logAction("export_order_lines_csv", "info", { lines: lines.length });
+}
+
+async function fetchAndRenderAnalytics(force = false) {
+  if (!supabaseClient || anxLoading) return;
+  anxLoading = true;
+  try {
+    await loadCostParams();
+    renderCostForm();
+    await fetchAnalyticsData(force);
+    renderAnalytics();
+  } catch (err) {
+    console.error("Analytics fetch failed:", err);
+    showToast(`Analytics load failed: ${err.message}`, "error");
+  } finally {
+    anxLoading = false;
+  }
+}
+
+function setupAnalyticsTab() {
+  document.querySelectorAll("#anx-period > button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#anx-period > button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      anxPeriod = btn.getAttribute("data-period");
+      renderAnalytics();
+    });
+  });
+  document.querySelectorAll("#anx-sku-sort > button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#anx-sku-sort > button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      anxSkuSort = btn.getAttribute("data-sort");
+      renderAnalytics();
+    });
+  });
+  document.getElementById("anx-refresh-btn")?.addEventListener("click", () => fetchAndRenderAnalytics(true));
+  document.getElementById("anx-costs-toggle")?.addEventListener("click", () => {
+    document.getElementById("anx-costs-panel")?.classList.toggle("hidden");
+  });
+  document.getElementById("anx-costs-save")?.addEventListener("click", saveCostParams);
+  document.getElementById("anx-export-pnl")?.addEventListener("click", exportPnlCsv);
+  document.getElementById("anx-export-lines")?.addEventListener("click", exportOrderLinesCsv);
 }
 
 // Fetch and Render Waybills Archive
@@ -5823,6 +6477,7 @@ window.addEventListener("DOMContentLoaded", () => {
   setupCatalogEditModal();
   setupSystemErrorReset();
   setupListingsTab();
+  setupAnalyticsTab();
   setupSearchClearButtons();
 
   // Waybill panel toggle (Orders ↔ Compiled PDFs)

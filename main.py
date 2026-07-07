@@ -2354,12 +2354,20 @@ class ScoutAgent:
                         "variant_sku": v_sku,
                         "variant_name": v_name,
                         "quantity": quantity,
-                        "variation_names": {variation_name} if variation_name else set()
+                        "variation_names": {variation_name} if variation_name else set(),
+                        "subtotal": item.item_subtotal
                     }
                 else:
                     resolved_items[variant_id]["quantity"] += quantity
                     if variation_name:
                         resolved_items[variant_id]["variation_names"].add(variation_name)
+                    # Merged subtotal is only meaningful if every merged line had a
+                    # price — one missing price makes the sum a lie, so store NULL.
+                    prev_subtotal = resolved_items[variant_id].get("subtotal")
+                    if prev_subtotal is not None and item.item_subtotal is not None:
+                        resolved_items[variant_id]["subtotal"] = prev_subtotal + item.item_subtotal
+                    else:
+                        resolved_items[variant_id]["subtotal"] = None
             except Exception as e:
                 msg = f"Failed to process item '{listing_title}' for order {order_details.platform_order_id}: {e}"
                 logger.error(msg)
@@ -2379,7 +2387,8 @@ class ScoutAgent:
                     "variant_sku": details["variant_sku"],
                     "variant_name": "item does not exist" if is_fake else (f"{v_name} ({var_names_str})" if v_name and var_names_str else v_name),
                     "purchased_quantity": details["quantity"],
-                    "item_print_status": "not_applicable" if is_fake else "pending"
+                    "item_print_status": "not_applicable" if is_fake else "pending",
+                    "item_subtotal": details.get("subtotal")
                 }
                 self.supabase.table("order_items").insert(order_item_record).execute()
                 successful_items += 1

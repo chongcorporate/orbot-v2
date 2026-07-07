@@ -4,9 +4,10 @@
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>Command Deck - Orbot V2.0</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Outfit:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="index.css?v=1.19.0">
+  <link rel="stylesheet" href="index.css?v=1.17.3">
   <!-- Load Supabase library -->
   <!-- Pinned to 2.45.4 (a reasonably recent stable 2.x release as of this pass) instead of
        the floating @2 tag, so a jsdelivr-side release can't silently change behavior under us.
@@ -18,12 +19,104 @@
           integrity="sha384-GFr3yTh5lJznCbZfpTtXnwboFsxqtTQoeTZCRHhE0579KrRmlCzen5AA8ohaB5ug"
           crossorigin="anonymous"></script>
 
-  <!-- Tailwind Play CDN removed (v1.20.0): utilities are now compiled statically
-       into tw-compat.css (linked at the end of <head>, matching the CDN's injected
-       <style> cascade position). The old inline tailwind.config lives on as
-       Other/tw-compat/tailwind.config.cjs — regenerate tw-compat.css from there
-       when utility usage changes. New markup should use d4- classes: utility
-       combos not already in the compiled file will silently not exist. -->
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            /* Signal Deck theme — see Other/DESIGN.md. Token names kept for
+               compatibility with existing bg-*/text-*/border-* usages; only
+               the hex values changed (Aurora violet -> Signal Deck green). */
+            "surface-container": "#171c25",
+            "surface-container-lowest": "#0a0d11",
+            "on-primary-fixed": "#04120b",
+            "background": "#0c0f14",
+            "secondary-fixed": "#ffaa6b",
+            "primary": "#3ecf8e",
+            "on-secondary": "#2b1400",
+            "on-surface-variant": "#b6bec9",
+            "outline-variant": "#1f2530",
+            "on-tertiary-container": "#2b1400",
+            "secondary-container": "#ffaa6b",
+            "on-tertiary-fixed-variant": "#2b1400",
+            "primary-fixed": "#3ecf8e",
+            "surface-container-high": "#1f2530",
+            "on-background": "#edf0f4",
+            "error-container": "#ff6666",
+            "on-surface": "#edf0f4",
+            "secondary-fixed-dim": "#ffc898",
+            "surface-bright": "#2b3342",
+            "on-secondary-fixed-variant": "#2b1400",
+            "surface": "#12161d",
+            "tertiary-container": "#ff8c00",
+            "on-primary-container": "#04120b",
+            "tertiary-fixed-dim": "#ffb45c",
+            "surface-tint": "#3ecf8e",
+            "surface-container-low": "#0f131a",
+            "on-secondary-container": "#2b1400",
+            "outline": "#7d8794",
+            "primary-fixed-dim": "#3ecf8e",
+            "tertiary-fixed": "#ffb45c",
+            "surface-dim": "#0a0d11",
+            "on-secondary-fixed": "#2b1400",
+            "secondary": "#ffaa6b",
+            "surface-container-highest": "#2b3342",
+            "inverse-on-surface": "#0c0f14",
+            "on-error": "#3a0000",
+            "on-primary": "#04120b",
+            "tertiary": "#ff8c00",
+            "on-tertiary-fixed": "#2b1400",
+            "primary-container": "#3ecf8e",
+            "on-primary-fixed-variant": "#04120b",
+            "surface-variant": "#1f2530",
+            "inverse-surface": "#edf0f4",
+            "error": "#ff6666",
+            "warning": "#fbbf24",
+            "success": "#3ecf8e",
+            "on-error-container": "#3a0000",
+            "inverse-primary": "#3ecf8e",
+            "on-tertiary": "#2b1400"
+          },
+          borderRadius: {
+            "DEFAULT": "0.375rem",
+            "sm": "0.25rem",
+            "md": "0.5rem",
+            "lg": "0.75rem",
+            "xl": "1.25rem",
+            "2xl": "1.75rem",
+            "3xl": "2.25rem",
+            "full": "9999px"
+          },
+          spacing: {
+            "margin-desktop": "48px",
+            "gutter": "32px",
+            "panel-padding": "24px",
+            "unit": "4px",
+            "margin-mobile": "16px"
+          },
+          fontFamily: {
+            "data-mono": ["IBM Plex Mono"],
+            "body-lg": ["Inter"],
+            "label-caps": ["Inter"],
+            "display-lg": ["Outfit"],
+            "body-md": ["Inter"],
+            "headline-sm": ["Outfit"],
+            "headline-md": ["Outfit"]
+          },
+          fontSize: {
+            "data-mono": ["13px", { "lineHeight": "1.4", "letterSpacing": "0.01em", "fontWeight": "500" }],
+            "body-lg": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+            "label-caps": ["11px", { "lineHeight": "1.1", "letterSpacing": "0.08em", "fontWeight": "700" }],
+            "display-lg": ["52px", { "lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800" }],
+            "body-md": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+            "headline-sm": ["19px", { "lineHeight": "1.35", "fontWeight": "600" }],
+            "headline-md": ["26px", { "lineHeight": "1.25", "fontWeight": "700" }]
+          }
+        }
+      }
+    }
+  </script>
   
   <style>
     /* Custom Scrollbar */
@@ -320,7 +413,6 @@
       transform: translateX(-50%) translateY(0);
     }
   </style>
-  <link rel="stylesheet" href="tw-compat.css?v=1.20.0">
 </head>
 <body class="bg-background text-on-surface font-body-md antialiased overflow-hidden w-full h-screen flex flex-col selection:bg-primary-container/30 selection:text-primary">
 
@@ -341,7 +433,6 @@
         <button class="tab-btn" data-tab="operations">Printers</button>
         <button class="tab-btn" data-tab="products">Products<span class="nav-badge nav-badge-warn" id="nav-badge-products"></span></button>
         <button class="tab-btn" data-tab="launch">Launch</button>
-        <button class="tab-btn" data-tab="analytics">Analytics</button>
         <button class="tab-btn" data-tab="logs">Logs</button>
         <!-- Settings lives behind the gear icon on the right; hidden tab-btn keeps
              the shared tab-switching wiring (navigateToTab clicks it). -->
@@ -1033,149 +1124,6 @@
         <!-- Status bar — outside preview section so validation errors are always visible -->
         <div id="launch-status" class="hidden"></div>
 
-      </section>
-
-      <!-- 8b. Analytics Pane -->
-      <section class="tab-content hidden d4-pane d4-stack" id="pane-analytics">
-        <!-- Page head -->
-        <div class="d4-phead">
-          <div>
-            <h2>Analytics <span class="fresh-stamp" data-fresh="pnl"></span></h2>
-            <div class="sub">Revenue, estimated costs &amp; launch outcomes — figures use the cost assumptions below</div>
-          </div>
-          <div class="acts">
-            <div class="d4-seg" id="anx-period">
-              <button data-period="30d">30d</button>
-              <button data-period="90d" class="active">90d</button>
-              <button data-period="12m">12m</button>
-              <button data-period="all">All</button>
-            </div>
-            <button class="d4-btn" id="anx-costs-toggle"><span class="material-symbols-outlined">tune</span> Costs</button>
-            <button class="d4-btn" id="anx-refresh-btn"><span class="material-symbols-outlined">refresh</span> Refresh</button>
-          </div>
-        </div>
-
-        <!-- Cost assumptions panel (collapsed by default) -->
-        <div class="d4-card hidden" id="anx-costs-panel">
-          <div class="hd">
-            <h2>Cost Assumptions</h2>
-            <span class="cnt">shared across devices</span>
-          </div>
-          <div class="d4-costform">
-            <label>Filament RM/g
-              <input type="number" step="0.001" min="0" class="d4-input" id="anx-cost-filament">
-            </label>
-            <label>Machine RM/h
-              <input type="number" step="0.01" min="0" class="d4-input" id="anx-cost-machine">
-            </label>
-            <label>Labor RM/item
-              <input type="number" step="0.01" min="0" class="d4-input" id="anx-cost-labor">
-            </label>
-            <label>Shopee fee %
-              <input type="number" step="0.1" min="0" max="100" class="d4-input" id="anx-cost-fee-shopee">
-            </label>
-            <label>Lazada fee %
-              <input type="number" step="0.1" min="0" max="100" class="d4-input" id="anx-cost-fee-lazada">
-            </label>
-            <label>Launch flag after (days)
-              <input type="number" step="1" min="1" class="d4-input" id="anx-cost-flagdays">
-            </label>
-            <label>Farm capacity h/day
-              <input type="number" step="0.5" min="0" class="d4-input" id="anx-cost-capacity" title="Total printable hours per day across all printers (0 hides the capacity line)">
-            </label>
-            <div class="d4-costform-save">
-              <button class="d4-btn pri" id="anx-costs-save"><span class="material-symbols-outlined">save</span> Save</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- KPI row (period-scoped) -->
-        <div class="d4-kpis">
-          <div class="d4-kpi">
-            <div class="l"><span class="material-symbols-outlined">payments</span>Revenue</div>
-            <div class="v" id="anx-kpi-revenue">–</div>
-            <div class="foot" id="anx-kpi-revenue-foot"></div>
-          </div>
-          <div class="d4-kpi">
-            <div class="l"><span class="material-symbols-outlined">trending_up</span>Gross Profit</div>
-            <div class="v" id="anx-kpi-profit">–</div>
-            <div class="foot">after fees + est. COGS</div>
-          </div>
-          <div class="d4-kpi">
-            <div class="l"><span class="material-symbols-outlined">percent</span>Margin</div>
-            <div class="v" id="anx-kpi-margin">–</div>
-            <div class="foot">gross profit / revenue</div>
-          </div>
-          <div class="d4-kpi">
-            <div class="l"><span class="material-symbols-outlined">shopping_cart</span>Avg Order Value</div>
-            <div class="v" id="anx-kpi-aov">–</div>
-            <div class="foot">MYR orders only</div>
-          </div>
-          <div class="d4-kpi">
-            <div class="l"><span class="material-symbols-outlined">timer</span>Plate Time Sold</div>
-            <div class="v" id="anx-kpi-hours">–</div>
-            <div class="foot">est. print hours in period</div>
-          </div>
-        </div>
-
-        <!-- Charts -->
-        <div class="d4-insights">
-          <div class="d4-card">
-            <div class="hd"><h3>Revenue vs Profit · Monthly</h3><span class="cnt" style="margin-left:auto">all time</span></div>
-            <div class="ch" id="anx-chart-monthly"><div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div>
-          </div>
-          <div class="d4-card">
-            <div class="hd"><h3>Revenue by Platform</h3></div>
-            <div class="ch" id="anx-chart-platform"><div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div>
-          </div>
-          <div class="d4-card">
-            <div class="hd"><h3>Dispatched Print-Hours / Day</h3></div>
-            <div class="ch" id="anx-chart-hours"><div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div>
-          </div>
-        </div>
-
-        <!-- Monthly P&L -->
-        <div class="d4-card">
-          <div class="hd">
-            <h2>Monthly P&amp;L</h2>
-            <span class="cnt">all time · MYR</span>
-            <button class="d4-btn sm ml-auto" id="anx-export-pnl"><span class="material-symbols-outlined">download</span> Export CSV</button>
-            <button class="d4-btn sm" id="anx-export-lines"><span class="material-symbols-outlined">download</span> Export Order Lines</button>
-          </div>
-          <div class="d4-atbl-scroll" id="anx-pnl-table">
-            <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
-          </div>
-          <div class="d4-fnote" id="anx-footnotes"></div>
-        </div>
-
-        <!-- SKU profitability -->
-        <div class="d4-card">
-          <div class="hd">
-            <h2>SKU Profitability</h2>
-            <span class="cnt" id="anx-sku-count"></span>
-            <div class="d4-seg" style="margin-left:auto" id="anx-sku-sort">
-              <button data-sort="pph" class="active">Profit/hr</button>
-              <button data-sort="revenue">Revenue</button>
-              <button data-sort="margin">Margin</button>
-            </div>
-          </div>
-          <div class="d4-atbl-scroll" id="anx-sku-table">
-            <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
-          </div>
-          <div class="d4-fnote" id="anx-sku-fnote"></div>
-        </div>
-
-        <!-- Launch outcomes -->
-        <div class="d4-card">
-          <div class="hd">
-            <h2>Launch Outcomes</h2>
-            <span class="cnt">all time · launch date = catalog created date</span>
-            <span class="d4-stchip err ml-auto hidden" id="anx-dead-count"></span>
-          </div>
-          <div class="d4-atbl-scroll" id="anx-launch-table">
-            <div class="skeleton-stack"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
-          </div>
-        </div>
       </section>
 
       <!-- 9. Logs Pane -->
@@ -1992,6 +1940,6 @@
     </button>
   </div>
 
-  <script src="app.js?v=1.19.0"></script>
+  <script src="app.js?v=1.18.0"></script>
 </body>
 </html>
