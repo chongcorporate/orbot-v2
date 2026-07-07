@@ -279,6 +279,21 @@ def log_gemini_usage(agent_name: str, model_name: str, response):
     except Exception as e:
         print(f"[*] Failed to log Gemini usage: {e}")
 
+def fetch_all_rows(table: str, columns: str = "*", page_size: int = 1000) -> list:
+    """Fetches every row of a table, paginating past the Supabase server-side max-rows cap
+    (default 1000): a plain .select() silently truncates once a table outgrows the cap,
+    no matter what .limit() asks for. Any query meant to return an ENTIRE table must go
+    through this (or its own .range() loop)."""
+    rows: list = []
+    page = 0
+    while True:
+        res = supabase.table(table).select(columns).range(page * page_size, (page + 1) * page_size - 1).execute()
+        batch = res.data or []
+        rows.extend(batch)
+        if len(batch) < page_size:
+            return rows
+        page += 1
+
 def check_interactive(action_name: str):
     """Checks if the application is running in an interactive CLI session.
     If not, raises an error to prevent headless browser authentication hangs."""
@@ -822,6 +837,96 @@ def _split_catalog_list(val) -> list:
     sep = "|" if "|" in s else ","
     return [item.strip() for item in s.split(sep) if item.strip()]
 
+def fetch_simplyprint_file_list() -> list:
+    """Recursively fetches every file (name + id) in the SimplyPrint file system via the
+    API. Returns [] when the API key is missing or the API is unreachable. Replaces the
+    old local sp_files.json cache, which is untracked and never shipped to Railway — so
+    catalog imports through the backend endpoint silently skipped SP auto-matching."""
+    api_key = os.getenv("SIMPLYPRINT_API_KEY")
+    if not api_key:
+        print("[-] SIMPLYPRINT_API_KEY not set — cannot fetch SimplyPrint file list.")
+        return []
+    headers = {"X-API-KEY": api_key, "Accept": "application/json", "Content-Type": "application/json"}
+    url = f"https://api.simplyprint.io/{SIMPLYPRINT_COMPANY_ID}/files/GetFiles"
+
+    def _fetch_folder(folder_id: int) -> list:
+        r = None
+        for attempt in range(5):
+            r = http_session.post(url, headers=headers, json={"f": folder_id}, timeout=15)
+            if r.status_code == 429:
+                time.sleep(2 ** attempt)
+                continue
+            break
+        if r is None or r.status_code != 200:
+            print(f"[-] SimplyPrint GetFiles failed for folder {folder_id}: "
+                  f"HTTP {r.status_code if r is not None else 'n/a'}")
+            return []
+        data = r.json()
+        if not data.get("status"):
+            print(f"[-] SimplyPrint GetFiles error for folder {folder_id}: {data.get('message')}")
+            return []
+        all_files = list(data.get("files", []))
+        for sub in data.get("folders", []):
+            sub_id = sub.get("id")
+            if sub_id is None:
+                continue
+            time.sleep(0.3)  # stay clear of the API rate limit while recursing
+            all_files.extend(_fetch_folder(sub_id))
+        return all_files
+
+    try:
+        files = _fetch_folder(0)
+        print(f"[*] Fetched {len(files)} file(s) from SimplyPrint.")
+        return files
+    except Exception as e:
+        print(f"[-] SimplyPrint file list fetch failed: {e}")
+        return []
+
+
+def run_sync_simplyprint_ids() -> dict:
+    """Matches print_files rows to SimplyPrint file IDs by filename (exact, then without
+    extension) and backfills simplyprint_file_id. Inlined from scratch/sync_simplyprint_ids.py:
+    scratch/ is gitignored, so the old subprocess call failed on every Railway run."""
+    sp_files = fetch_simplyprint_file_list()
+    if not sp_files:
+        raise RuntimeError("No files returned from SimplyPrint — check API key/connectivity.")
+
+    sp_lookup_exact, sp_lookup_base = {}, {}
+    for f in sp_files:
+        name = (f.get("name") or "").strip()
+        fid = f.get("id")
+        if name and fid:
+            sp_lookup_exact[name.lower()] = fid
+            sp_lookup_base[os.path.splitext(name)[0].lower()] = fid
+
+    db_files = fetch_all_rows("print_files", "id, print_file_name, simplyprint_file_id")
+
+    matched = updated = 0
+    unmatched = []
+    for db_f in db_files:
+        db_name = (db_f.get("print_file_name") or "").strip()
+        if not db_name:
+            continue
+        matched_id = sp_lookup_exact.get(db_name.lower()) or \
+                     sp_lookup_base.get(os.path.splitext(db_name)[0].lower())
+        if matched_id:
+            matched += 1
+            matched_id_str = str(matched_id)
+            if db_f.get("simplyprint_file_id") != matched_id_str:
+                supabase.table("print_files").update({"simplyprint_file_id": matched_id_str}).eq("id", db_f["id"]).execute()
+                updated += 1
+        else:
+            unmatched.append(db_name)
+
+    summary = {"sp_files": len(sp_files), "db_files": len(db_files), "matched": matched,
+               "updated": updated, "unmatched": len(unmatched)}
+    print(f"[+] SimplyPrint ID sync: {summary}")
+    if unmatched:
+        log_system("warning", f"SimplyPrint ID sync: {len(unmatched)} print file(s) had no matching SimplyPrint file.",
+                   {"unmatched_sample": unmatched[:30]}, agent_name="Product Manager")
+    return summary
+
+
 def process_catalog(file_path: str):
     """Processes catalog sheet and upserts it into Supabase."""
     try:
@@ -948,16 +1053,20 @@ def process_catalog(file_path: str):
             print("!" * 80 + "\n")
             log_system("warning", f"Catalog audit detected SKU conflicts in {os.path.basename(file_path)}.", {"conflicts": conflicts}, agent_name="Product Manager")
 
-        # Load SimplyPrint cache
-        sp_files = []
-        sp_files_path = "sp_files.json"
-        if os.path.exists(sp_files_path):
-            try:
-                with open(sp_files_path, "r") as f:
-                    sp_files = json.load(f)
-                print(f"Loaded {len(sp_files)} files from SimplyPrint cache for auto-matching.")
-            except Exception as e:
-                print(f"Warning: Failed to load SimplyPrint cache: {e}")
+        # SimplyPrint file list for auto-matching: fetch live from the API. The old
+        # sp_files.json cache is untracked and never shipped to Railway, so imports through
+        # the backend endpoint silently skipped auto-matching; the file now only serves as
+        # a local-dev fallback when the API is unreachable.
+        sp_files = fetch_simplyprint_file_list()
+        if not sp_files:
+            sp_files_path = "sp_files.json"
+            if os.path.exists(sp_files_path):
+                try:
+                    with open(sp_files_path, "r") as f:
+                        sp_files = json.load(f)
+                    print(f"Loaded {len(sp_files)} files from local SimplyPrint cache (API fetch failed).")
+                except Exception as e:
+                    print(f"Warning: Failed to load SimplyPrint cache: {e}")
                 
         parsed_sp = []
         sp_id_lookup = {}
@@ -3267,30 +3376,47 @@ def sync_simplyprint_jobs():
             return http_session.post(f"{base_url}/queue/GetItems", headers=headers, json={}, timeout=10)
 
         def _fetch_history():
-            return http_session.post(f"{base_url}/jobs/GetPaginatedPrintJobs", headers=headers, json={"page": 1, "page_size": 50}, timeout=10)
+            # 100 per page: with 50, a busy 5-min window could push finished-but-failed
+            # jobs past page 1, where the fallback would mark them completed instead.
+            return http_session.post(f"{base_url}/jobs/GetPaginatedPrintJobs", headers=headers, json={"page": 1, "page_size": 100}, timeout=10)
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             fut_printers = executor.submit(_fetch_printers)
             fut_queue = executor.submit(_fetch_queue)
             fut_history = executor.submit(_fetch_history)
 
+            # A non-200 response is just as much a failure as a raised exception: it must
+            # disarm the "not found anywhere → completed" fallback below, or a SimplyPrint
+            # auth error/5xx (empty data, no exception) fake-completes every active job.
             try:
                 r = fut_printers.result()
-                printers_data = r.json().get("data", []) if r.status_code == 200 else []
+                if r.status_code == 200:
+                    printers_data = r.json().get("data", [])
+                else:
+                    print(f"[-] Printers fetch returned HTTP {r.status_code} — treating as failed.")
+                    api_calls_succeeded = False
             except Exception as pe:
                 print(f"[-] Failed to fetch printers: {pe}")
                 api_calls_succeeded = False
 
             try:
                 r = fut_queue.result()
-                queue_data = r.json().get("queue", []) if r.status_code == 200 else []
+                if r.status_code == 200:
+                    queue_data = r.json().get("queue", [])
+                else:
+                    print(f"[-] Queue fetch returned HTTP {r.status_code} — treating as failed.")
+                    api_calls_succeeded = False
             except Exception as qe:
                 print(f"[-] Failed to fetch queue: {qe}")
                 api_calls_succeeded = False
 
             try:
                 r = fut_history.result()
-                history_data = r.json().get("data", []) if r.status_code == 200 else []
+                if r.status_code == 200:
+                    history_data = r.json().get("data", [])
+                else:
+                    print(f"[-] History fetch returned HTTP {r.status_code} — treating as failed.")
+                    api_calls_succeeded = False
             except Exception as he:
                 print(f"[-] Failed to fetch history: {he}")
                 api_calls_succeeded = False
@@ -3523,12 +3649,7 @@ async def run_waybill_daemon_async():
                         
                     elif job_type == 'sync_simplyprint_ids':
                         print("[*] Executing SimplyPrint IDs sync...")
-                        import subprocess
-                        script_path = str(_base_dir / 'scratch' / 'sync_simplyprint_ids.py')
-                        res_sync = await asyncio.to_thread(subprocess.run, ['python3', script_path], capture_output=True, text=True)
-                        print(res_sync.stdout)
-                        if res_sync.returncode != 0:
-                            raise Exception(f"Sync script failed: {res_sync.stderr or 'Check error console'}")
+                        result_data = await asyncio.to_thread(run_sync_simplyprint_ids)
                         await asyncio.to_thread(
                             supabase.table('agent_heartbeats').upsert({
                                 'agent_name': 'orbot_service',
@@ -4103,11 +4224,13 @@ def _do_cancel_order(order_id: str, platform_order_id: Optional[str] = None) -> 
     order_items = items_res.data or []
 
     active_printers = []
+    printers_fetch_ok = False
     if api_key:
         try:
             r_pr = http_session.post(f"https://api.simplyprint.io/{company_id}/printers/Get", headers=sp_headers, json={}, timeout=10)
             if r_pr.status_code == 200:
                 active_printers = r_pr.json().get("data", [])
+                printers_fetch_ok = True
         except Exception as pe:
             logger.error(f"Failed to fetch SimplyPrint printers: {pe}")
 
@@ -4150,8 +4273,11 @@ def _do_cancel_order(order_id: str, platform_order_id: Optional[str] = None) -> 
                             break
                     else:
                         # DeleteItem failed and the job isn't on any active printer either —
-                        # most likely it already finished/was removed. Not a hard failure.
-                        job_cancelled = True
+                        # most likely it already finished/was removed. But that conclusion is
+                        # only safe if we actually saw the printer list; if the printers fetch
+                        # failed, the job's state is unknown and claiming success could leave
+                        # a printer physically printing a "cancelled" order.
+                        job_cancelled = printers_fetch_ok
             except Exception as je:
                 logger.error(f"Error cancelling SimplyPrint job {sp_job_id}: {je}")
                 job_cancelled = False
