@@ -1341,19 +1341,18 @@ def process_catalog(file_path: str):
 # ----------------- SECTION 2: Archivist Logic -----------------
 
 def fetch_master_truth():
-    """Fetches full products catalog metadata from Supabase for reorganization."""
+    """Fetches full products catalog metadata from Supabase for reorganization.
+    Paginated via fetch_all_rows — variants already exceeds the Supabase server-side
+    max-rows cap, and a plain .select('*') silently truncates at that cap."""
     print("Fetching master truth from Supabase...")
-    
-    products_res = supabase.table('products').select('*').execute()
-    products = products_res.data
+
+    products = fetch_all_rows('products')
     products_dict = {p['id']: p for p in products}
-    
-    variants_res = supabase.table('variants').select('*').execute()
-    variants = variants_res.data
+
+    variants = fetch_all_rows('variants')
     variants_dict = {v['id']: v for v in variants}
-    
-    print_files_res = supabase.table('print_files').select('*').execute()
-    print_files = print_files_res.data
+
+    print_files = fetch_all_rows('print_files')
     
     match_map = {}
     set_num_map = {}
@@ -1511,7 +1510,7 @@ def scan_and_reorganize(source_dir, dest_dir, match_map, set_num_map):
     print("\n" + "="*50)
     print("AUDIT REPORT (Reference Structure)")
     print("="*50)
-    all_expected = [pf['print_file_name'] for pf in supabase.table('print_files').select('print_file_name').execute().data]
+    all_expected = [pf['print_file_name'] for pf in fetch_all_rows('print_files', 'print_file_name')]
     missing = set(all_expected) - matched_print_files
     print(f"Total Master Files Organized: {len(matched_print_files)} / {len(all_expected)}")
     print(f"Generic Orphans:              {len(generic_orphans)}")
@@ -3551,15 +3550,35 @@ def run_retention_cleanup():
 # ----------------- SECTION 5: Async Event-Loop Telemetry & Poller Tasks -----------------
 
 async def run_waybill_daemon_async():
-    """Runs the Waybill Daemon loop inside the asyncio event loop cooperatively."""
+    """Runs the Waybill Daemon loop inside the asyncio event loop cooperatively.
+
+    This loop also owns SimplyPrint telemetry, retention cleanup, and the orbot_service
+    heartbeat — none of which need Google Drive. Drive auth therefore happens lazily per
+    waybill job (get_drive_service caches after the first success) instead of
+    authenticate-or-die at startup, which used to kill all four responsibilities until
+    the next redeploy whenever Drive auth hiccuped."""
     print("[*] Starting Waybill/Telemetry daemon async task...")
-    drive_service = None
+
+    # Reap jobs stranded in 'processing' by a crash/redeploy mid-job: the poll loop only
+    # ever claims 'pending' rows, so stranded jobs would sit 'processing' forever. They're
+    # marked failed rather than re-queued to avoid crash-looping on a job that killed the
+    # process — the loud error log makes them easy to re-trigger manually.
     try:
-        drive_service = await asyncio.to_thread(get_drive_service)
+        stale = await asyncio.to_thread(
+            supabase.table('waybill_jobs').update({
+                'status': 'failed',
+                'result': {'error': 'Job was stuck in processing at daemon startup '
+                                    '(likely interrupted by a restart/redeploy) — re-trigger manually.'}
+            }).eq('status', 'processing').execute
+        )
+        if stale.data:
+            msg = (f"Reaped {len(stale.data)} stale 'processing' waybill job(s) at startup: "
+                   f"{[j['id'] for j in stale.data]}")
+            print(f"[!] {msg}")
+            await asyncio.to_thread(log_system_waybill, "error", msg)
     except Exception as e:
-        print(f"[-] Failed to authenticate Drive service for daemon: {e}")
-        return
-        
+        print(f"[-] Stale-job reaper failed: {e}")
+
     last_sp_sync_time = 0
     while True:
         try:
