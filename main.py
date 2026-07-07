@@ -243,6 +243,9 @@ def resolve_shop(shop_name: Optional[str]) -> Optional[dict]:
 # In-process Scout lock (used when fcntl is unavailable)
 _scout_thread_lock = threading.Lock()
 
+# Gmail label name (lowercased) → label ID, cached per process.
+_gmail_label_cache: dict = {}
+
 
 # ----------------- Shared Helper Functions -----------------
 
@@ -259,6 +262,13 @@ def log_system(level: str, message: str, details: Optional[Dict[str, Any]] = Non
         print(f"[{agent_name.upper()}] [{level.upper()}] {message}")
     except Exception as e:
         print(f"CRITICAL: Failed to write to system_logs: {e}")
+
+def write_heartbeat(agent_name: str):
+    """Upserts an agent's heartbeat row (UTC). Shared by every daemon loop / job handler."""
+    supabase.table('agent_heartbeats').upsert({
+        'agent_name': agent_name,
+        'last_heartbeat': datetime.now(timezone.utc).isoformat()
+    }).execute()
 
 def log_gemini_usage(agent_name: str, model_name: str, response):
     """Logs Gemini API token usage to the database."""
@@ -1767,13 +1777,20 @@ class ScoutAgent:
             return None
 
     def _get_or_create_label(self, name: str) -> str:
-        """Returns the Gmail label ID for `name`, creating it if it doesn't exist."""
+        """Returns the Gmail label ID for `name`, creating it if it doesn't exist.
+        Cached at module level: mark_email_as_read calls this for every processed email,
+        and an uncached labels().list() round-trip per email dominated scan time."""
+        cached = _gmail_label_cache.get(name.lower())
+        if cached:
+            return cached
         existing = self.gmail_service.users().labels().list(userId='me').execute().get('labels', [])
         for lbl in existing:
             if lbl['name'].lower() == name.lower():
+                _gmail_label_cache[name.lower()] = lbl['id']
                 return lbl['id']
         created = self.gmail_service.users().labels().create(userId='me', body={'name': name}).execute()
         logger.info(f"Created Gmail label '{name}' (id={created['id']})")
+        _gmail_label_cache[name.lower()] = created['id']
         return created['id']
 
     # Subjects that clearly mark a NON-order email (marketing, logistics, account notices) —
@@ -3289,6 +3306,7 @@ def check_and_update_item_completion(order_item_id):
 def sync_simplyprint_printers_and_queue(printers_data, queue_data):
     try:
         active_ids = []
+        printer_rows = []
         for p in printers_data:
             p_id = p.get("id")
             p_info = p.get("printer", {})
@@ -3337,9 +3355,12 @@ def sync_simplyprint_printers_and_queue(printers_data, queue_data):
                 "autoprint_max_jobs": autoprint_max_jobs,
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
-            supabase.table('simplyprint_printers').upsert(printer_row).execute()
+            printer_rows.append(printer_row)
             active_ids.append(p_id)
-            
+
+        # One batched upsert instead of a round-trip per printer.
+        if printer_rows:
+            supabase.table('simplyprint_printers').upsert(printer_rows).execute()
         if active_ids:
             supabase.table('simplyprint_printers').delete().not_.in_('id', active_ids).execute()
     except Exception as pe:
@@ -3351,20 +3372,23 @@ def sync_simplyprint_printers_and_queue(printers_data, queue_data):
         # delete-all-then-reinsert window where a concurrent reader could briefly see an
         # empty queue table.
         active_queue_ids = []
+        queue_rows = []
         for idx, q_item in enumerate(queue_data):
             q_id = q_item.get("id")
             duration_seconds = q_item.get("analysis", {}).get("estimate", 0)
 
-            queue_row = {
+            queue_rows.append({
                 "id": q_id,
                 "name": q_item.get("filename") or q_item.get("name", "Unknown"),
                 "position": idx + 1,
                 "estimate_seconds": duration_seconds,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }
-            supabase.table('simplyprint_queue').upsert(queue_row).execute()
+            })
             active_queue_ids.append(q_id)
 
+        # One batched upsert instead of a round-trip per queue item.
+        if queue_rows:
+            supabase.table('simplyprint_queue').upsert(queue_rows).execute()
         if active_queue_ids:
             supabase.table('simplyprint_queue').delete().not_.in_('id', active_queue_ids).execute()
         else:
@@ -3608,17 +3632,17 @@ async def run_waybill_daemon_async():
         print(f"[-] Stale-job reaper failed: {e}")
 
     last_sp_sync_time = 0
+    last_heartbeat_time = 0.0
     while True:
-        try:
-            # Update unified heartbeat (non-blocking thread)
-            await asyncio.to_thread(
-                supabase.table('agent_heartbeats').upsert({
-                    'agent_name': 'orbot_service',
-                    'last_heartbeat': datetime.now(timezone.utc).isoformat()
-                }).execute
-            )
-        except Exception as e:
-            print(f"[-] Failed to update daemon heartbeat: {e}")
+        # Heartbeat at most every 30s — writing on every 5s poll iteration was ~17k
+        # upserts/day for no freshness benefit (staleness alerts use minutes-scale
+        # thresholds).
+        if time.time() - last_heartbeat_time >= 30:
+            try:
+                await asyncio.to_thread(write_heartbeat, 'orbot_service')
+                last_heartbeat_time = time.time()
+            except Exception as e:
+                print(f"[-] Failed to update daemon heartbeat: {e}")
             
         current_time = time.time()
         if current_time - last_sp_sync_time >= 300:
@@ -3688,23 +3712,13 @@ async def run_waybill_daemon_async():
                     elif job_type == 'scout_gmail_scan':
                         print("[*] Executing Scout Gmail scan...")
                         await asyncio.to_thread(_trigger_scout_scan)
-                        await asyncio.to_thread(
-                            supabase.table('agent_heartbeats').upsert({
-                                'agent_name': 'orbot_service',
-                                'last_heartbeat': datetime.now(timezone.utc).isoformat()
-                            }).execute
-                        )
+                        await asyncio.to_thread(write_heartbeat, 'orbot_service')
                         print("[+] Scout Gmail scan completed successfully.")
                         
                     elif job_type == 'sync_simplyprint_ids':
                         print("[*] Executing SimplyPrint IDs sync...")
                         result_data = await asyncio.to_thread(run_sync_simplyprint_ids)
-                        await asyncio.to_thread(
-                            supabase.table('agent_heartbeats').upsert({
-                                'agent_name': 'orbot_service',
-                                'last_heartbeat': datetime.now(timezone.utc).isoformat()
-                            }).execute
-                        )
+                        await asyncio.to_thread(write_heartbeat, 'orbot_service')
                         print("[+] SimplyPrint IDs sync completed successfully.")
                         
                     elif job_type == 'ready_all_printers':
@@ -3829,12 +3843,7 @@ async def run_scout_periodic_async():
         try:
             agent = await asyncio.to_thread(ScoutAgent)
             await asyncio.to_thread(agent.run)
-            await asyncio.to_thread(
-                supabase.table('agent_heartbeats').upsert({
-                    'agent_name': 'scout',
-                    'last_heartbeat': datetime.now(timezone.utc).isoformat()
-                }).execute
-            )
+            await asyncio.to_thread(write_heartbeat, 'scout')
         except Exception as e:
             print(f"Scout Periodic Poll Error: {e}")
         await asyncio.sleep(300)
@@ -3849,12 +3858,7 @@ async def run_gmail_watch_renewal_async():
             agent = await asyncio.to_thread(ScoutAgent)
             resp = await asyncio.to_thread(agent.start_watch)
             if resp:
-                await asyncio.to_thread(
-                    supabase.table('agent_heartbeats').upsert({
-                        'agent_name': 'scout',
-                        'last_heartbeat': datetime.now(timezone.utc).isoformat()
-                    }).execute
-                )
+                await asyncio.to_thread(write_heartbeat, 'scout')
         except Exception as e:
             print(f"Gmail watch renewal error: {e}")
         # Renew once a day — comfortably inside the ~7-day watch expiry.
@@ -3873,12 +3877,7 @@ async def run_scout_backstop_async():
         await asyncio.sleep(300)
         try:
             await asyncio.to_thread(_trigger_scout_scan)
-            await asyncio.to_thread(
-                supabase.table('agent_heartbeats').upsert({
-                    'agent_name': 'scout',
-                    'last_heartbeat': datetime.now(timezone.utc).isoformat()
-                }).execute
-            )
+            await asyncio.to_thread(write_heartbeat, 'scout')
         except Exception as e:
             print(f"Scout backstop scan error: {e}")
 
@@ -4167,15 +4166,25 @@ def _run_foreman_dispatch_locked(dry_run: bool = False) -> dict:
 
             print_files = filter_print_files(all_files, variant.get('variant_name'))
 
+            # Snapshot of already-created jobs per print file for this item (left by a
+            # prior partially-failed pass) — dispatch only tops up to the purchased
+            # quantity. One query instead of one per file per unit; equivalent to the
+            # old per-iteration re-query because rows inserted below grow in lockstep
+            # with q, so the skip decision only ever depends on the pre-existing count.
+            existing_jobs_res = supabase.table('print_jobs') \
+                .select('print_file_id').eq('order_item_id', item['id']).execute()
+            existing_counts: dict = {}
+            for row in (existing_jobs_res.data or []):
+                pf_id = row.get('print_file_id')
+                existing_counts[pf_id] = existing_counts.get(pf_id, 0) + 1
+
             for q in range(remaining_to_print):
                 for file in print_files:
                     if not file.get('simplyprint_file_id'):
                         log_system('warning', f"Missing SimplyPrint File ID for print file {file['id']}.", agent_name='Foreman')
                         continue
 
-                    existing_res = supabase.table('print_jobs') \
-                        .select('id').eq('order_item_id', item['id']).eq('print_file_id', file['id']).execute()
-                    if existing_res.data and len(existing_res.data) > q:
+                    if existing_counts.get(file['id'], 0) > q:
                         continue
 
                     if total_files_dispatched > 0:
@@ -4958,7 +4967,9 @@ async def catalog_scrape_product(request: Request):
                 # square 2000px later; verify it decodes so we never ship an HTML
                 # error page as an "image", and cap payload size for the b64 response.
                 raw = r.content
-                if len(raw) > 25 * 1024 * 1024:
+                # 8MB/image: base64 inflates ~33% and up to 9 images ride one JSON
+                # response — the old 25MB cap allowed ~300MB payloads.
+                if len(raw) > 8 * 1024 * 1024:
                     raise ValueError(f"image too large ({len(raw)} bytes)")
                 img = PILImage.open(BytesIO(raw))
                 fmt = (img.format or "JPEG").lower()
