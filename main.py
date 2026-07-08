@@ -180,7 +180,11 @@ def _get_google_creds():
             if not os.path.exists(CREDENTIALS_PATH):
                 raise FileNotFoundError(f"Missing Google OAuth credentials.json at {CREDENTIALS_PATH}")
             flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
-            creds = flow.run_local_server(port=0)
+            # access_type='offline' + prompt='consent' force Google to return a
+            # refresh_token even when this account has already consented before —
+            # otherwise a re-auth can yield an access-only token that dies at first
+            # expiry and can never be refreshed headlessly.
+            creds = flow.run_local_server(port=0, access_type='offline', prompt='consent')
             # Brand-new credentials object — any cached services were built against the
             # old one and must be rebuilt against this one.
             _gmail_service_cache = None
@@ -354,8 +358,15 @@ def fetch_all_rows(table: str, columns: str = "*", page_size: int = 1000) -> lis
 
 def check_interactive(action_name: str):
     """Checks if the application is running in an interactive CLI session.
-    If not, raises an error to prevent headless browser authentication hangs."""
-    is_interactive = sys.stdin.isatty() and os.environ.get("START_DAEMON_THREADS", "true").lower() != "true"
+    If not, raises an error to prevent headless browser authentication hangs.
+
+    A terminal (stdin is a tty) is the real signal that a human can complete the
+    OAuth browser flow. The old extra `START_DAEMON_THREADS != "true"` clause
+    wrongly treated the `scout`/`waybill` CLI subcommands as headless (they never
+    set that var), so the very recovery command this error message tells you to
+    run — `python3 main.py scout` — could never pass. On Railway stdin is not a
+    tty, so isatty() alone still correctly refuses there."""
+    is_interactive = sys.stdin.isatty()
     if not is_interactive:
         raise RuntimeError(
             f"Google API authentication required for '{action_name}', but the application "
